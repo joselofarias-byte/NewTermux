@@ -2,12 +2,13 @@
 
 - Maintainer / distribution brand: **JoseloFarias**
 - Application: **NewTermux**
+- Android application ID: `com.termux` (compatibility exception)
 - GitHub account suffix `-byte` is not part of the product brand.
 - Fork-specific UI, release metadata and documentation must identify **JoseloFarias** consistently.
 
 ## Package identity
 
-The Android package must remain distinct from upstream whenever this fork is distributed independently. Package changes must include `applicationId`, authorities, deep links and package-qualified permissions atomically and must be build-verified.
+`com.termux` is intentionally retained because the app package, bootstrap expectations, shared-user behavior and plugin ecosystem are tightly coupled to that identifier. Rebranding this package would require a separate compatibility migration and is not part of a safe branding-only change.
 
 ## Credits
 
