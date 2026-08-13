@@ -5,6 +5,8 @@ buildscript {
     }
     dependencies {
         classpath "com.android.tools.build:gradle:8.13.2"
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:2.2.20"
+        classpath "org.jetbrains.kotlin:compose-compiler-gradle-plugin:2.2.20"
     }
 }
 
@@ -13,5 +15,40 @@ allprojects {
         google()
         mavenCentral()
         maven { url "https://jitpack.io" }
+    }
+}
+
+// Enable Kotlin/Compose for the app without rewriting app/build.gradle.
+// This intentionally preserves the fork's signing config, versioning and demo variant unchanged.
+project(":app") {
+    pluginManager.withPlugin("com.android.application") {
+        pluginManager.apply("org.jetbrains.kotlin.android")
+        pluginManager.apply("org.jetbrains.kotlin.plugin.compose")
+
+        android {
+            compileOptions {
+                sourceCompatibility JavaVersion.VERSION_11
+                targetCompatibility JavaVersion.VERSION_11
+            }
+
+            kotlinOptions {
+                jvmTarget = "11"
+            }
+
+            buildFeatures {
+                compose true
+            }
+        }
+
+        dependencies {
+            def composeBom = platform("androidx.compose:compose-bom:2025.06.01")
+            implementation composeBom
+            implementation "androidx.compose.ui:ui"
+            implementation "androidx.compose.ui:ui-tooling-preview"
+            implementation "androidx.compose.material3:material3"
+            implementation "androidx.compose.material:material-icons-extended"
+            implementation "androidx.activity:activity-compose:1.10.1"
+            debugImplementation "androidx.compose.ui:ui-tooling"
+        }
     }
 }
