@@ -66,7 +66,7 @@ import com.newtermux.features.ColorPickerDialog
 import com.newtermux.features.NewTermuxColorTheme
 import com.newtermux.features.NewTermuxTheme
 
-class ComposeThemePickerActivity : AppCompatActivity() {
+open class ComposeThemePickerActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
