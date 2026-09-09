@@ -2,7 +2,7 @@
 set -euo pipefail
 
 APP_NAME="opportunity-fabric"
-VERSION="0.2.0"
+VERSION="0.2.1"
 REPO="https://github.com/joselofarias-byte/NewTermux.git"
 SOURCE_SUBDIR="tools/opportunity-fabric"
 
@@ -18,8 +18,11 @@ BACKUP_ROOT="$APP_ROOT/backups"
 TMP_ROOT="${TMPDIR:-$HOME/.cache}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 TMP_DIR="$TMP_ROOT/${APP_NAME}-install-$STAMP"
+CANDIDATE="$APP_ROOT/.candidate-$STAMP"
 
-cleanup() { rm -rf "$TMP_DIR" 2>/dev/null || true; }
+cleanup() {
+  rm -rf "$TMP_DIR" "$CANDIDATE" 2>/dev/null || true
+}
 trap cleanup EXIT
 
 echo "==> Opportunity Fabric $VERSION — actualización automática"
@@ -52,18 +55,35 @@ git -C "$TMP_DIR/repo" sparse-checkout set "$SOURCE_SUBDIR"
 NEW_SRC="$TMP_DIR/repo/$SOURCE_SUBDIR"
 [ -f "$NEW_SRC/opportunity_fabric/__main__.py" ] || { echo "ERROR: source tree incompleto." >&2; exit 3; }
 
+# Stage first, test before replacing a working installation.
+rm -rf "$CANDIDATE"
+mkdir -p "$CANDIDATE"
+cp -a "$NEW_SRC"/. "$CANDIDATE"/
+find "$CANDIDATE" -type d -name '__pycache__' -prune -exec rm -rf {} + 2>/dev/null || true
+
+echo "==> Autopruebas sobre candidato..."
+PYTHONPATH="$CANDIDATE${PYTHONPATH:+:$PYTHONPATH}" python -m opportunity_fabric status >/dev/null
+PYTHONPATH="$CANDIDATE${PYTHONPATH:+:$PYTHONPATH}" python -m opportunity_fabric inventory >/dev/null
+PYTHONPATH="$CANDIDATE${PYTHONPATH:+:$PYTHONPATH}" python -m opportunity_fabric evaluate quantus >/dev/null
+PYTHONPATH="$CANDIDATE${PYTHONPATH:+:$PYTHONPATH}" python -m opportunity_fabric policies >/dev/null
+PYTHONPATH="$CANDIDATE${PYTHONPATH:+:$PYTHONPATH}" python -m opportunity_fabric quantus-preflight >/dev/null
+
 if [ -d "$SRC_DIR" ]; then
+  echo "==> Respaldando instalación anterior..."
   mv "$SRC_DIR" "$BACKUP_ROOT/$STAMP"
 fi
-mkdir -p "$SRC_DIR"
-cp -a "$NEW_SRC"/. "$SRC_DIR"/
-find "$SRC_DIR" -type d -name '__pycache__' -prune -exec rm -rf {} + 2>/dev/null || true
+mv "$CANDIDATE" "$SRC_DIR"
 
-cat > "$BIN_DIR/of" <<EOF
+cat > "$BIN_DIR/of" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-export PYTHONPATH="$SRC_DIR\${PYTHONPATH:+:$PYTHONPATH}"
-exec python -m opportunity_fabric "\$@"
+SRC_DIR="$HOME/.local/share/opportunity-fabric/current"
+if [ -n "${PYTHONPATH:-}" ]; then
+  export PYTHONPATH="$SRC_DIR:$PYTHONPATH"
+else
+  export PYTHONPATH="$SRC_DIR"
+fi
+exec python -m opportunity_fabric "$@"
 EOF
 chmod 700 "$BIN_DIR/of"
 
@@ -71,12 +91,8 @@ if [ "$BIN_DIR" = "$HOME/.local/bin" ]; then
   case ":${PATH:-}:" in *":$BIN_DIR:"*) ;; *) export PATH="$BIN_DIR:$PATH" ;; esac
 fi
 
-echo "==> Autopruebas..."
+# Final installed-path smoke test.
 "$BIN_DIR/of" status >/dev/null
-"$BIN_DIR/of" inventory >/dev/null
-"$BIN_DIR/of" evaluate quantus >/dev/null
-"$BIN_DIR/of" policies >/dev/null
-"$BIN_DIR/of" quantus-preflight >/dev/null
 
 echo
 echo "OK — Opportunity Fabric $VERSION instalado y probado."
