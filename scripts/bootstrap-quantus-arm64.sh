@@ -7,7 +7,7 @@ STAMP="$(date +%Y%m%d-%H%M%S)"
 TMP="$TMPROOT/quantus-arm64-bootstrap-$STAMP"
 mkdir -p "$TMP"
 cleanup() { rm -rf "$TMP" 2>/dev/null || true; }
-trap cleanup RETURN 2>/dev/null || trap cleanup EXIT
+trap cleanup EXIT
 
 fetch_script() {
   local name="$1" out="$2"
