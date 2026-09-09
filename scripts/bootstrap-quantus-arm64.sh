@@ -19,10 +19,10 @@ fetch_script() {
 
 echo "==> Updating Opportunity Fabric first..."
 if fetch_script install-opportunity-fabric.sh "$TMP/install.sh"; then
-  bash "$TMP/install.sh"
+  bash "$TMP/install.sh" || exit $?
 else
   echo "ERROR: could not fetch/validate Opportunity Fabric installer." >&2
-  return 10 2>/dev/null || true
+  exit 10
 fi
 
 echo
@@ -31,7 +31,7 @@ if fetch_script run-quantus-arm64-experiment.sh "$TMP/experiment.sh"; then
   bash "$TMP/experiment.sh"
 else
   echo "ERROR: could not fetch/validate Quantus experiment runner." >&2
-  return 11 2>/dev/null || true
+  exit 11
 fi
 
 echo
