@@ -61,12 +61,17 @@ mkdir -p "$CANDIDATE"
 cp -a "$NEW_SRC"/. "$CANDIDATE"/
 find "$CANDIDATE" -type d -name '__pycache__' -prune -exec rm -rf {} + 2>/dev/null || true
 
+CANDIDATE_PYTHONPATH="$CANDIDATE"
+if [ -n "${PYTHONPATH:-}" ]; then
+  CANDIDATE_PYTHONPATH="$CANDIDATE:$PYTHONPATH"
+fi
+
 echo "==> Autopruebas sobre candidato..."
-PYTHONPATH="$CANDIDATE${PYTHONPATH:+:$PYTHONPATH}" python -m opportunity_fabric status >/dev/null
-PYTHONPATH="$CANDIDATE${PYTHONPATH:+:$PYTHONPATH}" python -m opportunity_fabric inventory >/dev/null
-PYTHONPATH="$CANDIDATE${PYTHONPATH:+:$PYTHONPATH}" python -m opportunity_fabric evaluate quantus >/dev/null
-PYTHONPATH="$CANDIDATE${PYTHONPATH:+:$PYTHONPATH}" python -m opportunity_fabric policies >/dev/null
-PYTHONPATH="$CANDIDATE${PYTHONPATH:+:$PYTHONPATH}" python -m opportunity_fabric quantus-preflight >/dev/null
+PYTHONPATH="$CANDIDATE_PYTHONPATH" python -m opportunity_fabric status >/dev/null
+PYTHONPATH="$CANDIDATE_PYTHONPATH" python -m opportunity_fabric inventory >/dev/null
+PYTHONPATH="$CANDIDATE_PYTHONPATH" python -m opportunity_fabric evaluate quantus >/dev/null
+PYTHONPATH="$CANDIDATE_PYTHONPATH" python -m opportunity_fabric policies >/dev/null
+PYTHONPATH="$CANDIDATE_PYTHONPATH" python -m opportunity_fabric quantus-preflight >/dev/null
 
 if [ -d "$SRC_DIR" ]; then
   echo "==> Respaldando instalación anterior..."
