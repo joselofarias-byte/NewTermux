@@ -4,11 +4,13 @@ set -uo pipefail
 STAMP="$(date +%Y%m%d-%H%M%S)"
 STATE="$HOME/.local/state/opportunity-fabric"
 LOGDIR="$STATE/logs"
-mkdir -p "$LOGDIR"
+BACKUPDIR="$STATE/backups"
+mkdir -p "$LOGDIR" "$BACKUPDIR"
 LOG="$LOGDIR/quantus-arm64-experiment-$STAMP.log"
 APT_LOG="$LOGDIR/apt-repair-$STAMP.log"
 KEY_TMP="$STATE/termux-autobuilds-$STAMP.gpg"
 SAFE_LIST="$STATE/termux-main-signed-$STAMP.list"
+OFFICIAL_KEY="$PREFIX/share/termux-keyring/termux-autobuilds.gpg"
 
 exec > >(tee -a "$LOG") 2>&1
 
@@ -54,25 +56,77 @@ PY
     return 31
   fi
 
-  share_dir="${PREFIX}/share/termux-keyring"
-  trust_dir="${PREFIX}/etc/apt/trusted.gpg.d"
+  share_dir="$PREFIX/share/termux-keyring"
+  trust_dir="$PREFIX/etc/apt/trusted.gpg.d"
   mkdir -p "$share_dir" "$trust_dir"
-  install -m 600 "$KEY_TMP" "$share_dir/termux-autobuilds.gpg"
-  # Keep a direct copy too. Some APT builds are stricter with symlinks in trusted.gpg.d.
+  install -m 600 "$KEY_TMP" "$OFFICIAL_KEY"
   install -m 644 "$KEY_TMP" "$trust_dir/termux-autobuilds.gpg"
   echo "==> Official key installed after exact Git-blob verification."
   return 0
 }
 
-isolated_main_apt() {
-  local signed_key="$PREFIX/share/termux-keyring/termux-autobuilds.gpg"
-  printf '%s\n' "deb [signed-by=$signed_key] https://packages.termux.dev/apt/termux-main stable main" >"$SAFE_LIST"
+write_safe_main_source() {
+  [ -f "$OFFICIAL_KEY" ] || return 1
+  printf '%s\n' "deb [signed-by=$OFFICIAL_KEY] https://packages.termux.dev/apt/termux-main stable main" >"$SAFE_LIST"
+}
 
+isolated_main_apt() {
+  write_safe_main_source || return 1
   apt-get \
     -o "Dir::Etc::sourcelist=$SAFE_LIST" \
     -o 'Dir::Etc::sourceparts=-' \
     -o 'APT::Get::List-Cleanup=0' \
     "$@"
+}
+
+bind_glibc_sources_to_official_key() {
+  local changed=0 file backup
+  while IFS= read -r file; do
+    [ -f "$file" ] || continue
+    grep -qE '^[[:space:]]*deb .*termux-glibc' "$file" || continue
+    backup="$BACKUPDIR/$(basename "$file").$STAMP.bak"
+    cp -a "$file" "$backup"
+    echo "==> Backed up glibc source: $backup"
+    python - "$file" "$OFFICIAL_KEY" <<'PY'
+from pathlib import Path
+import re, sys
+p = Path(sys.argv[1])
+key = sys.argv[2]
+text = p.read_text(encoding='utf-8')
+out = []
+changed = False
+for line in text.splitlines(True):
+    raw = line.rstrip('\n')
+    suffix = '\n' if line.endswith('\n') else ''
+    stripped = raw.lstrip()
+    if stripped.startswith('deb ') and 'termux-glibc' in stripped:
+        indent = raw[:len(raw)-len(stripped)]
+        if stripped.startswith('deb ['):
+            if 'signed-by=' not in stripped.split(']', 1)[0]:
+                stripped = re.sub(r'^deb \[', f'deb [signed-by={key} ', stripped, count=1)
+                changed = True
+        else:
+            stripped = f'deb [signed-by={key}] ' + stripped[4:]
+            changed = True
+        raw = indent + stripped
+    out.append(raw + suffix)
+if changed:
+    p.write_text(''.join(out), encoding='utf-8')
+print('changed' if changed else 'unchanged')
+PY
+    changed=1
+  done < <(
+    {
+      [ -f "$PREFIX/etc/apt/sources.list" ] && printf '%s\n' "$PREFIX/etc/apt/sources.list"
+      find "$PREFIX/etc/apt/sources.list.d" -maxdepth 1 -type f -name '*.list' -print 2>/dev/null || true
+    } | sort -u
+  )
+
+  if [ "$changed" -eq 0 ]; then
+    echo "==> No active termux-glibc source file needed patching."
+  else
+    echo "==> termux-glibc source is now explicitly bound to the verified official signing key."
+  fi
 }
 
 repair_termux_keyring_if_needed() {
@@ -92,35 +146,32 @@ repair_termux_keyring_if_needed() {
   echo "==> Missing official Termux autobuild signing key 5A897D96E57CF20C detected."
   bootstrap_official_termux_key || return $?
 
-  echo "==> Using an isolated official Termux main source with explicit signed-by to break the trust bootstrap cycle."
+  echo "==> Verifying the official Termux main repository with explicit signed-by."
   if ! isolated_main_apt update >>"$APT_LOG" 2>&1; then
     echo "ERROR: isolated signed official-main update failed." >&2
     tail -n 120 "$APT_LOG" >&2
     return 32
   fi
 
-  echo "==> Reinstalling the current official termux-keyring from the verified official main repository."
-  if ! isolated_main_apt install -y --reinstall termux-keyring >>"$APT_LOG" 2>&1; then
-    echo "ERROR: termux-keyring reinstall failed through the isolated signed repository." >&2
-    tail -n 120 "$APT_LOG" >&2
-    return 33
-  fi
+  echo "==> Repairing configured termux-glibc source trust without disabling signature checks."
+  bind_glibc_sources_to_official_key
 
-  # Ensure the package-managed key is visible where APT expects it, even if an older
-  # postinst on this device did not rebuild the trusted.gpg.d link correctly.
-  if [ -f "$PREFIX/share/termux-keyring/termux-autobuilds.gpg" ]; then
-    install -m 644 "$PREFIX/share/termux-keyring/termux-autobuilds.gpg" \
-      "$PREFIX/etc/apt/trusted.gpg.d/termux-autobuilds.gpg"
-  fi
-
-  echo "==> Re-checking all configured repositories after keyring reinstall..."
+  echo "==> Re-checking all configured repositories..."
   if ! apt-get update >>"$APT_LOG" 2>&1; then
-    echo "ERROR: configured repositories still fail after official keyring reinstall." >&2
-    tail -n 140 "$APT_LOG" >&2
+    echo "ERROR: configured repositories still fail after explicit signed-by repair." >&2
+    tail -n 160 "$APT_LOG" >&2
     return 34
   fi
 
-  echo "==> Termux keyring repaired; configured repositories verify."
+  echo "==> Configured repositories verify with the official key."
+
+  # Best-effort only. The verified key is already installed and sources verify;
+  # some older Termux installs cannot re-download an already-installed keyring package.
+  if isolated_main_apt install -y termux-keyring >>"$APT_LOG" 2>&1; then
+    echo "==> termux-keyring package state refreshed."
+  else
+    echo "==> Note: termux-keyring package refresh was unavailable, but signature verification is healthy."
+  fi
   return 0
 }
 
@@ -145,8 +196,8 @@ if [ "${#missing[@]}" -gt 0 ]; then
     for q in "${uniq_pkgs[@]:-}"; do [ "$q" = "$p" ] && seen=1; done
     [ "$seen" -eq 0 ] && uniq_pkgs+=("$p")
   done
-  echo "==> Installing: ${uniq_pkgs[*]}"
-  if ! apt-get install -y "${uniq_pkgs[@]}"; then
+  echo "==> Installing from verified official Termux main: ${uniq_pkgs[*]}"
+  if ! isolated_main_apt install -y "${uniq_pkgs[@]}"; then
     echo "ERROR: dependency installation failed." >&2
     exit 24
   fi
