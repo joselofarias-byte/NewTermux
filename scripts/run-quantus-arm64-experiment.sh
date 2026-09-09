@@ -80,53 +80,103 @@ isolated_main_apt() {
 }
 
 bind_glibc_sources_to_official_key() {
-  local changed=0 file backup
+  local found=0 changed=0 file backup tag result
+
   while IFS= read -r file; do
     [ -f "$file" ] || continue
-    grep -qE '^[[:space:]]*deb .*termux-glibc' "$file" || continue
-    backup="$BACKUPDIR/$(basename "$file").$STAMP.bak"
+    grep -q 'termux-glibc' "$file" || continue
+    found=1
+
+    tag="$(printf '%s' "$file" | python -c 'import hashlib,sys; print(hashlib.sha1(sys.stdin.buffer.read()).hexdigest()[:12])')"
+    backup="$BACKUPDIR/$(basename "$file").$tag.$STAMP.bak"
     cp -a "$file" "$backup"
     echo "==> Backed up glibc source: $backup"
-    python - "$file" "$OFFICIAL_KEY" <<'PY'
+
+    result="$(python - "$file" "$OFFICIAL_KEY" <<'PY'
 from pathlib import Path
 import re, sys
 p = Path(sys.argv[1])
 key = sys.argv[2]
 text = p.read_text(encoding='utf-8')
-out = []
 changed = False
-for line in text.splitlines(True):
-    raw = line.rstrip('\n')
-    suffix = '\n' if line.endswith('\n') else ''
-    stripped = raw.lstrip()
-    if stripped.startswith('deb ') and 'termux-glibc' in stripped:
-        indent = raw[:len(raw)-len(stripped)]
-        if stripped.startswith('deb ['):
-            if 'signed-by=' not in stripped.split(']', 1)[0]:
-                stripped = re.sub(r'^deb \[', f'deb [signed-by={key} ', stripped, count=1)
-                changed = True
-        else:
-            stripped = f'deb [signed-by={key}] ' + stripped[4:]
+
+if p.suffix == '.sources':
+    # Deb822 source format. Patch only stanzas that reference termux-glibc.
+    parts = re.split(r'(\n\s*\n)', text)
+    for i in range(0, len(parts), 2):
+        stanza = parts[i]
+        if 'termux-glibc' not in stanza:
+            continue
+        lines = stanza.splitlines()
+        out = []
+        seen = False
+        for line in lines:
+            if re.match(r'^\s*Signed-By\s*:', line, flags=re.I):
+                new = f'Signed-By: {key}'
+                if line != new:
+                    changed = True
+                out.append(new)
+                seen = True
+            else:
+                out.append(line)
+        if not seen:
+            out.append(f'Signed-By: {key}')
             changed = True
-        raw = indent + stripped
-    out.append(raw + suffix)
-if changed:
-    p.write_text(''.join(out), encoding='utf-8')
+        parts[i] = '\n'.join(out)
+    if changed:
+        p.write_text(''.join(parts), encoding='utf-8')
+else:
+    # Traditional one-line .list format (including sources.list).
+    out = []
+    for line in text.splitlines(True):
+        raw = line.rstrip('\n')
+        suffix = '\n' if line.endswith('\n') else ''
+        stripped = raw.lstrip()
+        if stripped.startswith('deb ') and 'termux-glibc' in stripped:
+            indent = raw[:len(raw)-len(stripped)]
+            if stripped.startswith('deb ['):
+                head, rest = stripped.split(']', 1)
+                if 'signed-by=' in head:
+                    new_head = re.sub(r'signed-by=[^\s\]]+', f'signed-by={key}', head)
+                else:
+                    new_head = head + f' signed-by={key}'
+                new = new_head + ']' + rest
+            else:
+                new = f'deb [signed-by={key}] ' + stripped[4:]
+            if new != stripped:
+                changed = True
+            raw = indent + new
+        out.append(raw + suffix)
+    if changed:
+        p.write_text(''.join(out), encoding='utf-8')
+
 print('changed' if changed else 'unchanged')
 PY
-    changed=1
+)"
+    echo "==> Source trust patch ($file): $result"
+    [ "$result" = "changed" ] && changed=1
   done < <(
     {
       [ -f "$PREFIX/etc/apt/sources.list" ] && printf '%s\n' "$PREFIX/etc/apt/sources.list"
-      find "$PREFIX/etc/apt/sources.list.d" -maxdepth 1 -type f -name '*.list' -print 2>/dev/null || true
+      find "$PREFIX/etc/apt/sources.list.d" -maxdepth 1 -type f \( -name '*.list' -o -name '*.sources' \) -print 2>/dev/null || true
+      grep -RIl --include='*.list' --include='*.sources' 'termux-glibc' "$PREFIX/etc/apt" 2>/dev/null || true
     } | sort -u
   )
 
-  if [ "$changed" -eq 0 ]; then
-    echo "==> No active termux-glibc source file needed patching."
-  else
-    echo "==> termux-glibc source is now explicitly bound to the verified official signing key."
+  if [ "$found" -eq 0 ]; then
+    echo "==> No .list/.sources file containing termux-glibc was found."
+    echo "==> APT source diagnostics:"
+    grep -RIn 'termux-glibc' "$PREFIX/etc/apt" 2>/dev/null || true
+    apt-config dump 2>/dev/null | grep -Ei 'Dir::Etc|source' | head -n 80 || true
+    return 1
   fi
+
+  if [ "$changed" -eq 1 ]; then
+    echo "==> termux-glibc source is now explicitly bound to the verified official signing key."
+  else
+    echo "==> termux-glibc source already had an explicit signing-key binding."
+  fi
+  return 0
 }
 
 repair_termux_keyring_if_needed() {
@@ -138,9 +188,9 @@ repair_termux_keyring_if_needed() {
   fi
 
   if ! grep -q 'NO_PUBKEY 5A897D96E57CF20C' "$APT_LOG"; then
-    echo "ERROR: package repository update failed for an unrelated reason." >&2
-    tail -n 100 "$APT_LOG" >&2
-    return 23
+    echo "==> Configured APT has an unrelated failure. The Quantus experiment will use only an isolated signed official Termux-main source."
+    tail -n 80 "$APT_LOG" >&2
+    return 0
   fi
 
   echo "==> Missing official Termux autobuild signing key 5A897D96E57CF20C detected."
@@ -148,37 +198,32 @@ repair_termux_keyring_if_needed() {
 
   echo "==> Verifying the official Termux main repository with explicit signed-by."
   if ! isolated_main_apt update >>"$APT_LOG" 2>&1; then
-    echo "ERROR: isolated signed official-main update failed." >&2
+    echo "ERROR: isolated signed official-main update failed; cannot safely install build dependencies." >&2
     tail -n 120 "$APT_LOG" >&2
     return 32
   fi
 
   echo "==> Repairing configured termux-glibc source trust without disabling signature checks."
-  bind_glibc_sources_to_official_key
+  bind_glibc_sources_to_official_key || true
 
   echo "==> Re-checking all configured repositories..."
-  if ! apt-get update >>"$APT_LOG" 2>&1; then
-    echo "ERROR: configured repositories still fail after explicit signed-by repair." >&2
-    tail -n 160 "$APT_LOG" >&2
-    return 34
-  fi
-
-  echo "==> Configured repositories verify with the official key."
-
-  # Best-effort only. The verified key is already installed and sources verify;
-  # some older Termux installs cannot re-download an already-installed keyring package.
-  if isolated_main_apt install -y termux-keyring >>"$APT_LOG" 2>&1; then
-    echo "==> termux-keyring package state refreshed."
+  if apt-get update >>"$APT_LOG" 2>&1; then
+    echo "==> Configured repositories verify with the official key."
   else
-    echo "==> Note: termux-keyring package refresh was unavailable, but signature verification is healthy."
+    echo "==> Warning: a configured repository still fails, but the verified isolated Termux-main source is healthy."
+    echo "==> This will NOT disable signature checks or use the failing repository; continuing only with signed official Termux-main for build dependencies."
+    tail -n 100 "$APT_LOG" >&2
   fi
+
+  # Best effort: package refresh is not required once the exact official key is verified.
+  isolated_main_apt install -y termux-keyring >>"$APT_LOG" 2>&1 || true
   return 0
 }
 
 repair_termux_keyring_if_needed
 rc=$?
 if [ "$rc" -ne 0 ]; then
-  echo "==> Repository repair failed with code $rc."
+  echo "==> Repository bootstrap failed with code $rc."
   exit "$rc"
 fi
 
