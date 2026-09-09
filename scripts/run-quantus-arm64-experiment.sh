@@ -7,6 +7,7 @@ LOGDIR="$STATE/logs"
 mkdir -p "$LOGDIR"
 LOG="$LOGDIR/quantus-arm64-experiment-$STAMP.log"
 APT_LOG="$LOGDIR/apt-repair-$STAMP.log"
+SAFE_LIST="$STATE/termux-main-only-$STAMP.list"
 
 exec > >(tee -a "$LOG") 2>&1
 
@@ -24,62 +25,67 @@ if ! command -v of >/dev/null 2>&1; then
   exit 2
 fi
 
-GLIBC_LIST="${PREFIX:-/data/data/com.termux/files/usr}/etc/apt/sources.list.d/glibc.list"
-GLIBC_DISABLED=""
-restore_glibc_repo() {
-  if [ -n "$GLIBC_DISABLED" ] && [ -f "$GLIBC_DISABLED" ]; then
-    mv -f "$GLIBC_DISABLED" "$GLIBC_LIST"
-    echo "==> Restored glibc repository definition."
-  fi
+cleanup_safe_list() {
+  rm -f "$SAFE_LIST" 2>/dev/null || true
 }
-trap restore_glibc_repo EXIT
+trap cleanup_safe_list EXIT
 
 repair_termux_keyring_if_needed() {
   echo "==> Checking Termux package repository signatures..."
+  : >"$APT_LOG"
   if apt-get update >"$APT_LOG" 2>&1; then
     echo "==> Repository signatures OK."
     return 0
   fi
 
-  if grep -q 'NO_PUBKEY 5A897D96E57CF20C' "$APT_LOG" && \
-     grep -q 'termux-glibc' "$APT_LOG" && \
-     [ -f "$GLIBC_LIST" ] && grep -q 'termux-glibc' "$GLIBC_LIST"; then
-    echo "==> Detected stale/missing official Termux autobuild key for the glibc repository."
-    echo "==> Temporarily isolating glibc repo, refreshing the official Termux keyring, then restoring it."
-    GLIBC_DISABLED="$GLIBC_LIST.opportunity-fabric-$STAMP.disabled"
-    mv "$GLIBC_LIST" "$GLIBC_DISABLED"
+  if grep -q 'NO_PUBKEY 5A897D96E57CF20C' "$APT_LOG"; then
+    echo "==> Detected missing official Termux autobuild signing key 5A897D96E57CF20C."
+    echo "==> Refreshing termux-keyring using ONLY the official Termux main repository."
 
-    if ! apt-get update >>"$APT_LOG" 2>&1; then
-      echo "ERROR: apt update still fails after isolating glibc repo." >&2
-      tail -n 80 "$APT_LOG" >&2
+    # Do not mutate the user's configured repository files. Instead, use an
+    # isolated one-off source list so the broken glibc repo cannot block the
+    # keyring refresh.
+    printf '%s\n' 'deb https://packages.termux.dev/apt/termux-main stable main' >"$SAFE_LIST"
+
+    if ! apt-get \
+      -o "Dir::Etc::sourcelist=$SAFE_LIST" \
+      -o 'Dir::Etc::sourceparts=-' \
+      -o 'APT::Get::List-Cleanup=0' \
+      update >>"$APT_LOG" 2>&1; then
+      echo "ERROR: could not refresh package metadata from the official Termux main repository." >&2
+      tail -n 100 "$APT_LOG" >&2
       return 20
     fi
 
-    if ! apt-get install -y --reinstall termux-keyring >>"$APT_LOG" 2>&1; then
+    if ! apt-get \
+      -o "Dir::Etc::sourcelist=$SAFE_LIST" \
+      -o 'Dir::Etc::sourceparts=-' \
+      -o 'APT::Get::List-Cleanup=0' \
+      install -y --reinstall termux-keyring >>"$APT_LOG" 2>&1; then
       echo "ERROR: could not reinstall the official termux-keyring package." >&2
-      tail -n 80 "$APT_LOG" >&2
+      tail -n 100 "$APT_LOG" >&2
       return 21
     fi
 
-    restore_glibc_repo
-    GLIBC_DISABLED=""
-
+    echo "==> Keyring refreshed. Re-checking all configured repositories..."
     if ! apt-get update >>"$APT_LOG" 2>&1; then
-      echo "ERROR: glibc repository signature is still invalid after keyring refresh." >&2
-      tail -n 80 "$APT_LOG" >&2
+      echo "ERROR: repository signatures are still invalid after keyring refresh." >&2
+      tail -n 120 "$APT_LOG" >&2
       return 22
     fi
-    echo "==> Termux keyring repaired; glibc repository signature now verifies."
+
+    echo "==> Termux keyring repaired; configured repositories now verify."
     return 0
   fi
 
-  echo "ERROR: package repository update failed for a reason other than the known Termux autobuild key issue." >&2
-  tail -n 80 "$APT_LOG" >&2
+  echo "ERROR: package repository update failed, but not because of the known Termux autobuild key." >&2
+  tail -n 100 "$APT_LOG" >&2
   return 23
 }
 
-if ! repair_termux_keyring_if_needed; then
-  rc=$?
+repair_termux_keyring_if_needed
+rc=$?
+if [ "$rc" -ne 0 ]; then
   echo "==> Repository repair failed with code $rc."
   exit "$rc"
 fi
