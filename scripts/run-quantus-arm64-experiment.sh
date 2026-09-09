@@ -8,6 +8,7 @@ mkdir -p "$LOGDIR"
 LOG="$LOGDIR/quantus-arm64-experiment-$STAMP.log"
 APT_LOG="$LOGDIR/apt-repair-$STAMP.log"
 KEY_TMP="$STATE/termux-autobuilds-$STAMP.gpg"
+SAFE_LIST="$STATE/termux-main-signed-$STAMP.list"
 
 exec > >(tee -a "$LOG") 2>&1
 
@@ -24,7 +25,7 @@ if ! command -v of >/dev/null 2>&1; then
   exit 2
 fi
 
-cleanup() { rm -f "$KEY_TMP" 2>/dev/null || true; }
+cleanup() { rm -f "$KEY_TMP" "$SAFE_LIST" 2>/dev/null || true; }
 trap cleanup EXIT
 
 bootstrap_official_termux_key() {
@@ -57,9 +58,21 @@ PY
   trust_dir="${PREFIX}/etc/apt/trusted.gpg.d"
   mkdir -p "$share_dir" "$trust_dir"
   install -m 600 "$KEY_TMP" "$share_dir/termux-autobuilds.gpg"
-  ln -sfn "$share_dir/termux-autobuilds.gpg" "$trust_dir/termux-autobuilds.gpg"
+  # Keep a direct copy too. Some APT builds are stricter with symlinks in trusted.gpg.d.
+  install -m 644 "$KEY_TMP" "$trust_dir/termux-autobuilds.gpg"
   echo "==> Official key installed after exact Git-blob verification."
   return 0
+}
+
+isolated_main_apt() {
+  local signed_key="$PREFIX/share/termux-keyring/termux-autobuilds.gpg"
+  printf '%s\n' "deb [signed-by=$signed_key] https://packages.termux.dev/apt/termux-main stable main" >"$SAFE_LIST"
+
+  apt-get \
+    -o "Dir::Etc::sourcelist=$SAFE_LIST" \
+    -o 'Dir::Etc::sourceparts=-' \
+    -o 'APT::Get::List-Cleanup=0' \
+    "$@"
 }
 
 repair_termux_keyring_if_needed() {
@@ -79,25 +92,34 @@ repair_termux_keyring_if_needed() {
   echo "==> Missing official Termux autobuild signing key 5A897D96E57CF20C detected."
   bootstrap_official_termux_key || return $?
 
-  echo "==> Re-checking configured repositories with the verified official key..."
-  if ! apt-get update >>"$APT_LOG" 2>&1; then
-    echo "ERROR: repository signatures still fail after installing the verified official key." >&2
+  echo "==> Using an isolated official Termux main source with explicit signed-by to break the trust bootstrap cycle."
+  if ! isolated_main_apt update >>"$APT_LOG" 2>&1; then
+    echo "ERROR: isolated signed official-main update failed." >&2
     tail -n 120 "$APT_LOG" >&2
     return 32
   fi
 
-  echo "==> Package metadata verifies. Reinstalling termux-keyring to restore the package-managed keyring."
-  if ! apt-get install -y --reinstall termux-keyring >>"$APT_LOG" 2>&1; then
-    echo "ERROR: termux-keyring reinstall failed after trust bootstrap." >&2
+  echo "==> Reinstalling the current official termux-keyring from the verified official main repository."
+  if ! isolated_main_apt install -y --reinstall termux-keyring >>"$APT_LOG" 2>&1; then
+    echo "ERROR: termux-keyring reinstall failed through the isolated signed repository." >&2
     tail -n 120 "$APT_LOG" >&2
     return 33
   fi
 
+  # Ensure the package-managed key is visible where APT expects it, even if an older
+  # postinst on this device did not rebuild the trusted.gpg.d link correctly.
+  if [ -f "$PREFIX/share/termux-keyring/termux-autobuilds.gpg" ]; then
+    install -m 644 "$PREFIX/share/termux-keyring/termux-autobuilds.gpg" \
+      "$PREFIX/etc/apt/trusted.gpg.d/termux-autobuilds.gpg"
+  fi
+
+  echo "==> Re-checking all configured repositories after keyring reinstall..."
   if ! apt-get update >>"$APT_LOG" 2>&1; then
-    echo "ERROR: final repository verification failed after termux-keyring reinstall." >&2
-    tail -n 120 "$APT_LOG" >&2
+    echo "ERROR: configured repositories still fail after official keyring reinstall." >&2
+    tail -n 140 "$APT_LOG" >&2
     return 34
   fi
+
   echo "==> Termux keyring repaired; configured repositories verify."
   return 0
 }
