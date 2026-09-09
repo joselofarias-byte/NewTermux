@@ -1,0 +1,10 @@
+[
+  {
+    "slug": "quantus",
+    "class": "pow-mining",
+    "status": "launch-day-watch",
+    "mainnet_date": "2026-09-09",
+    "token": "QTC",
+    "notes": "Official website/whitepaper set mainnet genesis for 2026-09-09. Official mining guide still shows Planck testnet commands at capture time; deployment must re-check chain/release details before execution."
+  }
+]
