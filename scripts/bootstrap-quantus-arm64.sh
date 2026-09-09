@@ -19,7 +19,12 @@ fetch_script() {
 
 echo "==> Updating Opportunity Fabric first..."
 if fetch_script install-opportunity-fabric.sh "$TMP/install.sh"; then
-  bash "$TMP/install.sh" || exit $?
+  bash "$TMP/install.sh"
+  rc=$?
+  if [ "$rc" -ne 0 ]; then
+    echo "ERROR: Opportunity Fabric installer returned $rc." >&2
+    exit "$rc"
+  fi
 else
   echo "ERROR: could not fetch/validate Opportunity Fabric installer." >&2
   exit 10
@@ -29,10 +34,12 @@ echo
 echo "==> Launching controlled Quantus ARM64 source-build experiment..."
 if fetch_script run-quantus-arm64-experiment.sh "$TMP/experiment.sh"; then
   bash "$TMP/experiment.sh"
+  rc=$?
 else
   echo "ERROR: could not fetch/validate Quantus experiment runner." >&2
   exit 11
 fi
 
 echo
-echo "==> Bootstrap finished. Your interactive Termux shell remains open."
+echo "==> Bootstrap finished with experiment code $rc. Your interactive Termux shell remains open."
+exit "$rc"
