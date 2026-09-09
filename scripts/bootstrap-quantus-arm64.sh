@@ -17,17 +17,21 @@ fetch_script() {
   bash -n "$out"
 }
 
-echo "==> Updating Opportunity Fabric first..."
-if fetch_script install-opportunity-fabric.sh "$TMP/install.sh"; then
-  bash "$TMP/install.sh"
-  rc=$?
-  if [ "$rc" -ne 0 ]; then
-    echo "ERROR: Opportunity Fabric installer returned $rc." >&2
-    exit "$rc"
-  fi
+if command -v of >/dev/null 2>&1 && of status 2>/dev/null | grep -q '"version": "0.2.1"'; then
+  echo "==> Opportunity Fabric 0.2.1 already installed; skipping redundant reinstall."
 else
-  echo "ERROR: could not fetch/validate Opportunity Fabric installer." >&2
-  exit 10
+  echo "==> Updating Opportunity Fabric first..."
+  if fetch_script install-opportunity-fabric.sh "$TMP/install.sh"; then
+    bash "$TMP/install.sh"
+    rc=$?
+    if [ "$rc" -ne 0 ]; then
+      echo "ERROR: Opportunity Fabric installer returned $rc." >&2
+      exit "$rc"
+    fi
+  else
+    echo "ERROR: could not fetch/validate Opportunity Fabric installer." >&2
+    exit 10
+  fi
 fi
 
 echo
