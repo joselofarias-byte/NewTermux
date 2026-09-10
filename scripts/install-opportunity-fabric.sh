@@ -72,6 +72,7 @@ PYTHONPATH="$CANDIDATE_PYTHONPATH" python -m opportunity_fabric inventory >/dev/
 PYTHONPATH="$CANDIDATE_PYTHONPATH" python -m opportunity_fabric evaluate quantus >/dev/null
 PYTHONPATH="$CANDIDATE_PYTHONPATH" python -m opportunity_fabric policies >/dev/null
 PYTHONPATH="$CANDIDATE_PYTHONPATH" python -m opportunity_fabric quantus-preflight >/dev/null
+PYTHONPATH="$CANDIDATE_PYTHONPATH" python -m unittest discover -s "$CANDIDATE/tests" -p 'test_*.py' >/dev/null
 
 if [ -d "$SRC_DIR" ]; then
   echo "==> Respaldando instalación anterior..."
