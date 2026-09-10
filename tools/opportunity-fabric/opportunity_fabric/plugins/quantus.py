@@ -3,6 +3,7 @@ from .base import OpportunityPlugin
 from ..models import Resource, Decision
 from ..policy import mining_allowed
 
+
 class QuantusPlugin(OpportunityPlugin):
     slug = 'quantus'
     title = 'Quantus QTC/QPoW'
@@ -19,28 +20,21 @@ class QuantusPlugin(OpportunityPlugin):
         mac_arm = r.os == 'darwin' and arm64
 
         if r.termux and arm64:
-            # v0.2 correction: lack of an official ARM64 release != lack of a source-build path.
             reasons += [
-                'The official quantus-miner repository publishes a Cargo source-build path (cargo build -p miner-cli --release).',
-                'This phone has enough CPU/RAM/storage to justify a controlled ARM64 source-build experiment.',
-                'The phone can remain the Opportunity Fabric control plane even if the miner build is not viable.',
+                'A controlled Quantus v1.0.1 native-node build on Android/Termux reached rustix 1.1.2 and failed on its known Android linux_raw_sys incompatibility.',
+                'The same probe also exposed a local protoc/Abseil ABI mismatch before any node, sync, wallet, validator or mining process was started.',
+                'For this zero-cost-first project, the expected phone-mining value does not justify more compile time, battery use or thermal load while Android remains an unsupported path.',
             ]
             warnings += [
-                'Quantus does not publish an official native Linux ARM64/Termux miner release; Android ARM64 remains an experimental source-build target.',
-                'A successful miner build alone is not enough: external mining requires a compatible Quantus node plus its auth-token and TLS fingerprint.',
-                'Phone CPU mining may be thermally constrained and much slower than a desktop GPU; benchmark before any long-running use.',
+                'Quantus v1.0.1 locks rustix 1.1.2; Android builds of that dependency are known to fail with unresolved linux_raw_sys references.',
+                'Fixing that dependency would only remove the current build blocker; it would not establish supported Android mining or acceptable profitability.',
             ]
             actions += [
-                'Run `of quantus-preflight` to verify the local Rust/native build toolchain.',
-                'If preflight passes, run a controlled source build and 1-worker benchmark before deciding whether phone mining is worthwhile.',
-                'Keep secrets outside shell history and keep the miner-node channel private.',
+                'Do not rerun Quantus native-node or miner source builds on Termux ARM64.',
+                'Keep the phone available as the Opportunity Fabric control plane and evaluate other zero-cost opportunities instead.',
+                'Reopen Quantus on Android only after a materially changed upstream condition, such as an officially supported ARM64/Android path plus economics worth benchmarking.',
             ]
-            score = 38
-            if r.memory_mb and r.memory_mb >= 8192:
-                score += 5
-            if r.free_disk_mb and r.free_disk_mb >= 50000:
-                score += 5
-            return Decision(self.slug, r.name, True, min(score, 55), 'experimental-source-build', reasons, warnings, actions)
+            return Decision(self.slug, r.name, False, 0, 'no-go-android-termux', reasons, warnings, actions)
 
         if not (os_ok and (x86 or mac_arm or arm64)):
             warnings.append(f'Platform {r.os}/{r.arch} is not in the documented/native or experimental source-build path.')
