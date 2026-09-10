@@ -2,7 +2,7 @@
 set -euo pipefail
 
 APP_NAME="opportunity-fabric"
-VERSION="0.2.1"
+VERSION="0.2.2"
 REPO="https://github.com/joselofarias-byte/NewTermux.git"
 SOURCE_SUBDIR="tools/opportunity-fabric"
 
@@ -103,5 +103,5 @@ echo
 echo "OK — Opportunity Fabric $VERSION instalado y probado."
 echo "==> Estado Quantus en este dispositivo:"
 "$BIN_DIR/of" evaluate quantus
-echo "==> Preflight Quantus ARM64/source build:"
+echo "==> Gate de ejecución Quantus:"
 "$BIN_DIR/of" quantus-preflight
