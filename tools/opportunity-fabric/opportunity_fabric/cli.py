@@ -25,7 +25,7 @@ def main():
     qp.add_argument('--jobs', type=int, default=2)
     qb = sub.add_parser('quantus-build')
     qb.add_argument('--jobs', type=int, default=2)
-    qb.add_argument('--execute', action='store_true', help='Actually clone/build/benchmark the official miner source.')
+    qb.add_argument('--execute', action='store_true', help='Attempt the official miner source build; policy gates may block unsupported targets.')
     args = p.parse_args()
 
     if args.cmd == 'inventory':
@@ -44,7 +44,9 @@ def main():
         dump(build_plan(args.jobs)); return
     if args.cmd == 'quantus-build':
         if not args.execute:
-            dump({'executed': False, 'plan': build_plan(args.jobs), 'hint': 'Re-run with --execute to perform the build.'}); return
+            plan = build_plan(args.jobs)
+            hint = 'Build disabled by policy for this target.' if plan.get('build_disabled') else 'Re-run with --execute to perform the build.'
+            dump({'executed': False, 'plan': plan, 'hint': hint}); return
         dump(execute_build(args.jobs)); return
 
 if __name__ == '__main__':
