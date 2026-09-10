@@ -8,9 +8,8 @@ mkdir -p "$LOGDIR"
 LOG="$LOGDIR/quantus-node-android-native-build-$STAMP.log"
 SUMMARY="$STATE/quantus-node-android-native-build-$STAMP.json"
 SRC_BASE="$HOME/.local/src"
-SRC="$SRC_BASE/quantus-chain-v1.0.1-android"
-TARGET_DIR="$SRC/target-termux-android"
-BIN="$TARGET_DIR/release/quantus-node"
+PRIMARY_SRC="$SRC_BASE/quantus-chain-v1.0.1-android"
+SRC="$PRIMARY_SRC"
 REPO="https://github.com/Quantus-Network/chain.git"
 REF="v1.0.1"
 JOBS="${QUANTUS_NODE_BUILD_JOBS:-2}"
@@ -53,8 +52,6 @@ else
   echo "==> Native build dependencies already present."
 fi
 
-# Bindgen consumers generally find Termux libclang here. Export it explicitly
-# when present so build scripts do not guess Debian/Ubuntu paths.
 LIBCLANG_SO="$(find "$PREFIX/lib" -maxdepth 2 -type f -name 'libclang.so*' -print -quit 2>/dev/null || true)"
 if [ -n "$LIBCLANG_SO" ]; then
   export LIBCLANG_PATH="$(dirname "$LIBCLANG_SO")"
@@ -68,23 +65,39 @@ export CXX=clang++
 export AR=llvm-ar
 export RANLIB=llvm-ranlib
 export CARGO_BUILD_JOBS="$JOBS"
-export CARGO_TARGET_DIR="$TARGET_DIR"
 export PROTOC="$(command -v protoc)"
 
-if [ ! -d "$SRC/.git" ]; then
-  echo "==> Cloning exact Quantus release tag $REF..."
-  git clone --depth 1 --branch "$REF" --single-branch "$REPO" "$SRC" || exit 11
-else
-  echo "==> Existing source checkout found: $SRC"
-  if [ -n "$(git -C "$SRC" status --porcelain 2>/dev/null)" ]; then
-    echo "ERROR: source checkout has local modifications; refusing to overwrite them." >&2
-    exit 12
+prepare_source() {
+  if [ ! -d "$PRIMARY_SRC/.git" ]; then
+    echo "==> Cloning exact Quantus release tag $REF..."
+    git clone --depth 1 --branch "$REF" --single-branch "$REPO" "$PRIMARY_SRC" || return 11
+    SRC="$PRIMARY_SRC"
+    return 0
   fi
-  git -C "$SRC" fetch --depth 1 origin "refs/tags/$REF:refs/tags/$REF" || exit 13
-  git -C "$SRC" checkout --detach "$REF" || exit 13
-fi
+
+  echo "==> Existing source checkout found: $PRIMARY_SRC"
+  if [ -n "$(git -C "$PRIMARY_SRC" status --porcelain 2>/dev/null)" ]; then
+    SRC="$SRC_BASE/quantus-chain-v1.0.1-android-clean-$STAMP"
+    echo "==> Existing checkout has local modifications; preserving it untouched."
+    echo "==> Creating isolated clean checkout: $SRC"
+    git clone --depth 1 --branch "$REF" --single-branch "$REPO" "$SRC" || return 11
+    return 0
+  fi
+
+  SRC="$PRIMARY_SRC"
+  git -C "$SRC" fetch --depth 1 origin "refs/tags/$REF:refs/tags/$REF" || return 13
+  git -C "$SRC" checkout --detach "$REF" || return 13
+  return 0
+}
+
+prepare_source || exit $?
+
+TARGET_DIR="$SRC/target-termux-android"
+BIN="$TARGET_DIR/release/quantus-node"
+export CARGO_TARGET_DIR="$TARGET_DIR"
 
 COMMIT="$(git -C "$SRC" rev-parse HEAD)"
+echo "==> Build source: $SRC"
 echo "==> Source commit: $COMMIT"
 echo "==> Cargo: $(cargo -V)"
 echo "==> Rust: $(rustc -V)"
@@ -113,16 +126,9 @@ if [ "$BUILD_RC" -ne 0 ] || [ ! -x "$BIN" ]; then
 import json,sys
 p,src,commit,host,rc,log=sys.argv[1:]
 json.dump({
-  "ok":False,
-  "stage":"cargo_build",
-  "source":src,
-  "commit":commit,
-  "rust_host":host,
-  "cargo_returncode":int(rc),
-  "build_log":log,
-  "node_started":False,
-  "sync_started":False,
-  "mining_started":False
+  "ok":False,"stage":"cargo_build","source":src,"commit":commit,
+  "rust_host":host,"cargo_returncode":int(rc),"build_log":log,
+  "node_started":False,"sync_started":False,"mining_started":False
 },open(p,"w",encoding="utf-8"),indent=2)
 PY
   echo "==> Summary: $SUMMARY"
@@ -132,7 +138,7 @@ PY
 fi
 
 echo
- echo "==> Native Android binary produced: $BIN"
+echo "==> Native Android binary produced: $BIN"
 file "$BIN" || true
 
 echo "==> Executing only: quantus-node --version"
@@ -154,16 +160,9 @@ python - "$SUMMARY" "$SRC" "$COMMIT" "$HOST" "$BIN" "$VERSION_OUT" <<'PY'
 import json,sys
 p,src,commit,host,binary,version=sys.argv[1:]
 json.dump({
-  "ok":True,
-  "stage":"native_android_version_pass",
-  "source":src,
-  "commit":commit,
-  "rust_host":host,
-  "binary":binary,
-  "version":version,
-  "node_started":False,
-  "sync_started":False,
-  "mining_started":False
+  "ok":True,"stage":"native_android_version_pass","source":src,"commit":commit,
+  "rust_host":host,"binary":binary,"version":version,
+  "node_started":False,"sync_started":False,"mining_started":False
 },open(p,"w",encoding="utf-8"),indent=2)
 PY
 
