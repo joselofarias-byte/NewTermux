@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "opportunity-fabric"
-version = "0.2.0"
+version = "0.2.2"
 description = "Zero-cost-first compute opportunity orchestrator with policy gates"
 requires-python = ">=3.10"
 dependencies = []
