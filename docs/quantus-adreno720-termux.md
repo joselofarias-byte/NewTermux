@@ -8,6 +8,7 @@ Validated on Android/aarch64 with `Adreno (TM) 720` through Vulkan/WGPU.
 - GPU batch 25,000: ~85.79 KH/s (10 s), stable.
 - GPU batch 50,000: ~85.84 KH/s (10 s), stable.
 - GPU batch 100,000: ~86.30 KH/s (10 s), stable.
+- GPU batch 100,000 burn-in: ~86.33 KH/s average over 20.85 s, 1,800,000 hashes, stable; no WGPU timeout, device loss, or panic.
 - GPU batch 250,000: unstable. WGPU timed out mapping the GPU buffer after 30 s, marked the device lost/unresponsive, then panicked while waiting for the last successful submission.
 
 GPU identification from the miner:
@@ -49,6 +50,12 @@ Default serve profile:
 - metrics: port 9900
 
 Override CPU workers intentionally, e.g. `QUANTUS_CPU_WORKERS=2`, only after checking temperature and battery/charger behavior. The 4-worker CPU benchmark was substantially faster than the Adreno 720 GPU benchmark, but combined CPU+GPU load is also much more thermally demanding.
+
+## Node path
+
+The external miner requires a Quantus validator node. Current upstream documentation uses `--miner-listen-port 9833`; the node creates `miner-auth-token` and `miner-tls-cert-sha256` under `<base-path>/chains/<chain>/`, and the external miner should read those files rather than putting secrets on the command line.
+
+As of Quantus `v1.0.1`, upstream publishes an official `aarch64-unknown-linux-gnu` node binary. Native Android/Termux is not an advertised platform, so `scripts/quantus-node-arm64-glibc-preflight.sh` performs a non-destructive compatibility check via Termux `glibc-runner`: it verifies the official release digest and runs only `quantus-node --version`. It does not generate keys, start a validator, sync, or mine.
 
 ## Upstream status
 
