@@ -1,4 +1,4 @@
-# Opportunity Fabric v0.2.0
+# Opportunity Fabric v0.2.2
 
 Orquestador **zero-cost-first** para encontrar y ejecutar oportunidades de cómputo legítimas sin violar términos de plataformas. Primer plugin: **Quantus**.
 
@@ -9,44 +9,55 @@ Orquestador **zero-cost-first** para encontrar y ejecutar oportunidades de cómp
 - evaluar si una oportunidad realmente puede ejecutarse en ese recurso;
 - bloquear proveedores donde cryptomining esté prohibido o no verificado;
 - mantener wallet/seed fuera del orquestador;
-- crecer después hacia testnets incentivadas, nodos, storage/proving y otros trabajos distribuídos.
+- crecer hacia testnets incentivadas, nodos, storage/proving y otros trabajos distribuídos cuando tengan mejor expectativa que el costo de ejecución.
 
 ## Arranque en Termux
 
 ```bash
-cd opportunity-fabric-v0.2.0
-bash scripts/install-termux.sh
+bash scripts/install-opportunity-fabric.sh
 of status
+of evaluate quantus
+of quantus-preflight
+```
+
+## Quantus en Android/Termux ARM64: NO_GO
+
+El experimento de Quantus en Android/Termux ARM64 queda cerrado como **NO_GO** en v0.2.2.
+
+El build controlado del nodo oficial v1.0.1 alcanzó la dependencia `rustix 1.1.2` y quedó bloqueado por el fallo conocido de Android con referencias `linux_raw_sys`. El mismo probe detectó además una incompatibilidad local `protoc`/Abseil. Ninguno de esos intentos inició nodo, sincronización, wallet/preimage, validación ni minería.
+
+Aunque `rustix 1.1.3` ha sido reportado como corrección del error Android, resolver el blocker de compilación no demuestra soporte oficial de Quantus en Android ni vuelve atractiva la economía de minería CPU en teléfono. Por eso Opportunity Fabric no consume más CPU, batería, almacenamiento ni tiempo de compilación en este camino.
+
+En Termux ARM64:
+
+```bash
 of evaluate quantus
 ```
 
-En Android/Termux ARM64 el binario precompilado oficial no existe, pero el repositorio oficial publica una ruta de compilación desde fuente con Cargo. Por eso v0.2 cambia el estado a **experimental-source-build**: es una vía para probar, no soporte oficial de Android.
-
-## Quantus hoy
-
-La web y el whitepaper v0.4.1 fijan el génesis de mainnet para **9/9/2026**. El minero oficial existe y Quantus recomienda GPU. La guía pública de minería capturada hoy aún conserva ejemplos de `planck`; este proyecto no reutiliza esos comandos a ciegas para mainnet.
-
-En Termux:
+debe devolver `feasible: false`, `score: 0` y `mode: no-go-android-termux`.
 
 ```bash
-of quantus-preflight
 of quantus-build-plan
 ```
 
-Solo después de un preflight correcto se debe intentar una compilación controlada y un benchmark corto.
+debe devolver `build_disabled: true` y una lista de comandos vacía.
+
+Incluso:
+
+```bash
+of quantus-build --execute
+```
+
+queda protegido por un `policy-gate`: no clona, no compila y no ejecuta benchmark en Termux ARM64.
+
+Quantus solo debería reabrirse para Android si cambia materialmente el upstream: por ejemplo, aparece una ruta ARM64/Android oficialmente soportada **y** la economía justifica un benchmark nuevo.
 
 ## Política zero-cost
 
-El proyecto no intenta evadir límites ni políticas. Colab, Kaggle y GitHub Actions quedan bloqueados para minería. OCI Free se excluye conservadoramente por riesgo real de suspensión por coin-mining. Otros clouds quedan en `review` hasta verificar permiso explícito.
+El proyecto no intenta evadir límites ni políticas. Colab, Kaggle y GitHub Actions quedan bloqueados para minería. OCI Free se excluye conservadoramente por riesgo de suspensión por coin-mining. Otros clouds quedan en `review` hasta verificar permiso explícito.
 
 ```bash
 of policies
 ```
 
-## v0.2 — Quantus ARM64 experimental path
-
-`of quantus-preflight` comprueba el toolchain nativo/Rust.
-`of quantus-build-plan` muestra la compilación exacta prevista.
-`of quantus-build --execute` clona el repositorio oficial de Quantus Miner, compila `miner-cli` en release y ejecuta un benchmark CPU de 1 worker durante 10 segundos.
-
-ARM64/Termux sigue siendo experimental: que el código fuente compile no equivale a soporte oficial de Android.
+El teléfono puede seguir siendo el **control plane** de Opportunity Fabric mientras el sistema prioriza oportunidades con mejor relación entre expectativa, costo, consumo y riesgo.
