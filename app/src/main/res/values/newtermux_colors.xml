@@ -11,6 +11,9 @@
     <color name="nt_background">#121212</color>
     <color name="nt_surface">#1E1E1E</color>
     <color name="nt_surface_variant">#2D2D2D</color>
+    <!-- Popup / pop-out menu styling (Bannerlator-style: rounded + outline + gray dividers) -->
+    <color name="nt_menu_outline">#4A4A4A</color>
+    <color name="nt_menu_divider">#3A3A3A</color>
     <color name="nt_card_background">#252525</color>
 
     <!-- On colors -->
