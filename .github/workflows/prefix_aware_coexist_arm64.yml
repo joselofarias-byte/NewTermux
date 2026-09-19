@@ -1,0 +1,82 @@
+name: Prefix-aware coexist ARM64
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'app/build.gradle'
+      - 'scripts/fase8/**'
+      - '.github/workflows/prefix_aware_coexist_arm64.yml'
+  workflow_dispatch:
+
+jobs:
+  build-prefix-and-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      TERMUX_PACKAGES_REF: 648666db57d93b830763ace591daf55ad0b5eb16
+      TERMUX_APP_PACKAGE: com.newtermux.dev
+      TERMUX_ABIS: arm64-v8a
+      TERMUX_PACKAGE_VARIANT: apt-android-7
+
+    steps:
+      - name: Checkout NewTermux
+        uses: actions/checkout@v6
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Clone pinned termux-packages
+        run: |
+          git clone https://github.com/termux/termux-packages.git "$RUNNER_TEMP/termux-packages"
+          git -C "$RUNNER_TEMP/termux-packages" checkout "$TERMUX_PACKAGES_REF"
+          test "$(git -C "$RUNNER_TEMP/termux-packages" rev-parse HEAD)" = "$TERMUX_PACKAGES_REF"
+
+      - name: Build aarch64 bootstrap from source for com.newtermux.dev
+        run: |
+          cd "$RUNNER_TEMP/termux-packages"
+          export TERMUX_APP_PACKAGE=com.newtermux.dev
+          ./scripts/run-docker.sh ./scripts/generate-bootstraps.sh --architectures aarch64
+
+      - name: Locate and verify prefix-aware bootstrap
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/newtermux-bootstrap"
+          src="$(find "$RUNNER_TEMP/termux-packages" -type f -name 'bootstrap-aarch64.zip' -print -quit)"
+          test -n "$src"
+          cp "$src" "$RUNNER_TEMP/newtermux-bootstrap/bootstrap-aarch64.zip"
+          chmod +x scripts/fase8/verify-bootstrap-prefix.sh
+          scripts/fase8/verify-bootstrap-prefix.sh             "$RUNNER_TEMP/newtermux-bootstrap/bootstrap-aarch64.zip"             com.newtermux.dev
+          sha256sum "$RUNNER_TEMP/newtermux-bootstrap/bootstrap-aarch64.zip"
+
+      - name: Build ARM64 coexist APK with verified bootstrap
+        env:
+          NEWTERMUX_BOOTSTRAP_DIR: ${{ runner.temp }}/newtermux-bootstrap
+          TERMUX_ABIS: arm64-v8a
+          TERMUX_PACKAGE_VARIANT: apt-android-7
+          TERMUX_SPLIT_APKS_FOR_DEBUG_BUILDS: '1'
+        run: |
+          set -euo pipefail
+          ./gradlew assembleCoexistDebug --no-daemon
+          find app/build/outputs/apk/coexist/debug -maxdepth 1 -type f -name '*arm64-v8a.apk' -print
+          apk="$(find app/build/outputs/apk/coexist/debug -maxdepth 1 -type f -name '*arm64-v8a.apk' -print -quit)"
+          test -n "$apk"
+          sha256sum "$apk" | tee "$RUNNER_TEMP/newtermux-arm64.sha256"
+
+      - name: Upload prefix-aware bootstrap
+        uses: actions/upload-artifact@v6
+        with:
+          name: newtermux-prefix-aware-bootstrap-aarch64
+          path: ${{ runner.temp }}/newtermux-bootstrap/bootstrap-aarch64.zip
+
+      - name: Upload ARM64 coexist APK
+        uses: actions/upload-artifact@v6
+        with:
+          name: newtermux-prefix-aware-coexist-arm64
+          path: |
+            app/build/outputs/apk/coexist/debug/*arm64-v8a.apk
+            ${{ runner.temp }}/newtermux-arm64.sha256
