@@ -157,7 +157,7 @@ No force-push. No borrar `main` ni PR #8.
 | FGS specialUse en código | PASS |
 | Unit tests CI | FAIL (triggers muertos; no corregidos aquí) |
 | PendingIntent IMMUTABLE | FAIL (documentado, no parcheado) |
-| CI Build de esta rama | PENDIENTE (se reporta al correr) |
+| CI Build de esta rama | **PASS** run [35445138266](https://github.com/joselofarias-byte/NewTermux/actions/runs/35445138266) `success` @ `de24c28`; artefactos `v1.6.2+de24c28` incl. `arm64-v8a` (apt-android-5 y 7) |
 | Gradle local en este agente | PENDIENTE |
 | HONOR 200 / Android 16 físico | PENDIENTE |
 | 16 KiB ELF | PENDIENTE |

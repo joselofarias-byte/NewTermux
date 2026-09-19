@@ -75,8 +75,8 @@ No hay código de PRoot en la app. Queda post-bootstrap.
 
 ## 8. CI / artefactos (Fase 6 — parcial)
 
-- Esperado al abrir PR a `main`: workflow `Build` (`debug_build.yml`) `assembleDebug` apt-android-5/7.
-- Reportar run URL + conclusion cuando exista. No es release.
+- Workflow `Build` (`debug_build.yml`) en esta rama: run [35445138266](https://github.com/joselofarias-byte/NewTermux/actions/runs/35445138266) — **success** (`pull_request`, SHA `de24c28`).
+- Artefactos debug (no release): `termux-app_v1.6.2+de24c28-apt-android-{5,7}-github-debug_{universal,arm64-v8a,armeabi-v7a,x86_64,x86}` + sha256sums.
 - Unit tests / wrapper validation siguen sin trigger útil.
 
 ## 9. Pruebas
@@ -85,7 +85,7 @@ No hay código de PRoot en la app. Queda post-bootstrap.
 | --- | --- |
 | Comprobado en git/API | genealogía, merge limpio, preservaciones, IDs |
 | Comprobado en CI cloud (Fase 1 `main`) | Build `34510906662` success |
-| CI de esta rama Fase 2 | PENDIENTE al momento de escribir el handoff |
+| CI de esta rama Fase 2 | PASS run `35445138266` |
 | HONOR 200 | PENDIENTE — no declarar éxito |
 
 ## 10. Riesgos y reversión
@@ -114,7 +114,7 @@ Siguiente paso humano/agente: Fase 3 en PR nuevo (identidad de coexistencia) **d
 | Android 16 review documentada | 2 | PASS (estática) |
 | PendingIntent IMMUTABLE | 2 | FAIL (documentado) |
 | Unit tests CI | 1–2 | FAIL |
-| CI Build esta rama | 2 | PENDIENTE |
+| CI Build esta rama | 2 | PASS (`35445138266`) |
 | HONOR 200 | 7 | PENDIENTE |
 | Coexistencia Play | 3 | PENDIENTE |
 | goargs / bootstrap zip | 4 | PENDIENTE |
