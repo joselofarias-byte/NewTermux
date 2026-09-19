@@ -378,17 +378,16 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
                 LinkedHashSet<CharSequence> urlSet = TermuxUrlUtils.extractUrls(word);
                 if (!urlSet.isEmpty()) {
                     String url = (String) urlSet.iterator().next();
-                    new android.app.AlertDialog.Builder(mActivity)
-                        .setTitle(url)
-                        .setItems(new String[]{"Open in browser", "Copy to clipboard"}, (d, which) -> {
-                            if (which == 0) {
+                    com.newtermux.features.NtPopupMenu.showAtLocation(mActivity,
+                        mActivity.getTerminalView(), (int) event.getRawX(), (int) event.getRawY(), url,
+                        new String[]{"Open in browser", "Copy to clipboard"}, idx -> {
+                            if (idx == 0) {
                                 ShareUtils.openUrl(mActivity, url);
                             } else {
                                 ShareUtils.copyTextToClipboard(mActivity, url,
                                     mActivity.getString(R.string.msg_select_url_copied_to_clipboard));
                             }
-                        })
-                        .show();
+                        });
                     return true;
                 }
             }
