@@ -13,7 +13,7 @@ Mantenedor de esta sesión: agente Cursor sobre el fork JoseloFarias.
 | --- | --- | --- |
 | Fase 1 auditoría | https://github.com/joselofarias-byte/NewTermux/pull/9 | DRAFT, rama `cursor/audit-fase1-2026-09-19-0b82` |
 | Fase 2 port 1.6.2 | https://github.com/joselofarias-byte/NewTermux/pull/10 | DRAFT, rama `cursor/port-banner-1.6.2-conservador-2026-09-19-0b82` @ `2493641` |
-| Fase 3 coexistencia | (este PR) rama `cursor/coexist-debug-id-2026-09-19-0b82` | DRAFT, **no mergear a main** |
+| Fase 3 coexistencia | https://github.com/joselofarias-byte/NewTermux/pull/11 | DRAFT @ `6c31c7c`+, **no mergear a main** |
 | Port previo Banner | https://github.com/joselofarias-byte/NewTermux/pull/8 | OPEN; usado como *fuente* del merge, no cerrado ni mergeado |
 | `main` | `94c5e7fbd9b945c1e952104a89b4936810c02026` | intacto |
 
