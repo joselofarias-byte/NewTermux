@@ -233,6 +233,44 @@ def downloadBootstrap(String arch, String expectedChecksum, String version) {
 
     def localUrl = "src/main/cpp/bootstrap-" + arch + ".zip"
     def file = new File(projectDir, localUrl)
+
+    // Coexist builds must never embed the stock com.termux bootstrap. That
+    // bootstrap hard-codes /data/data/com.termux and can compile successfully
+    // while failing at runtime under com.newtermux.dev.
+    def coexistRequested = gradle.startParameter.taskNames.any { it.contains("Coexist") }
+    def externalBootstrapDir = System.getenv("NEWTERMUX_BOOTSTRAP_DIR")
+    if (coexistRequested) {
+        if (externalBootstrapDir == null || externalBootstrapDir.isBlank()) {
+            throw new GradleException(
+                "Refusing coexist build with stock Termux bootstrap. " +
+                "Set NEWTERMUX_BOOTSTRAP_DIR to PREFIX-aware bootstraps built with " +
+                "TERMUX_APP_PACKAGE=com.newtermux.dev."
+            )
+        }
+
+        def source = new File(externalBootstrapDir, "bootstrap-" + arch + ".zip")
+        if (!source.isFile()) {
+            throw new GradleException("Missing PREFIX-aware bootstrap: " + source)
+        }
+
+        file.parentFile.mkdirs()
+        java.nio.file.Files.copy(
+            source.toPath(),
+            file.toPath(),
+            java.nio.file.StandardCopyOption.REPLACE_EXISTING
+        )
+
+        def verifier = new File(rootProject.projectDir, "scripts/fase8/verify-bootstrap-prefix.sh")
+        def result = project.exec {
+            commandLine "bash", verifier.absolutePath, file.absolutePath, "com.newtermux.dev"
+            ignoreExitValue true
+        }
+        if (result.exitValue != 0) {
+            file.delete()
+            throw new GradleException("PREFIX-aware bootstrap verification failed for " + arch)
+        }
+        return
+    }
     /*
     if (file.exists()) {
         def buffer = new byte[8192]
