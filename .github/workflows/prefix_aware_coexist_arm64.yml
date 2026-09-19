@@ -38,9 +38,25 @@ jobs:
 
       - name: Build aarch64 bootstrap from source for com.newtermux.dev
         run: |
+          set -euo pipefail
           cd "$RUNNER_TEMP/termux-packages"
           export TERMUX_APP_PACKAGE=com.newtermux.dev
-          ./scripts/run-docker.sh ./scripts/generate-bootstraps.sh --architectures aarch64
+
+          # termux bootstrap generation downloads many packages. Hosted runners
+          # occasionally see transient curl/TLS resets, so retry the complete
+          # bootstrap generation without changing the pinned source revision.
+          for attempt in 1 2 3; do
+            echo "Bootstrap attempt $attempt/3"
+            if ./scripts/run-docker.sh ./scripts/generate-bootstraps.sh --architectures aarch64; then
+              exit 0
+            fi
+            rc=$?
+            echo "Bootstrap attempt $attempt failed with rc=$rc"
+            if [ "$attempt" -eq 3 ]; then
+              exit "$rc"
+            fi
+            sleep $((attempt * 20))
+          done
 
       - name: Locate and verify prefix-aware bootstrap
         run: |
