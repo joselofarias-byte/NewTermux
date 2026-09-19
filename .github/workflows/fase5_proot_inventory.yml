@@ -1,0 +1,19 @@
+name: Fase5 proot inventory
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v6
+
+      - name: Host / cloud Fase 5 checks
+        run: |
+          chmod +x scripts/fase5/*.sh
+          bash scripts/fase5/host-checks.sh
