@@ -265,11 +265,14 @@ def downloadBootstrap(String arch, String expectedChecksum, String version) {
         )
 
         def verifier = new File(rootProject.projectDir, "scripts/fase8/verify-bootstrap-prefix.sh")
-        def result = project.exec {
-            commandLine "bash", verifier.absolutePath, file.absolutePath, "com.newtermux.dev"
-            ignoreExitValue true
-        }
-        if (result.exitValue != 0) {
+        // Gradle 9 removed Project.exec(); use ProcessBuilder so coexist
+        // still re-checks the zip that NEWTERMUX_BOOTSTRAP_DIR supplied.
+        def proc = new ProcessBuilder("bash", verifier.absolutePath, file.absolutePath, "com.newtermux.dev")
+            .directory(rootProject.projectDir)
+            .inheritIO()
+            .start()
+        def exit = proc.waitFor()
+        if (exit != 0) {
             file.delete()
             throw new GradleException("PREFIX-aware bootstrap verification failed for " + arch)
         }
