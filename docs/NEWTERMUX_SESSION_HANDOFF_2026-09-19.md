@@ -1,6 +1,6 @@
 # NewTermux — Session handoff 2026-09-19
 
-Handoff parcial de **Fase 1 + Fase 2 + Fase 3 + Fase 4**. Fases 5–7 no implementadas.  
+Handoff parcial de **Fase 1–5**. Fases 6–7 no implementadas.  
 Repo: `https://github.com/joselofarias-byte/NewTermux`  
 Mantenedor de esta sesión: agente Cursor sobre el fork JoseloFarias.  
 **No hay éxito físico en HONOR 200.**
@@ -15,6 +15,7 @@ Mantenedor de esta sesión: agente Cursor sobre el fork JoseloFarias.
 | Fase 2 port 1.6.2 | https://github.com/joselofarias-byte/NewTermux/pull/10 | DRAFT, rama `cursor/port-banner-1.6.2-conservador-2026-09-19-0b82` @ `2493641` |
 | Fase 3 coexistencia | https://github.com/joselofarias-byte/NewTermux/pull/11 | DRAFT @ `1f8b73c` (APK CI `6c31c7c`), **no mergear** |
 | Fase 4 Go / repos | https://github.com/joselofarias-byte/NewTermux/pull/12 | DRAFT, rama `cursor/fase4-go-repos-2026-09-19-0b82`, **no mergear** |
+| Fase 5 PRoot / Debian / Codex | (este PR) rama `cursor/fase5-proot-debian-codex-2026-09-19-0b82` | DRAFT, **no mergear** |
 | Port previo Banner | https://github.com/joselofarias-byte/NewTermux/pull/8 | OPEN; usado como *fuente* del merge, no cerrado ni mergeado |
 | `main` | `94c5e7fbd9b945c1e952104a89b4936810c02026` | intacto |
 
@@ -24,6 +25,7 @@ Informes:
 - `docs/NEWTERMUX_FASE2_PORT_2026-09-19.md`
 - `docs/NEWTERMUX_FASE3_COEXIST_2026-09-19.md`
 - `docs/NEWTERMUX_FASE4_GO_REPOS_2026-09-19.md`
+- `docs/NEWTERMUX_FASE5_PROOT_DEBIAN_CODEX_2026-09-19.md`
 
 ---
 
@@ -94,9 +96,17 @@ Informe: `docs/NEWTERMUX_FASE4_GO_REPOS_2026-09-19.md`.
 - Suite Termux: `scripts/fase4/go-smoke.sh` — **PENDIENTE-HARDWARE** (este VM no es Android/Termux).
 - Sin wrappers argv permanentes. Listo para Fase 5 (PRoot/Debian/Codex) sin mezclar golang Play.
 
-## 7. PRoot / Debian / Node / Codex (Fase 5 — no hecha)
+## 7. PRoot / Debian / Node / Codex (Fase 5)
 
-No hay código de PRoot en la app. Queda post-bootstrap.
+Informe: `docs/NEWTERMUX_FASE5_PROOT_DEBIAN_CODEX_2026-09-19.md`.
+
+- PRoot **no** está en el APK. Guest Debian = `proot-distro` post-bootstrap + APT `deb.debian.org`.
+- Scripts: `scripts/fase5/proot-debian-smoke.sh` (dispositivo), `host-checks.sh` (cloud), `reproducible-packages.txt`.
+- Smoke cubre bash, loader, shebang/execve, permisos (sin escribir Play PREFIX), DNS/TLS, git/gh, Node opcional, Codex solo detectado, persistencia HOME, PATH/TMPDIR, SIGTERM, `~/storage/shared`.
+- Codex **no** se instala automáticamente (sin secretos).
+- Migración futura documentada: limpia → paquetes → HOME selectivo → contenedor nuevo → validar → Play solo si el usuario decide. **Prohibido copiar PREFIX viejo.**
+- Este VM: `PENDIENTE-HARDWARE` (`PREFIX` vacío, sin linker Android / `pkg` / `proot-distro`).
+- Listo para Fase 6 (CI/build endurecido).
 
 ## 8. CI / artefactos (Fase 6 — parcial)
 
@@ -129,7 +139,7 @@ Plan TBM: **no se modificó TBM**. Migración selectiva sigue siendo decisión p
 ## 11. Recomendación
 
 El APK debug coexistente tiene identidad distinta de Play **en CI**. Go sano depende del APT oficial, no del zip. No mergear. No sustituir Play. No hay prueba física.  
-Siguiente: Fase 5 (PRoot/Debian/Codex) en PR nuevo, instalando paquetes solo desde `packages.termux.dev`. No instalar `assemblePlaycompat*` ni golang Play.
+Siguiente: Fase 6 (build/CI endurecido) en PR nuevo. En HONOR 200: `bash scripts/fase5/proot-debian-smoke.sh` dentro de NewTermux Dev. No copiar PREFIX de Play. No desinstalar Play desde esta misión.
 
 ## 12. Tabla PASS / FAIL / PENDIENTE (sesión)
 
@@ -151,4 +161,4 @@ Siguiente: Fase 5 (PRoot/Debian/Codex) en PR nuevo, instalando paquetes solo des
 | Coexistencia identidad debug | 3 | PASS CI / PENDIENTE HONOR 200 |
 | Shell/Go sobre PREFIX nuevo | 4 | PENDIENTE-HARDWARE |
 | goargs / bootstrap zip | 4 | PASS inventario; rebuild PREFIX **PENDIENTE** |
-| PRoot/Debian/Codex | 5 | PENDIENTE |
+| PRoot/Debian/Codex scripts + inventario | 5 | PASS cloud / PENDIENTE-HARDWARE guest |
