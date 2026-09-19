@@ -1,6 +1,6 @@
 # NewTermux — Session handoff 2026-09-19
 
-Handoff parcial de **Fase 1–5**. Fases 6–7 no implementadas.  
+Handoff parcial de **Fase 1–6**. Fase 7 no implementada.  
 Repo: `https://github.com/joselofarias-byte/NewTermux`  
 Mantenedor de esta sesión: agente Cursor sobre el fork JoseloFarias.  
 **No hay éxito físico en HONOR 200.**
@@ -16,6 +16,7 @@ Mantenedor de esta sesión: agente Cursor sobre el fork JoseloFarias.
 | Fase 3 coexistencia | https://github.com/joselofarias-byte/NewTermux/pull/11 | DRAFT @ `1f8b73c` (APK CI `6c31c7c`), **no mergear** |
 | Fase 4 Go / repos | https://github.com/joselofarias-byte/NewTermux/pull/12 | DRAFT, rama `cursor/fase4-go-repos-2026-09-19-0b82`, **no mergear** |
 | Fase 5 PRoot / Debian / Codex | https://github.com/joselofarias-byte/NewTermux/pull/13 | DRAFT, rama `cursor/fase5-proot-debian-codex-2026-09-19-0b82`, **no mergear** |
+| Fase 6 Build / CI | (este PR) rama `cursor/fase6-build-ci-2026-09-19-0b82` | DRAFT, **no mergear** |
 | Port previo Banner | https://github.com/joselofarias-byte/NewTermux/pull/8 | OPEN; usado como *fuente* del merge, no cerrado ni mergeado |
 | `main` | `94c5e7fbd9b945c1e952104a89b4936810c02026` | intacto |
 
@@ -26,6 +27,7 @@ Informes:
 - `docs/NEWTERMUX_FASE3_COEXIST_2026-09-19.md`
 - `docs/NEWTERMUX_FASE4_GO_REPOS_2026-09-19.md`
 - `docs/NEWTERMUX_FASE5_PROOT_DEBIAN_CODEX_2026-09-19.md`
+- `docs/NEWTERMUX_FASE6_BUILD_CI_2026-09-19.md`
 
 ---
 
@@ -108,14 +110,18 @@ Informe: `docs/NEWTERMUX_FASE5_PROOT_DEBIAN_CODEX_2026-09-19.md`.
 - Este VM: `PENDIENTE-HARDWARE` (`PREFIX` vacío, sin linker Android / `pkg` / `proot-distro`).
 - Listo para Fase 6 (CI/build endurecido).
 
-## 8. CI / artefactos (Fase 6 — parcial)
+## 8. CI / artefactos (Fase 6)
 
-- Workflow `Build` Fase 2: run [35445138266](https://github.com/joselofarias-byte/NewTermux/actions/runs/35445138266) — **success** (`de24c28`).
-- Fase 3 intento 1 (`b0540c7`, `applicationId` en BuildType): run [35445634939](https://github.com/joselofarias-byte/NewTermux/actions/runs/35445634939) — **FAIL** AGP. Corregido con flavors + `assembleCoexistDebug`.
-- Fase 3 retry (`6c31c7c`): run [35445851912](https://github.com/joselofarias-byte/NewTermux/actions/runs/35445851912) — **success** (apt-android-5 y 7). Artefactos en `apk/coexist/debug`.
-- SHA-256 arm64-v8a apt-android-7: `e644c96a0bcd6024539c36088b50dec90a631be43d9cbc3a525099d398a527e4`.
-- SHA-256 arm64-v8a apt-android-5: `948937c9086b26b8f5d1e543609619ce459449a3e4800ebd4bb05f20c8052d3f`.
-- Unit tests / wrapper validation siguen sin trigger útil.
+Informe: `docs/NEWTERMUX_FASE6_BUILD_CI_2026-09-19.md`.
+
+- `Build` produce **solo** `assembleCoexistDebug` (`com.newtermux.dev`) + SHA-256 + `DEBUG-NOT-RELEASE.txt`. Verifica metadata/firma. No playcompat.
+- `Fase6 guard`: secret-scan, wrapper `@v5`, `:terminal-emulator:testCoexistDebugUnitTest`.
+- `Unit tests` / `Validate Gradle Wrapper`: trigger corregido de `master`/`android-10` → **`main`**.
+- `release.yml` y `attach_debug_apks_to_release.yml` **abortan** (debug ≠ Release).
+- Submódulos: ninguno.
+- Lint app: comando Gradle listo; no corre en job aparte (evitar segundo download de bootstrap).
+- SHA-256 arm64 de **este** PR: se anota al terminar `Build`.
+- Histórico Fase 3 (referencia): run `35445851912` @ `6c31c7c` arm64-7 `e644c96a0bcd6024539c36088b50dec90a631be43d9cbc3a525099d398a527e4`.
 
 ## 9. Pruebas
 
@@ -139,7 +145,7 @@ Plan TBM: **no se modificó TBM**. Migración selectiva sigue siendo decisión p
 ## 11. Recomendación
 
 El APK debug coexistente tiene identidad distinta de Play **en CI**. Go sano depende del APT oficial, no del zip. No mergear. No sustituir Play. No hay prueba física.  
-Siguiente: Fase 6 (build/CI endurecido) en PR nuevo. En HONOR 200: `bash scripts/fase5/proot-debian-smoke.sh` dentro de NewTermux Dev. No copiar PREFIX de Play. No desinstalar Play desde esta misión.
+Siguiente: Fase 7 (script de validación física + handoff final) en PR nuevo. Instalar solo el APK **coexist debug** de CI, no un Release. No desinstalar Play.
 
 ## 12. Tabla PASS / FAIL / PENDIENTE (sesión)
 
@@ -162,3 +168,4 @@ Siguiente: Fase 6 (build/CI endurecido) en PR nuevo. En HONOR 200: `bash scripts
 | Shell/Go sobre PREFIX nuevo | 4 | PENDIENTE-HARDWARE |
 | goargs / bootstrap zip | 4 | PASS inventario; rebuild PREFIX **PENDIENTE** |
 | PRoot/Debian/Codex scripts + inventario | 5 | PASS cloud / PENDIENTE-HARDWARE guest |
+| CI coexist debug + guards | 6 | PASS código; runs se anotan al terminar |

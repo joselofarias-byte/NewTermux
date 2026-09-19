@@ -16,6 +16,12 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
+      - name: Refuse attaching debug APKs to GitHub Release
+        run: |
+          echo "Fase 6: debug APKs must stay CI artifacts. Do not hub release edit."
+          echo "See docs/NEWTERMUX_FASE6_BUILD_CI_2026-09-19.md"
+          exit 2
+
       - name: Clone repository
         uses: actions/checkout@v6
         with:

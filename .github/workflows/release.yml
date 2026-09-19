@@ -17,6 +17,12 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Refuse debug APK as GitHub Release
+        run: |
+          echo "Fase 6: coexist debug APKs are CI artifacts only (DEBUG-NOT-RELEASE)."
+          echo "See docs/NEWTERMUX_FASE6_BUILD_CI_2026-09-19.md"
+          exit 2
+
       - name: Checkout code
         uses: actions/checkout@v6
         with:
