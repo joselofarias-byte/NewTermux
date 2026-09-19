@@ -72,7 +72,11 @@ Base: punta PR #10 `2493641`, no `main` viejo.
 - AGP: `applicationId` no va en `buildTypes` (CI `35445634939` FAIL). Flavors `identity`.
 - `com.joselofarias.newtermux.debug` **rechazado** (PREFIX ELF 31 chars).
 - No se parcheó el zip bootstrap (Fase 4). Guardas abortan si PREFIX apunta a Play.
+- CI Build Fase 3: [35445851912](https://github.com/joselofarias-byte/NewTermux/actions/runs/35445851912) **success** @ `6c31c7c`.
+- SHA-256 arm64 apt-android-7: `e644c96a0bcd6024539c36088b50dec90a631be43d9cbc3a525099d398a527e4` (`termux-app_v1.6.2+6c31c7c-apt-android-7-github-debug_arm64-v8a.apk`).
+- `output-metadata.json`: `applicationId=com.newtermux.dev`, `variantName=coexistDebug`.
 - Matriz: `docs/NEWTERMUX_FASE3_COEXIST_2026-09-19.md`.
+- HONOR 200: **PENDIENTE**. Listo para Fase 4 (Go/goargs / PREFIX-aware bootstrap) en PR nuevo.
 
 ## 6. Go / goargs (Fase 4 — no hecha)
 
@@ -86,7 +90,9 @@ No hay código de PRoot en la app. Queda post-bootstrap.
 
 - Workflow `Build` Fase 2: run [35445138266](https://github.com/joselofarias-byte/NewTermux/actions/runs/35445138266) — **success** (`de24c28`).
 - Fase 3 intento 1 (`b0540c7`, `applicationId` en BuildType): run [35445634939](https://github.com/joselofarias-byte/NewTermux/actions/runs/35445634939) — **FAIL** AGP. Corregido con flavors + `assembleCoexistDebug`.
-- Artefactos coexist (si el retry es verde): `app/build/outputs/apk/coexist/debug/termux-app_v1.6.2+<sha>-apt-android-{5,7}-github-debug_{universal,arm64-v8a,...}` + sha256sums.
+- Fase 3 retry (`6c31c7c`): run [35445851912](https://github.com/joselofarias-byte/NewTermux/actions/runs/35445851912) — **success** (apt-android-5 y 7). Artefactos en `apk/coexist/debug`.
+- SHA-256 arm64-v8a apt-android-7: `e644c96a0bcd6024539c36088b50dec90a631be43d9cbc3a525099d398a527e4`.
+- SHA-256 arm64-v8a apt-android-5: `948937c9086b26b8f5d1e543609619ce459449a3e4800ebd4bb05f20c8052d3f`.
 - Unit tests / wrapper validation siguen sin trigger útil.
 
 ## 9. Pruebas
@@ -96,6 +102,7 @@ No hay código de PRoot en la app. Queda post-bootstrap.
 | Comprobado en git/API | genealogía, merge limpio, preservaciones, IDs |
 | Comprobado en CI cloud (Fase 1 `main`) | Build `34510906662` success |
 | CI de esta rama Fase 2 | PASS run `35445138266` |
+| CI Fase 3 `assembleCoexistDebug` | PASS run `35445851912` @ `6c31c7c` |
 | HONOR 200 | PENDIENTE — no declarar éxito |
 
 ## 10. Riesgos y reversión
@@ -109,8 +116,8 @@ Plan TBM: **no se modificó TBM**. Migración selectiva sigue siendo decisión p
 
 ## 11. Recomendación
 
-El debug coexistente está listo para **CI e instalación junto a Play**, no para merge ni para sustituir Play.  
-Siguiente: Fase 4 (Go/goargs / bootstrap PREFIX-aware) en PR nuevo. No instalar el APK `com.termux` de release sobre Play.
+El APK debug coexistente tiene identidad distinta de Play **en CI**. No mergear. No sustituir Play. No hay prueba física.  
+Siguiente: Fase 4 (Go/goargs / bootstrap PREFIX-aware) en PR nuevo, sin mezclar el zip oficial sin rebuild. No instalar `assemblePlaycompat*` sobre Play.
 
 ## 12. Tabla PASS / FAIL / PENDIENTE (sesión)
 
@@ -121,13 +128,13 @@ Siguiente: Fase 4 (Go/goargs / bootstrap PREFIX-aware) en PR nuevo. No instalar 
 | Port 1.6.2 desde `main` + PR #8 | 2 | PASS |
 | Personalizaciones + NO_GO | 2 | PASS |
 | applicationId intacto en el port | 2 | PASS |
-| Debug `com.newtermux.dev` ≠ Play | 3 | PASS (estático; CI flavors PENDIENTE al redactar) |
+| Debug `com.newtermux.dev` ≠ Play | 3 | PASS (código + CI `35445851912`; metadata `com.newtermux.dev`) |
 | Android 16 review documentada | 2 | PASS (estática) |
 | PendingIntent IMMUTABLE | 2 | FAIL (documentado) |
 | Unit tests CI | 1–2 | FAIL |
 | CI Build esta rama | 2 | PASS (`35445138266`) |
 | HONOR 200 | 7 | PENDIENTE |
-| Coexistencia identidad debug | 3 | PASS código / PENDIENTE HONOR 200 |
+| Coexistencia identidad debug | 3 | PASS CI / PENDIENTE HONOR 200 |
 | Shell/Go sobre PREFIX nuevo | 4 | PENDIENTE |
 | goargs / bootstrap zip | 4 | PENDIENTE |
 | PRoot/Debian/Codex | 5 | PENDIENTE |

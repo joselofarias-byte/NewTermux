@@ -126,7 +126,16 @@ No mergear este PR. `main` y PR #10 permanecen. Quitar la rama no toca Play.
 | Guardas anti-PREFIX Play | código | PASS |
 | Replace textual ciego | proceso | PASS (no hecho) |
 | CI `assembleDebug` con `applicationId` en BuildType | cloud | FAIL `35445634939` (AGP; corregido con flavors) |
-| CI `assembleCoexistDebug` esta rama | cloud | PENDIENTE al escribir; se actualiza al correr |
-| SHA-256 APK arm64 | CI artifact | PENDIENTE al escribir |
-| Instalación junto a Play | HONOR 200 | PENDIENTE |
-| Shell real / Go / PRoot | HONOR 200 + Fase 4–5 | PENDIENTE |
+| CI `assembleCoexistDebug` esta rama | cloud | **PASS** [35445851912](https://github.com/joselofarias-byte/NewTermux/actions/runs/35445851912) @ `6c31c7c` (apt-android-5 y 7) |
+| SHA-256 APK arm64 coexist | CI artifact | **PASS** (cloud). apt-android-7: `e644c96a0bcd6024539c36088b50dec90a631be43d9cbc3a525099d398a527e4`. apt-android-5: `948937c9086b26b8f5d1e543609619ce459449a3e4800ebd4bb05f20c8052d3f` |
+| `output-metadata.json` applicationId | CI artifact | **PASS** `com.newtermux.dev` / variant `coexistDebug` |
+| Instalación junto a Play | HONOR 200 | **PENDIENTE** (no declarado) |
+| Shell real / Go / PRoot | HONOR 200 + Fase 4–5 | **PENDIENTE** |
+
+### Artefacto arm64 (HONOR 200 usaría este, no probado)
+
+- Run: https://github.com/joselofarias-byte/NewTermux/actions/runs/35445851912
+- SHA commit APK: `6c31c7c5bcbfd0be05efa1707b8bb0365703d751`
+- Archivo: `termux-app_v1.6.2+6c31c7c-apt-android-7-github-debug_arm64-v8a.apk`
+- SHA-256: `e644c96a0bcd6024539c36088b50dec90a631be43d9cbc3a525099d398a527e4`
+- Identidad Gradle: `applicationId=com.newtermux.dev`, `variantName=coexistDebug`, `versionName=1.6.2+6c31c7c`
