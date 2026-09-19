@@ -225,6 +225,10 @@ def validateVersionName(String versionName) {
 }
 
 def downloadBootstrap(String arch, String expectedChecksum, String version) {
+    // Fase 4: checksum compare stays commented. The 2026.02.12-r1 aarch64
+    // asset on GitHub no longer matches expectedChecksum (see
+    // docs/NEWTERMUX_FASE4_GO_REPOS_2026-09-19.md). Do not retarget to
+    // /releases/latest and do not apply scripts/patch-bootstrap.sh.
     def digest = java.security.MessageDigest.getInstance("SHA-256")
 
     def localUrl = "src/main/cpp/bootstrap-" + arch + ".zip"

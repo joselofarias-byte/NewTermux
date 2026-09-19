@@ -1,6 +1,6 @@
 # NewTermux — Session handoff 2026-09-19
 
-Handoff parcial de **Fase 1 + Fase 2 + Fase 3**. Fases 4–7 no implementadas.  
+Handoff parcial de **Fase 1 + Fase 2 + Fase 3 + Fase 4**. Fases 5–7 no implementadas.  
 Repo: `https://github.com/joselofarias-byte/NewTermux`  
 Mantenedor de esta sesión: agente Cursor sobre el fork JoseloFarias.  
 **No hay éxito físico en HONOR 200.**
@@ -13,7 +13,8 @@ Mantenedor de esta sesión: agente Cursor sobre el fork JoseloFarias.
 | --- | --- | --- |
 | Fase 1 auditoría | https://github.com/joselofarias-byte/NewTermux/pull/9 | DRAFT, rama `cursor/audit-fase1-2026-09-19-0b82` |
 | Fase 2 port 1.6.2 | https://github.com/joselofarias-byte/NewTermux/pull/10 | DRAFT, rama `cursor/port-banner-1.6.2-conservador-2026-09-19-0b82` @ `2493641` |
-| Fase 3 coexistencia | https://github.com/joselofarias-byte/NewTermux/pull/11 | DRAFT @ `6c31c7c`+, **no mergear a main** |
+| Fase 3 coexistencia | https://github.com/joselofarias-byte/NewTermux/pull/11 | DRAFT @ `1f8b73c` (APK CI `6c31c7c`), **no mergear** |
+| Fase 4 Go / repos | (este PR) rama `cursor/fase4-go-repos-2026-09-19-0b82` | DRAFT, **no mergear a main** |
 | Port previo Banner | https://github.com/joselofarias-byte/NewTermux/pull/8 | OPEN; usado como *fuente* del merge, no cerrado ni mergeado |
 | `main` | `94c5e7fbd9b945c1e952104a89b4936810c02026` | intacto |
 
@@ -22,6 +23,7 @@ Informes:
 - `docs/NEWTERMUX_AUDIT_FASE1_2026-09-19.md`
 - `docs/NEWTERMUX_FASE2_PORT_2026-09-19.md`
 - `docs/NEWTERMUX_FASE3_COEXIST_2026-09-19.md`
+- `docs/NEWTERMUX_FASE4_GO_REPOS_2026-09-19.md`
 
 ---
 
@@ -76,11 +78,21 @@ Base: punta PR #10 `2493641`, no `main` viejo.
 - SHA-256 arm64 apt-android-7: `e644c96a0bcd6024539c36088b50dec90a631be43d9cbc3a525099d398a527e4` (`termux-app_v1.6.2+6c31c7c-apt-android-7-github-debug_arm64-v8a.apk`).
 - `output-metadata.json`: `applicationId=com.newtermux.dev`, `variantName=coexistDebug`.
 - Matriz: `docs/NEWTERMUX_FASE3_COEXIST_2026-09-19.md`.
-- HONOR 200: **PENDIENTE**. Listo para Fase 4 (Go/goargs / PREFIX-aware bootstrap) en PR nuevo.
+- HONOR 200: **PENDIENTE**. Fase 4 dejó `scripts/fase4/go-smoke.sh` para el dispositivo.
 
-## 6. Go / goargs (Fase 4 — no hecha)
+## 6. Go / goargs (Fase 4)
 
-`rg goargs` = 0 en el árbol. Bootstrap pin: `termux-packages` `2026.02.12-r1+apt.android-7`. Checksum verify sigue comentado. No inspeccionar zip = Go sano **no** está demostrado.
+Informe: `docs/NEWTERMUX_FASE4_GO_REPOS_2026-09-19.md`.
+
+- `goargs` **no** está en el source de la app. NewTermux no hereda el parche.
+- Zip `bootstrap-2026.02.12-r1+apt.android-7` aarch64: **sin** `go`/`gofmt`; 6539× PREFIX `/data/data/com.termux/files/usr`; APT `packages-cf.termux.dev`. SHA observado `ea2aeba8…` ≠ hash Gradle `f73ee7d5…` (verify sigue off; no se retargeteó).
+- Runtime Go = `pkg install golang` **después** del bootstrap.
+- Canal sano: `termux/termux-packages` golang **3:1.27.1** sin `runtime1.go` goargs.
+- Canal roto: `termux-play-store/termux-packages` golang **3:1.26.4** + `src-runtime-runtime1.go.patch`.
+- Guardas: `patch-bootstrap.sh`, `build-bootstrap.yml`, `build-bootstrap-source.yml` abortan. Receta PREFIX-aware: `scripts/fase4/prepare-prefix-aware-bootstrap.sh` (`com.newtermux.dev`, sin ELF `fil`).
+- Checks cloud: `scripts/fase4/host-checks.sh` + workflow `Fase4 bootstrap inventory`.
+- Suite Termux: `scripts/fase4/go-smoke.sh` — **PENDIENTE-HARDWARE** (este VM no es Android/Termux).
+- Sin wrappers argv permanentes. Listo para Fase 5 (PRoot/Debian/Codex) sin mezclar golang Play.
 
 ## 7. PRoot / Debian / Node / Codex (Fase 5 — no hecha)
 
@@ -116,8 +128,8 @@ Plan TBM: **no se modificó TBM**. Migración selectiva sigue siendo decisión p
 
 ## 11. Recomendación
 
-El APK debug coexistente tiene identidad distinta de Play **en CI**. No mergear. No sustituir Play. No hay prueba física.  
-Siguiente: Fase 4 (Go/goargs / bootstrap PREFIX-aware) en PR nuevo, sin mezclar el zip oficial sin rebuild. No instalar `assemblePlaycompat*` sobre Play.
+El APK debug coexistente tiene identidad distinta de Play **en CI**. Go sano depende del APT oficial, no del zip. No mergear. No sustituir Play. No hay prueba física.  
+Siguiente: Fase 5 (PRoot/Debian/Codex) en PR nuevo, instalando paquetes solo desde `packages.termux.dev`. No instalar `assemblePlaycompat*` ni golang Play.
 
 ## 12. Tabla PASS / FAIL / PENDIENTE (sesión)
 
@@ -129,12 +141,14 @@ Siguiente: Fase 4 (Go/goargs / bootstrap PREFIX-aware) en PR nuevo, sin mezclar 
 | Personalizaciones + NO_GO | 2 | PASS |
 | applicationId intacto en el port | 2 | PASS |
 | Debug `com.newtermux.dev` ≠ Play | 3 | PASS (código + CI `35445851912`; metadata `com.newtermux.dev`) |
+| Inventario goargs / zip / repos | 4 | PASS cloud |
+| Go Termux + PREFIX rebuild | 4 | PENDIENTE-HARDWARE / Docker |
 | Android 16 review documentada | 2 | PASS (estática) |
 | PendingIntent IMMUTABLE | 2 | FAIL (documentado) |
 | Unit tests CI | 1–2 | FAIL |
 | CI Build esta rama | 2 | PASS (`35445138266`) |
 | HONOR 200 | 7 | PENDIENTE |
 | Coexistencia identidad debug | 3 | PASS CI / PENDIENTE HONOR 200 |
-| Shell/Go sobre PREFIX nuevo | 4 | PENDIENTE |
-| goargs / bootstrap zip | 4 | PENDIENTE |
+| Shell/Go sobre PREFIX nuevo | 4 | PENDIENTE-HARDWARE |
+| goargs / bootstrap zip | 4 | PASS inventario; rebuild PREFIX **PENDIENTE** |
 | PRoot/Debian/Codex | 5 | PENDIENTE |
