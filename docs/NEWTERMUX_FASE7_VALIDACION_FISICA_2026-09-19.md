@@ -47,6 +47,8 @@ Este VM no es Android/Termux (`PREFIX` vacío, sin `linker64`/`pkg`). El script 
 
 Workflow: `.github/workflows/fase7_validate.yml` (artefacto del reporte cloud; no Release).
 
+CI @ `0a068c6`: **10/10 PASS**, incluido Fase4 inventory tras allowlist de `scripts/fase7` (el FAIL [35447245674](https://github.com/joselofarias-byte/NewTermux/actions/runs/35447245674) era esa mención de `goargs`). Build [35447567585](https://github.com/joselofarias-byte/NewTermux/actions/runs/35447567585) verde; **no** sustituye el SHA canónico `2345efa0…` @ `f3eb365`.
+
 ---
 
 ## 4. Tabla PASS / FAIL / PENDIENTE-HARDWARE
