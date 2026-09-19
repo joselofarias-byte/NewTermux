@@ -120,7 +120,9 @@ Informe: `docs/NEWTERMUX_FASE6_BUILD_CI_2026-09-19.md`.
 - `release.yml` y `attach_debug_apks_to_release.yml` **abortan** (debug ≠ Release).
 - Submódulos: ninguno.
 - Lint app: comando Gradle listo; no corre en job aparte (evitar segundo download de bootstrap).
-- SHA-256 arm64 de **este** PR: se anota al terminar `Build`.
+- SHA-256 arm64 apt-android-7 @ `f3eb365`: `2345efa03c8677778fb418f5acc4bfd2a69e9bf383932e0a4d786247dcbd11e4` (job [105906757364](https://github.com/joselofarias-byte/NewTermux/actions/runs/35446701028/job/105906757364) en run [35446701028](https://github.com/joselofarias-byte/NewTermux/actions/runs/35446701028)). Metadata `com.newtermux.dev` / `coexistDebug` / `1.6.2+f3eb365`.
+- Ese run: conclusión global **failure** por `apt-android-5` Maven 403. El artefacto HONOR es android-7 (PASS). Matriz completa verde en [35446689522](https://github.com/joselofarias-byte/NewTermux/actions/runs/35446689522) @ `50942b8`.
+- `Fase6 guard` [35446701043](https://github.com/joselofarias-byte/NewTermux/actions/runs/35446701043), Unit tests [35446701056](https://github.com/joselofarias-byte/NewTermux/actions/runs/35446701056), Wrapper [35446701106](https://github.com/joselofarias-byte/NewTermux/actions/runs/35446701106): **success**.
 - Histórico Fase 3 (referencia): run `35445851912` @ `6c31c7c` arm64-7 `e644c96a0bcd6024539c36088b50dec90a631be43d9cbc3a525099d398a527e4`.
 
 ## 9. Pruebas
@@ -131,6 +133,8 @@ Informe: `docs/NEWTERMUX_FASE6_BUILD_CI_2026-09-19.md`.
 | Comprobado en CI cloud (Fase 1 `main`) | Build `34510906662` success |
 | CI de esta rama Fase 2 | PASS run `35445138266` |
 | CI Fase 3 `assembleCoexistDebug` | PASS run `35445851912` @ `6c31c7c` |
+| CI Fase 6 `assembleCoexistDebug` arm64-7 | PASS job `105906757364` run `35446701028` @ `f3eb365` |
+| CI Fase 6 tests / wrapper / guard | PASS runs `35446701056` / `35446701106` / `35446701043` |
 | HONOR 200 | PENDIENTE — no declarar éxito |
 
 ## 10. Riesgos y reversión
@@ -161,11 +165,11 @@ Siguiente: Fase 7 (script de validación física + handoff final) en PR nuevo. I
 | Go Termux + PREFIX rebuild | 4 | PENDIENTE-HARDWARE / Docker |
 | Android 16 review documentada | 2 | PASS (estática) |
 | PendingIntent IMMUTABLE | 2 | FAIL (documentado) |
-| Unit tests CI | 1–2 | FAIL |
+| Unit tests CI | 1–2 / 6 | FAIL en `master`/`android-10`; **PASS** Fase 6 en `main` (`35446701056`) |
 | CI Build esta rama | 2 | PASS (`35445138266`) |
 | HONOR 200 | 7 | PENDIENTE |
 | Coexistencia identidad debug | 3 | PASS CI / PENDIENTE HONOR 200 |
 | Shell/Go sobre PREFIX nuevo | 4 | PENDIENTE-HARDWARE |
 | goargs / bootstrap zip | 4 | PASS inventario; rebuild PREFIX **PENDIENTE** |
 | PRoot/Debian/Codex scripts + inventario | 5 | PASS cloud / PENDIENTE-HARDWARE guest |
-| CI coexist debug + guards | 6 | PASS código; runs se anotan al terminar |
+| CI coexist debug + guards | 6 | PASS android-7 + tests/wrapper/guard; FAIL android-5 Maven 403 |

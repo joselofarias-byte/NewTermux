@@ -63,8 +63,26 @@ SHA-256: archivo `*_sha256sums` + este informe al cerrar el run de `Build`.
 | Secret-scan + no playcompat en Build | git | PASS |
 | Release workflows abortan debug | git | PASS |
 | Submódulos | git | PASS (N/A) |
-| CI `Build` coexist arm64 + SHA-256 | cloud | se completa en este PR |
-| CI `Fase6 guard` | cloud | se completa en este PR |
+| CI `Build` coexist arm64 + SHA-256 | cloud | **PASS** apt-android-7 [35446701028](https://github.com/joselofarias-byte/NewTermux/actions/runs/35446701028) @ `f3eb365` |
+| CI `build (apt-android-5)` @ `f3eb365` | cloud | **FAIL** Maven Central HTTP 403 (transitorio; no es el artefacto HONOR) |
+| CI `Build` matriz completa | cloud | **PASS** [35446689522](https://github.com/joselofarias-byte/NewTermux/actions/runs/35446689522) @ `50942b8` (android-5 y android-7) |
+| CI `Fase6 guard` | cloud | **PASS** [35446701043](https://github.com/joselofarias-byte/NewTermux/actions/runs/35446701043) |
+| Unit tests emulator | cloud | **PASS** [35446701056](https://github.com/joselofarias-byte/NewTermux/actions/runs/35446701056) |
+| Wrapper validation | cloud | **PASS** [35446701106](https://github.com/joselofarias-byte/NewTermux/actions/runs/35446701106) |
 | Lint app en CI | cloud | **PENDIENTE** (comando listo; no en job para no re-descargar bootstrap) |
 | Bit-reproducible debug | proceso | **FAIL** (documentado; no forzado) |
 | HONOR 200 | dispositivo | **PENDIENTE** |
+
+### Artefacto arm64 (coexist debug, no Release)
+
+Canónico para Fase 7 (HONOR 200): job `build (apt-android-7)` del run [35446701028](https://github.com/joselofarias-byte/NewTermux/actions/runs/35446701028) @ `f3eb365`. La conclusión global de ese workflow es **failure** porque `fail-fast: false` y `apt-android-5` recibió 403 de Maven Central; el APK HONOR sí se publicó.
+
+- Job: https://github.com/joselofarias-byte/NewTermux/actions/runs/35446701028/job/105906757364
+- SHA commit: `f3eb365a10559d06132baa8baaa378e5b878609d`
+- Archivo: `termux-app_v1.6.2+f3eb365-apt-android-7-github-debug_arm64-v8a.apk`
+- SHA-256: `2345efa03c8677778fb418f5acc4bfd2a69e9bf383932e0a4d786247dcbd11e4`
+- Metadata: `applicationId=com.newtermux.dev`, `variantName=coexistDebug`, `versionName=1.6.2+f3eb365`
+- Marker: `DEBUG-NOT-RELEASE.txt` (adjunto al artefacto `*_sha256sums`)
+- Commits posteriores solo-docs pueden emitir otro `versionName`; no sustituyen este hash.
+
+Evidencia extra: run [35446689522](https://github.com/joselofarias-byte/NewTermux/actions/runs/35446689522) @ `50942b8` terminó **success** en android-5 y android-7 (el 403 de `f3eb365` es flake de repo Maven, no de código).
