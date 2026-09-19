@@ -17,7 +17,7 @@ Mantenedor de esta sesión: agente Cursor sobre el fork JoseloFarias.
 | Fase 4 Go / repos | https://github.com/joselofarias-byte/NewTermux/pull/12 | DRAFT, rama `cursor/fase4-go-repos-2026-09-19-0b82`, **no mergear** |
 | Fase 5 PRoot / Debian / Codex | https://github.com/joselofarias-byte/NewTermux/pull/13 | DRAFT, rama `cursor/fase5-proot-debian-codex-2026-09-19-0b82`, **no mergear** |
 | Fase 6 Build / CI | https://github.com/joselofarias-byte/NewTermux/pull/14 | DRAFT, rama `cursor/fase6-build-ci-2026-09-19-0b82`, **no mergear** |
-| Fase 7 validación física | (este PR) rama `cursor/fase7-validacion-fisica-2026-09-19-0b82` | DRAFT, **no mergear** |
+| Fase 7 validación física | https://github.com/joselofarias-byte/NewTermux/pull/15 | DRAFT, rama `cursor/fase7-validacion-fisica-2026-09-19-0b82`, **no mergear** |
 | Port previo Banner | https://github.com/joselofarias-byte/NewTermux/pull/8 | OPEN; usado como *fuente* del merge, no cerrado ni mergeado |
 | `main` | `94c5e7fbd9b945c1e952104a89b4936810c02026` | intacto |
 

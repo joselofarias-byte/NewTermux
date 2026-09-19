@@ -1,7 +1,7 @@
 # NewTermux — Fase 7: validación física preparada
 
 - **Fecha:** 2026-09-19
-- **Rama:** `cursor/fase7-validacion-fisica-2026-09-19-0b82`
+- **Rama:** `cursor/fase7-validacion-fisica-2026-09-19-0b82` (PR [#15](https://github.com/joselofarias-byte/NewTermux/pull/15))
 - **Base:** punta Fase 6 `6f83bccac86f7093b55d1721587e5251d956e8ba` (PR #14), **no** `main`
 - **Regla:** sin merge, sin Release, sin desinstalar Play, sin migrar datos, sin secretos, **sin éxito físico declarado**, sin TBM
 
