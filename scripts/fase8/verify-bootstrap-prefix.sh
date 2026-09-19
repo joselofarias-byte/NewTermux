@@ -53,7 +53,13 @@ rm -f "$text_hits"
 
 if grep -aRIl -- "$EXPECTED_PREFIX" "$TMP" >/tmp/newtermux-expected-prefix-hits.$$ 2>/dev/null; then
   echo "PASS: expected NewTermux prefix is embedded"
-  sed "s#^$TMP/##" /tmp/newtermux-expected-prefix-hits.$$ | head -40
+  # Do not use `sed | head` under pipefail: head closes the pipe and sed
+  # exits 141 / "Broken pipe", which is what failed CI 35475342734.
+  n=0
+  while IFS= read -r line && (( n < 40 )); do
+    echo "${line#"$TMP/"}"
+    n=$((n + 1))
+  done < /tmp/newtermux-expected-prefix-hits.$$
 else
   echo "FAIL: expected prefix $EXPECTED_PREFIX was not found anywhere in bootstrap"
   fail=1
@@ -96,7 +102,8 @@ done
 
 if [[ -n "$BASH" ]]; then
   echo "bash=$(realpath --relative-to="$TMP" "$BASH")"
-  if command -v readelf >/dev/null 2>&1 && readelf -d "$BASH" 2>/dev/null | grep -q 'libandroid-support\.so'; then
+  bash_dyn="$(readelf -d "$BASH" 2>/dev/null || true)"
+  if [[ "$bash_dyn" == *libandroid-support.so* ]]; then
     echo "bash_needs_libandroid_support=yes"
     if [[ -n "$SUPPORT_LIB" ]]; then
       echo "PASS: libandroid-support.so is packaged"
@@ -119,11 +126,11 @@ if [[ -n "$BASH" ]]; then
       echo "FAIL: bash RUNPATH is neither $EXPECTED_PREFIX nor \$ORIGIN: $bash_rpath"
       fail=1
     fi
-  elif command -v readelf >/dev/null 2>&1; then
-    if readelf -d "$BASH" 2>/dev/null | grep -E 'RPATH|RUNPATH' | grep -q "$OLD_PREFIX"; then
+  elif [[ -n "$bash_dyn" ]]; then
+    if [[ "$bash_dyn" == *"$OLD_PREFIX"* ]]; then
       echo "FAIL: bash RUNPATH still targets stock Termux lib dir"
       fail=1
-    elif readelf -d "$BASH" 2>/dev/null | grep -E 'RPATH|RUNPATH' | grep -q "$EXPECTED_PREFIX"; then
+    elif [[ "$bash_dyn" == *"$EXPECTED_PREFIX"* ]]; then
       echo "PASS: bash RUNPATH is prefix-aware"
     fi
   fi
