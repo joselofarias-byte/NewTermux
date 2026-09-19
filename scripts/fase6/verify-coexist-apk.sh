@@ -42,7 +42,7 @@ apk = sys.argv[1]
 with zipfile.ZipFile(apk) as z:
     data = z.read("AndroidManifest.xml")
     names = z.namelist()
-if b"CERT.RSA" not in "\n".join(names).encode() and not any(n.upper().endswith(".RSA") or n.upper().endswith(".DSA") for n in names):
+if not any(n.upper().endswith(".RSA") or n.upper().endswith(".DSA") for n in names):
     raise SystemExit("FAIL APK has no signature block in META-INF")
 u16 = data.decode("utf-16le", "replace")
 if "com.newtermux.dev" not in u16:
