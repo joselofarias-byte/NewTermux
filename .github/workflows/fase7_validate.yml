@@ -1,0 +1,61 @@
+name: Fase7 physical validate
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v6
+
+      - name: Cloud report (must be PENDIENTE-HARDWARE)
+        env:
+          FASE7_REPORT: ${{ runner.temp }}/NEWTERMUX_FASE7_HONOR200.md
+        run: |
+          chmod +x scripts/fase7/honor200-validate.sh
+          set +e
+          bash scripts/fase7/honor200-validate.sh
+          rc=$?
+          set -e
+          test "$rc" -eq 2
+          test -f "$FASE7_REPORT"
+          grep -q 'Comprobado en CI / cloud' "$FASE7_REPORT"
+          grep -q 'Pendiente en HONOR 200' "$FASE7_REPORT"
+          grep -q 'Bloqueado por hardware, credenciales o acceso' "$FASE7_REPORT"
+          grep -q '2345efa03c8677778fb418f5acc4bfd2a69e9bf383932e0a4d786247dcbd11e4' "$FASE7_REPORT"
+          grep -q 'com.newtermux.dev' "$FASE7_REPORT"
+          grep -q 'f3eb365' "$FASE7_REPORT"
+          grep -q 'Bloque ejecutable' "$FASE7_REPORT"
+          if grep -qE 'éxito físico declarado|declared physical success' "$FASE7_REPORT"; then
+            echo "FAIL: report claimed physical success"
+            exit 1
+          fi
+          if grep -E 'HONOR 200' "$FASE7_REPORT" | grep -qE '\*\*PASS\*\*'; then
+            echo "FAIL: HONOR 200 row marked PASS on cloud host"
+            exit 1
+          fi
+          if grep -qE 'ghp_|github_pat_|OPENAI_API_KEY=.+' "$FASE7_REPORT"; then
+            echo "FAIL: secret-like token in report"
+            exit 1
+          fi
+          echo "PASS Fase 7 cloud classification"
+
+      - name: Instructions precede executable block
+        run: |
+          awk '
+            /^# INSTRUCCIONES/ { inst=1 }
+            inst && /^set -u$/ { exe=1; exit }
+            END { if (!(inst && exe)) { print "FAIL: instructions must precede set -u"; exit 1 } }
+          ' scripts/fase7/honor200-validate.sh
+          echo "PASS instruction header"
+
+      - name: Upload cloud report artifact (not a Release)
+        uses: actions/upload-artifact@v6
+        with:
+          name: fase7-honor200-cloud-report
+          path: ${{ runner.temp }}/NEWTERMUX_FASE7_HONOR200.md
