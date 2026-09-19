@@ -100,19 +100,28 @@ android {
         debug {
             signingConfig signingConfigs.debug
             buildConfigField "boolean", "IS_DEMO", "false"
+            // Fase 3: debug must not share applicationId/sharedUserId with Termux Play.
+            // com.joselofarias.newtermux.debug is longer than the official PREFIX
+            // string and is rejected (see docs/NEWTERMUX_FASE3_COEXIST_2026-09-19.md).
+            applicationId "com.newtermux.dev"
+            manifestPlaceholders.TERMUX_PACKAGE_NAME = "com.newtermux.dev"
+            manifestPlaceholders.TERMUX_APP_NAME = "NewTermux Dev"
         }
 
         // Test/coexist build: installs as com.termux.demo alongside real Termux and NewTermux.
         // Fake shell — all Settings/toolbar/drawer/Text Expansion UI works; no real commands run.
         demo {
             initWith debug
-            applicationIdSuffix ".demo"
+            // Pin the full demo id; do not suffix the debug coexist id.
+            applicationId "com.termux.demo"
+            applicationIdSuffix ""
             buildConfigField "boolean", "IS_DEMO", "true"
-            matchingFallbacks = ['debug']  // library submodules don't have 'demo', fall back to debug
+            matchingFallbacks = ['demo', 'debug']
             // Override package name so sharedUserId and content provider authorities
             // (com.termux.demo.documents, com.termux.demo.files) are unique and don't
-            // conflict with NewTermux (com.termux) or original Termux already installed.
+            // conflict with NewTermux Dev (com.newtermux.dev) or Termux Play (com.termux).
             manifestPlaceholders.TERMUX_PACKAGE_NAME = "com.termux.demo"
+            manifestPlaceholders.TERMUX_APP_NAME = "NewTermux Demo"
         }
     }
 

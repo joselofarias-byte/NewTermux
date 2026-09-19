@@ -1,6 +1,6 @@
 # NewTermux — Session handoff 2026-09-19
 
-Handoff parcial de **Fase 1 + Fase 2**. Fases 3–7 no implementadas.  
+Handoff parcial de **Fase 1 + Fase 2 + Fase 3**. Fases 4–7 no implementadas.  
 Repo: `https://github.com/joselofarias-byte/NewTermux`  
 Mantenedor de esta sesión: agente Cursor sobre el fork JoseloFarias.  
 **No hay éxito físico en HONOR 200.**
@@ -12,7 +12,8 @@ Mantenedor de esta sesión: agente Cursor sobre el fork JoseloFarias.
 | Pieza | URL / ref | Estado |
 | --- | --- | --- |
 | Fase 1 auditoría | https://github.com/joselofarias-byte/NewTermux/pull/9 | DRAFT, rama `cursor/audit-fase1-2026-09-19-0b82` |
-| Fase 2 port 1.6.2 | (este PR) rama `cursor/port-banner-1.6.2-conservador-2026-09-19-0b82` | DRAFT, **no mergear a main** |
+| Fase 2 port 1.6.2 | https://github.com/joselofarias-byte/NewTermux/pull/10 | DRAFT, rama `cursor/port-banner-1.6.2-conservador-2026-09-19-0b82` @ `2493641` |
+| Fase 3 coexistencia | (este PR) rama `cursor/coexist-debug-id-2026-09-19-0b82` | DRAFT, **no mergear a main** |
 | Port previo Banner | https://github.com/joselofarias-byte/NewTermux/pull/8 | OPEN; usado como *fuente* del merge, no cerrado ni mergeado |
 | `main` | `94c5e7fbd9b945c1e952104a89b4936810c02026` | intacto |
 
@@ -20,6 +21,7 @@ Informes:
 
 - `docs/NEWTERMUX_AUDIT_FASE1_2026-09-19.md`
 - `docs/NEWTERMUX_FASE2_PORT_2026-09-19.md`
+- `docs/NEWTERMUX_FASE3_COEXIST_2026-09-19.md`
 
 ---
 
@@ -60,10 +62,16 @@ Ver tabla en el informe Fase 2. Resumen:
 - **No resuelto:** `targetSdk=28`; PendingIntent flags `0`; 16 KiB ELF no medido; storage scoped no revalidado.
 - JNI/PTY/teclado/clipboard/wake-lock: heredados; termcap propio conservado.
 
-## 5. Coexistencia (Fase 3 — no hecha)
+## 5. Coexistencia (Fase 3)
 
-`com.termux` debug/release **choca con Termux Play**. Variante `demo` = `com.termux.demo` (UI sí, shell no).  
-Siguiente PR debe analizar authorities, PREFIX, bootstrap y firma **antes** de tocar IDs. No replace textual.
+Base: punta PR #10 `2493641`, no `main` viejo.
+
+- **Debug CI:** `applicationId` / `sharedUserId` / PREFIX / authorities = **`com.newtermux.dev`** (no Play).
+- **Release:** sigue `com.termux` (sigue chocando con Play; CI no lo construye).
+- **Demo:** `com.termux.demo` explícito (shell falso); no hereda suffix del debug.
+- `com.joselofarias.newtermux.debug` **rechazado** (PREFIX ELF 31 chars).
+- No se parcheó el zip bootstrap (Fase 4). Guardas abortan si PREFIX apunta a Play.
+- Matriz: `docs/NEWTERMUX_FASE3_COEXIST_2026-09-19.md`.
 
 ## 6. Go / goargs (Fase 4 — no hecha)
 
@@ -99,8 +107,8 @@ Plan TBM: **no se modificó TBM**. Migración selectiva sigue siendo decisión p
 
 ## 11. Recomendación
 
-El port conservador está listo para **revisión y CI**, no para merge ni para reemplazar Play.  
-Siguiente paso humano/agente: Fase 3 en PR nuevo (identidad de coexistencia) **después** de CI verde de esta rama y de no haber mergeado a `main`.
+El debug coexistente está listo para **CI e instalación junto a Play**, no para merge ni para sustituir Play.  
+Siguiente: Fase 4 (Go/goargs / bootstrap PREFIX-aware) en PR nuevo. No instalar el APK `com.termux` de release sobre Play.
 
 ## 12. Tabla PASS / FAIL / PENDIENTE (sesión)
 
@@ -110,12 +118,14 @@ Siguiente paso humano/agente: Fase 3 en PR nuevo (identidad de coexistencia) **d
 | Upstream = Banner, no Termux oficial | 1 | PASS |
 | Port 1.6.2 desde `main` + PR #8 | 2 | PASS |
 | Personalizaciones + NO_GO | 2 | PASS |
-| applicationId intacto | 2 | PASS |
+| applicationId intacto en el port | 2 | PASS |
+| Debug `com.newtermux.dev` ≠ Play | 3 | PASS (estático; CI PENDIENTE al redactar) |
 | Android 16 review documentada | 2 | PASS (estática) |
 | PendingIntent IMMUTABLE | 2 | FAIL (documentado) |
 | Unit tests CI | 1–2 | FAIL |
 | CI Build esta rama | 2 | PASS (`35445138266`) |
 | HONOR 200 | 7 | PENDIENTE |
-| Coexistencia Play | 3 | PENDIENTE |
+| Coexistencia identidad debug | 3 | PASS código / PENDIENTE HONOR 200 |
+| Shell/Go sobre PREFIX nuevo | 4 | PENDIENTE |
 | goargs / bootstrap zip | 4 | PENDIENTE |
 | PRoot/Debian/Codex | 5 | PENDIENTE |

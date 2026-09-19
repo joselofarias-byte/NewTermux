@@ -3,6 +3,7 @@ package com.termux.shared.termux;
 import android.annotation.SuppressLint;
 import android.content.Intent;
 
+import com.termux.shared.BuildConfig;
 import com.termux.shared.shell.command.ExecutionCommand;
 import com.termux.shared.shell.command.ExecutionCommand.Runner;
 
@@ -348,8 +349,13 @@ public final class TermuxConstants {
 
     /** Termux app name */
     public static final String TERMUX_APP_NAME = "NewTermux"; // Default: "Termux"
-    /** Termux package name */
-    public static final String TERMUX_PACKAGE_NAME = "com.termux"; // Default: "com.termux"
+    /**
+     * Termux package name / applicationId for this variant.
+     * Comes from {@code termux-shared} {@link BuildConfig#TERMUX_APP_PACKAGE}:
+     * debug {@code com.newtermux.dev}, release {@code com.termux}, demo {@code com.termux.demo}.
+     * Must match the app module applicationId or {@code TermuxAppSharedPreferences.build} fails.
+     */
+    public static final String TERMUX_PACKAGE_NAME = BuildConfig.TERMUX_APP_PACKAGE;
     /** Termux GitHub repo name */
     public static final String TERMUX_GITHUB_REPO_NAME = "termux-app"; // Default: "termux-app"
     /** Termux GitHub repo url */

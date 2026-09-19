@@ -36,6 +36,8 @@ android {
         minSdkVersion project.properties.minSdkVersion.toInteger()
         targetSdkVersion project.properties.targetSdkVersion.toInteger()
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        // Release/default identity stays Play-compatible. Debug is overridden below.
+        buildConfigField "String", "TERMUX_APP_PACKAGE", "\"com.termux\""
         externalNativeBuild {
             ndkBuild {
                 cppFlags ''
@@ -44,10 +46,24 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Distinct from Termux Play (com.termux). 16-char id keeps a future
+            // bootstrap PREFIX patch length-aligned; not an ELF patch in Fase 3.
+            buildConfigField "String", "TERMUX_APP_PACKAGE", "\"com.newtermux.dev\""
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            buildConfigField "String", "TERMUX_APP_PACKAGE", "\"com.termux\""
         }
+        demo {
+            initWith debug
+            buildConfigField "String", "TERMUX_APP_PACKAGE", "\"com.termux.demo\""
+        }
+    }
+
+    buildFeatures {
+        buildConfig true
     }
 
     compileOptions {

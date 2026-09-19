@@ -8,7 +8,9 @@
 
 ## Package identity
 
-`com.termux` is intentionally retained because the app package, bootstrap expectations, shared-user behavior and plugin ecosystem are tightly coupled to that identifier. Rebranding this package would require a separate compatibility migration and is not part of a safe branding-only change.
+`com.termux` is intentionally retained **for release** because the app package, bootstrap expectations, shared-user behavior and plugin ecosystem are tightly coupled to that identifier. Rebranding release would require a separate compatibility migration and is not part of a safe branding-only change.
+
+**Debug coexist identity (Fase 3):** `assembleDebug` uses `com.newtermux.dev` so the APK can sit beside Termux Play without sharing `sharedUserId`, authorities or `/data/data/com.termux/`. That id is 16 characters (same length as the abandoned `com.newtermux.app` experiment) so a later PREFIX-aware bootstrap rebuild can stay length-aligned. `com.joselofarias.newtermux.debug` was rejected: it is too long for official bootstrap ELF path strings. See `docs/NEWTERMUX_FASE3_COEXIST_2026-09-19.md`.
 
 ## Credits
 
