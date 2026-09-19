@@ -1,0 +1,4 @@
+This coexist debug APK is a CI artifact only.
+applicationId: com.newtermux.dev
+Do not attach it to a GitHub Release.
+Do not install it over Termux Play (com.termux).

@@ -34,6 +34,12 @@ public class TermuxApplication extends Application {
 
         Logger.logDebug("Starting Application");
 
+        String identityError = CoexistIdentity.mismatchReason(context);
+        if (identityError != null) {
+            Logger.logError(LOG_TAG, "Stopping before filesystem access: " + identityError);
+            return;
+        }
+
         // Set TermuxBootstrap.TERMUX_APP_PACKAGE_MANAGER and TermuxBootstrap.TERMUX_APP_PACKAGE_VARIANT
         TermuxBootstrap.setTermuxPackageManagerAndVariant(BuildConfig.TERMUX_PACKAGE_VARIANT);
 
