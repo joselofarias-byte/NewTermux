@@ -106,23 +106,39 @@ Do **not** treat these as a substitute for the rewritten zip. They exist so a pr
 
 ---
 
-## 4. CI / artifact coordinates
+## 4. CI / artifact coordinates (green Prefix-aware)
 
-Fill after the Prefix-aware workflow on this commit is green. Until then: **not claimed**.
+**Do not claim physical PASS.** These coordinates are cloud evidence only.
 
 | Item | Value |
 | --- | --- |
+| PR | https://github.com/joselofarias-byte/NewTermux/pull/16 (OPEN, do not merge) |
 | Branch | `fix/prefix-aware-bootstrap-runtime` |
-| Commit SHA | *(this push; see git / PR #16)* |
-| Prefix-aware workflow run ID | *(pending)* |
-| Artifact name | `newtermux-prefix-aware-coexist-arm64` |
-| Artifact ID | *(pending)* |
-| APK SHA-256 | *(pending)* |
+| APK-producing commit SHA | `1f076d1e923124886241d672adb26c65a7ed60b7` |
+| Prefix-aware workflow | [run 35476078813](https://github.com/joselofarias-byte/NewTermux/actions/runs/35476078813) — **success** |
 | Package ID | `com.newtermux.dev` |
-| Variant | `coexistDebug` / `arm64-v8a` |
-| Bootstrap artifact | `newtermux-prefix-aware-bootstrap-aarch64` |
+| Variant | `coexistDebug` / `arm64-v8a` / `apt-android-7` |
+| APK file | `termux-app_apt-android-7-debug_arm64-v8a.apk` |
+| APK SHA-256 | `cc8646da36060661078cf21d98cb8a9646368d858dfc8f593b7182b622f59bcd` |
+| ARM64 APK artifact name | `newtermux-prefix-aware-coexist-arm64` |
+| ARM64 APK artifact ID | `10593194586` |
+| Bootstrap zip SHA-256 | `771dc5166dda8da46fc581364dd6d9344e6d28c13e84acc592648dbbf661a430` |
+| Bootstrap artifact name | `newtermux-prefix-aware-bootstrap-aarch64` |
+| Bootstrap artifact ID | `10593194581` |
+| Verified login shebang | `#!/data/data/com.newtermux.dev/files/usr/bin/sh` |
+| Verified bash RUNPATH | `/data/data/com.newtermux.dev/files/usr/lib` |
 
-Generic Build run IDs after this push should be green skips, not APK publishers.
+Download: Actions run 35476078813 → artifact `newtermux-prefix-aware-coexist-arm64` (id `10593194586`).
+
+Generic **Build** on the same commit is a green skip (run `35476078809`): it does **not** publish a coexist APK.
+
+Earlier failed Prefix-aware runs (fixed, do not use):
+
+| Run | Why |
+| --- | --- |
+| `35469071995` @ `97064b76` | Docker `mv` Permission denied; locate found no zip; `TERMUX_APP_PACKAGE` env overwritten by `properties.sh` |
+| `35475342734` @ `b5e580b` | rewrite PASS, then verifier `sed \| head` SIGPIPE under `pipefail` |
+| `35475694300` @ `2aeaf5d` | verify PASS; Gradle 9 removed `Project.exec()` so `:app:downloadBootstraps` failed |
 
 ---
 
@@ -162,4 +178,5 @@ PASS only if HONOR 200 retest of **this** APK shows a usable shell:
 - `app/src/main/java/com/termux/app/TermuxInstaller.java`
 - `termux-shared/src/main/java/com/termux/shared/termux/shell/TermuxShellUtils.java`
 - `termux-shared/src/main/java/com/termux/shared/termux/shell/command/environment/TermuxShellEnvironment.java`
+- `app/build.gradle` (Gradle 9 `ProcessBuilder` verifier)
 - `docs/NEWTERMUX_CHATGPT_HANDOFF_LOGIN_PERMISSION_DENIED_2026-09-19.md`
