@@ -60,51 +60,52 @@ jobs:
           fi
           grep -nE 'TERMUX_APP__PACKAGE_NAME=|TERMUX_APP_PACKAGE=' "$props" | head
 
-      - name: Build aarch64 bootstrap on the host
+      - name: Build package-aware aarch64 bootstrap from source
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/newtermux-bootstrap"
           cd "$RUNNER_TEMP/termux-packages"
-          # generate-bootstraps.sh only downloads official debs and zips them.
-          # It does not need Docker; Docker + AppArmor is what caused
-          # `mv: cannot create regular file './bootstrap-aarch64.zip': Permission denied`.
-          rc=1
-          for attempt in 1 2 3; do
-            echo "Bootstrap attempt $attempt/3"
-            if ./scripts/generate-bootstraps.sh --architectures aarch64; then
-              rc=0
-              break
-            else
-              rc=$?
-              echo "Bootstrap attempt $attempt failed with rc=$rc"
-              if [ "$attempt" -lt 3 ]; then
-                sleep $((attempt * 20))
-              fi
-            fi
-          done
-          if [ "$rc" -ne 0 ]; then
-            echo "generate-bootstraps.sh failed; falling back to pinned official zip"
-            curl --fail --location --retry 3 --retry-delay 5 \
-              --output "$RUNNER_TEMP/termux-packages/bootstrap-aarch64.zip" \
-              "$PINNED_BOOTSTRAP_URL"
-          fi
-          test -f "$RUNNER_TEMP/termux-packages/bootstrap-aarch64.zip"
 
-      - name: Rewrite, locate and verify prefix-aware bootstrap
+          # A renamed Termux package cannot safely mix binaries compiled for
+          # com.termux. build-bootstraps.sh is the upstream-supported path for
+          # forked package names: it builds apt/dpkg/core tools and their
+          # dependencies against the com.newtermux.dev PREFIX.
+          #
+          # Run inside the official build container because build-bootstraps.sh
+          # intentionally uses /home/builder/termux-packages.
+          ./scripts/run-docker.sh ./scripts/build-bootstraps.sh \
+            --architectures aarch64
+
+          test -f bootstrap-aarch64.zip
+          mkdir -p "$RUNNER_TEMP/newtermux-bootstrap"
+          cp bootstrap-aarch64.zip \
+            "$RUNNER_TEMP/newtermux-bootstrap/bootstrap-aarch64.zip"
+
+      - name: Verify source-built bootstrap identity
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/newtermux-bootstrap"
-          src="$(find "$RUNNER_TEMP/termux-packages" -type f -name 'bootstrap-aarch64.zip' -print -quit)"
-          test -n "$src"
-          cp "$src" "$RUNNER_TEMP/newtermux-bootstrap/bootstrap-aarch64.zip"
-          chmod +x scripts/fase8/rewrite-bootstrap-prefix.sh scripts/fase8/verify-bootstrap-prefix.sh
-          scripts/fase8/rewrite-bootstrap-prefix.sh \
-            "$RUNNER_TEMP/newtermux-bootstrap/bootstrap-aarch64.zip" \
-            com.newtermux.dev
-          scripts/fase8/verify-bootstrap-prefix.sh \
-            "$RUNNER_TEMP/newtermux-bootstrap/bootstrap-aarch64.zip" \
-            com.newtermux.dev
-          sha256sum "$RUNNER_TEMP/newtermux-bootstrap/bootstrap-aarch64.zip"
+          zip="$RUNNER_TEMP/newtermux-bootstrap/bootstrap-aarch64.zip"
+          chmod +x scripts/fase8/verify-bootstrap-prefix.sh
+          scripts/fase8/verify-bootstrap-prefix.sh "$zip" com.newtermux.dev
+
+          # Physical HONOR 200 exposed that rewriting only ELF RUNPATH is not
+          # enough: dpkg embeds its configuration directory in ELF .rodata.
+          # Source-built dpkg/apt must contain the NewTermux PREFIX and must not
+          # retain the stock private app path.
+          tmp="$(mktemp -d)"
+          unzip -q "$zip" -d "$tmp"
+          test -x "$tmp/bin/dpkg"
+          test -x "$tmp/bin/apt"
+          strings "$tmp/bin/dpkg" | grep -Fq '/data/data/com.newtermux.dev/files/usr/etc/dpkg'
+          if strings "$tmp/bin/dpkg" | grep -Fq '/data/data/com.termux/files/usr/etc/dpkg'; then
+            echo "FAIL: dpkg still embeds stock com.termux configuration path" >&2
+            exit 1
+          fi
+          if strings "$tmp/bin/apt" | grep -Fq '/data/data/com.termux/files/usr'; then
+            echo "FAIL: apt still embeds stock com.termux PREFIX" >&2
+            exit 1
+          fi
+          rm -rf "$tmp"
+          sha256sum "$zip"
 
       - name: Build ARM64 coexist APK with verified bootstrap
         env:
