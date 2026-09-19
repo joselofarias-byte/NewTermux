@@ -20,16 +20,26 @@ jobs:
         package_variant: [ apt-android-7, apt-android-5 ]
 
     steps:
+      - name: Skip generic coexist APK
+        run: |
+          echo "SKIP: generic Build is not the source of truth for com.newtermux.dev."
+          echo "assembleCoexistDebug refuses the stock Termux bootstrap on purpose."
+          echo "Use workflow 'Prefix-aware coexist ARM64' (prefix_aware_coexist_arm64.yml)."
+          echo "variant=${{ matrix.package_variant }}"
+
       - name: Clone repository
+        if: false
         uses: actions/checkout@v6
 
       - name: Setup java 17
+        if: false
         uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '17'
 
       - name: Build APKs
+        if: false
         shell: bash {0}
         env:
           PACKAGE_VARIANT: ${{ matrix.package_variant }}
@@ -95,6 +105,7 @@ jobs:
           cp ./scripts/fase6/DEBUG-NOT-RELEASE.txt "$APK_DIR_PATH/DEBUG-NOT-RELEASE.txt"
 
       - name: Attach universal APK file
+        if: false
         uses: actions/upload-artifact@v6
         with:
           name: ${{ env.APK_BASENAME_PREFIX }}_universal
@@ -103,6 +114,7 @@ jobs:
             ${{ env.APK_DIR_PATH }}/output-metadata.json
 
       - name: Attach arm64-v8a APK file
+        if: false
         uses: actions/upload-artifact@v6
         with:
           name: ${{ env.APK_BASENAME_PREFIX }}_arm64-v8a
@@ -111,6 +123,7 @@ jobs:
             ${{ env.APK_DIR_PATH }}/output-metadata.json
 
       - name: Attach armeabi-v7a APK file
+        if: false
         uses: actions/upload-artifact@v6
         with:
           name: ${{ env.APK_BASENAME_PREFIX }}_armeabi-v7a
@@ -119,6 +132,7 @@ jobs:
             ${{ env.APK_DIR_PATH }}/output-metadata.json
 
       - name: Attach x86_64 APK file
+        if: false
         uses: actions/upload-artifact@v6
         with:
           name: ${{ env.APK_BASENAME_PREFIX }}_x86_64
@@ -127,6 +141,7 @@ jobs:
             ${{ env.APK_DIR_PATH }}/output-metadata.json
 
       - name: Attach x86 APK file
+        if: false
         uses: actions/upload-artifact@v6
         with:
           name: ${{ env.APK_BASENAME_PREFIX }}_x86
@@ -135,6 +150,7 @@ jobs:
             ${{ env.APK_DIR_PATH }}/output-metadata.json
 
       - name: Attach sha256sums file
+        if: false
         uses: actions/upload-artifact@v6
         with:
           name: ${{ env.APK_BASENAME_PREFIX }}_sha256sums

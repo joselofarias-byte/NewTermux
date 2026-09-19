@@ -161,7 +161,14 @@ public final class TermuxInstaller {
             if (TermuxFileUtils.isTermuxPrefixDirectoryEmpty()) {
                 Logger.logInfo(LOG_TAG, "The termux prefix directory \"" + TERMUX_PREFIX_DIR_PATH + "\" exists but is empty or only contains specific unimportant files.");
             } else {
-                whenDone.run();
+                new Thread() {
+                    @Override
+                    public void run() {
+                        repairStockPrefixReferencesIfNeeded();
+                        chmodExtractedExecutables();
+                        activity.runOnUiThread(whenDone);
+                    }
+                }.start();
                 return;
             }
         } else if (FileUtils.fileExists(TERMUX_PREFIX_DIR_PATH, false)) {
@@ -250,9 +257,10 @@ public final class TermuxInstaller {
                                     }
                                     if (zipEntryName.startsWith("bin/") || zipEntryName.startsWith("libexec/") ||
                                         zipEntryName.startsWith("usr/bin/") || zipEntryName.startsWith("usr/libexec/") ||
-                                        zipEntryName.startsWith("lib/apt/apt-helper") || zipEntryName.startsWith("lib/apt/methods")) {
+                                        zipEntryName.startsWith("lib/apt/apt-helper") || zipEntryName.startsWith("lib/apt/methods") ||
+                                        zipEntryName.startsWith("lib/") && zipEntryName.contains("ld-")) {
                                         //noinspection OctalInteger
-                                        Os.chmod(targetFile.getAbsolutePath(), 0700);
+                                        Os.chmod(targetFile.getAbsolutePath(), 0755);
                                     }
                                 }
                             }
@@ -270,6 +278,9 @@ public final class TermuxInstaller {
                     if (!TERMUX_STAGING_PREFIX_DIR.renameTo(TERMUX_PREFIX_DIR)) {
                         throw new RuntimeException("Moving termux prefix staging to prefix directory failed");
                     }
+
+                    repairStockPrefixReferencesIfNeeded();
+                    chmodExtractedExecutables();
 
                     Logger.logInfo(LOG_TAG, "Bootstrap packages installed successfully.");
 
@@ -553,6 +564,88 @@ public final class TermuxInstaller {
             java.nio.file.Files.write(zshrc.toPath(), content.getBytes(StandardCharsets.UTF_8));
         } catch (Exception e) {
             Logger.logError(LOG_TAG, "Failed to update .zshrc: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Rewrite leftover stock {@code /data/data/com.termux} paths in extracted
+     * scripts. The kernel shebang of {@code login} is the physical HONOR 200
+     * failure; the script body also hard-codes Play's bash/sh/termux-exec.
+     */
+    private static void repairStockPrefixReferencesIfNeeded() {
+        if ("com.termux".equals(TermuxConstants.TERMUX_PACKAGE_NAME)) {
+            return;
+        }
+        String oldRoot = "/data/data/com.termux";
+        String newRoot = "/data/data/" + TermuxConstants.TERMUX_PACKAGE_NAME;
+        File[] scan = new File[] {
+            new File(TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH),
+            new File(TermuxConstants.TERMUX_ETC_PREFIX_DIR_PATH),
+            new File(TermuxConstants.TERMUX_PREFIX_DIR_PATH, "etc/profile.d")
+        };
+        for (File dir : scan) {
+            rewriteStockPrefixInTree(dir, oldRoot, newRoot);
+        }
+    }
+
+    private static void rewriteStockPrefixInTree(File dir, String oldRoot, String newRoot) {
+        File[] files = dir.listFiles();
+        if (files == null) {
+            return;
+        }
+        for (File file : files) {
+            if (file.isDirectory()) {
+                rewriteStockPrefixInTree(file, oldRoot, newRoot);
+                continue;
+            }
+            if (!file.isFile()) {
+                continue;
+            }
+            try {
+                byte[] raw = java.nio.file.Files.readAllBytes(file.toPath());
+                if (raw.length >= 4 && raw[0] == 0x7F && raw[1] == 'E' && raw[2] == 'L' && raw[3] == 'F') {
+                    continue;
+                }
+                String text = new String(raw, StandardCharsets.UTF_8);
+                if (!text.contains(oldRoot)) {
+                    continue;
+                }
+                String rewritten = text
+                    .replace("/data/data/com.termux/files/usr", TERMUX_PREFIX_DIR_PATH)
+                    .replace(oldRoot + "/", newRoot + "/");
+                java.nio.file.Files.write(file.toPath(), rewritten.getBytes(StandardCharsets.UTF_8));
+                Logger.logInfo(LOG_TAG, "Rewrote stock Termux prefix in " + file.getAbsolutePath());
+            } catch (Exception e) {
+                Logger.logError(LOG_TAG, "Failed repairing " + file + ": " + e.getMessage());
+            }
+        }
+    }
+
+    private static void chmodExtractedExecutables() {
+        chmodTree(new File(TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH), 0755);
+        chmodTree(new File(TermuxConstants.TERMUX_LIBEXEC_PREFIX_DIR_PATH), 0755);
+        File aptHelper = new File(TermuxConstants.TERMUX_PREFIX_DIR_PATH, "lib/apt");
+        chmodTree(aptHelper, 0755);
+    }
+
+    private static void chmodTree(File dir, int mode) {
+        File[] files = dir.listFiles();
+        if (files == null) {
+            return;
+        }
+        for (File file : files) {
+            if (file.isDirectory()) {
+                chmodTree(file, mode);
+                continue;
+            }
+            if (!file.isFile()) {
+                continue;
+            }
+            try {
+                Os.chmod(file.getAbsolutePath(), mode);
+            } catch (Exception e) {
+                Logger.logError(LOG_TAG, "chmod failed for " + file + ": " + e.getMessage());
+            }
         }
     }
 

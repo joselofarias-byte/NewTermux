@@ -6,6 +6,8 @@ on:
       - main
     paths:
       - 'app/build.gradle'
+      - 'app/src/main/java/com/termux/app/TermuxInstaller.java'
+      - 'termux-shared/src/main/java/com/termux/shared/termux/shell/**'
       - 'scripts/fase8/**'
       - '.github/workflows/prefix_aware_coexist_arm64.yml'
   workflow_dispatch:
@@ -19,6 +21,7 @@ jobs:
       TERMUX_APP_PACKAGE: com.newtermux.dev
       TERMUX_ABIS: arm64-v8a
       TERMUX_PACKAGE_VARIANT: apt-android-7
+      PINNED_BOOTSTRAP_URL: https://github.com/termux/termux-packages/releases/download/bootstrap-2026.02.12-r1%2Bapt.android-7/bootstrap-aarch64.zip
 
     steps:
       - name: Checkout NewTermux
@@ -30,43 +33,77 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Install host bootstrap tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y binutils zip unzip curl jq xz-utils gzip patchelf file
+
       - name: Clone pinned termux-packages
         run: |
           git clone https://github.com/termux/termux-packages.git "$RUNNER_TEMP/termux-packages"
           git -C "$RUNNER_TEMP/termux-packages" checkout "$TERMUX_PACKAGES_REF"
           test "$(git -C "$RUNNER_TEMP/termux-packages" rev-parse HEAD)" = "$TERMUX_PACKAGES_REF"
 
-      - name: Build aarch64 bootstrap from source for com.newtermux.dev
+      - name: Point properties.sh at com.newtermux.dev
         run: |
           set -euo pipefail
-          cd "$RUNNER_TEMP/termux-packages"
-          export TERMUX_APP_PACKAGE=com.newtermux.dev
+          props="$RUNNER_TEMP/termux-packages/scripts/properties.sh"
+          # properties.sh hardcodes TERMUX_APP__PACKAGE_NAME and then overwrites
+          # TERMUX_APP_PACKAGE from it. Exporting TERMUX_APP_PACKAGE is a no-op.
+          if grep -q '^TERMUX_APP__PACKAGE_NAME="com.termux"' "$props"; then
+            sed -i 's/^TERMUX_APP__PACKAGE_NAME="com.termux"/TERMUX_APP__PACKAGE_NAME="com.newtermux.dev"/' "$props"
+          elif grep -q '^TERMUX_APP_PACKAGE=' "$props"; then
+            sed -i 's/^TERMUX_APP_PACKAGE=.*/TERMUX_APP_PACKAGE=com.newtermux.dev/' "$props"
+          else
+            echo "FAIL: could not locate package-name assignment in properties.sh" >&2
+            exit 1
+          fi
+          grep -nE 'TERMUX_APP__PACKAGE_NAME=|TERMUX_APP_PACKAGE=' "$props" | head
 
-          # termux bootstrap generation downloads many packages. Hosted runners
-          # occasionally see transient curl/TLS resets, so retry the complete
-          # bootstrap generation without changing the pinned source revision.
+      - name: Build aarch64 bootstrap on the host
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/newtermux-bootstrap"
+          cd "$RUNNER_TEMP/termux-packages"
+          # generate-bootstraps.sh only downloads official debs and zips them.
+          # It does not need Docker; Docker + AppArmor is what caused
+          # `mv: cannot create regular file './bootstrap-aarch64.zip': Permission denied`.
+          rc=1
           for attempt in 1 2 3; do
             echo "Bootstrap attempt $attempt/3"
-            if ./scripts/run-docker.sh ./scripts/generate-bootstraps.sh --architectures aarch64; then
-              exit 0
+            if ./scripts/generate-bootstraps.sh --architectures aarch64; then
+              rc=0
+              break
+            else
+              rc=$?
+              echo "Bootstrap attempt $attempt failed with rc=$rc"
+              if [ "$attempt" -lt 3 ]; then
+                sleep $((attempt * 20))
+              fi
             fi
-            rc=$?
-            echo "Bootstrap attempt $attempt failed with rc=$rc"
-            if [ "$attempt" -eq 3 ]; then
-              exit "$rc"
-            fi
-            sleep $((attempt * 20))
           done
+          if [ "$rc" -ne 0 ]; then
+            echo "generate-bootstraps.sh failed; falling back to pinned official zip"
+            curl --fail --location --retry 3 --retry-delay 5 \
+              --output "$RUNNER_TEMP/termux-packages/bootstrap-aarch64.zip" \
+              "$PINNED_BOOTSTRAP_URL"
+          fi
+          test -f "$RUNNER_TEMP/termux-packages/bootstrap-aarch64.zip"
 
-      - name: Locate and verify prefix-aware bootstrap
+      - name: Rewrite, locate and verify prefix-aware bootstrap
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/newtermux-bootstrap"
           src="$(find "$RUNNER_TEMP/termux-packages" -type f -name 'bootstrap-aarch64.zip' -print -quit)"
           test -n "$src"
           cp "$src" "$RUNNER_TEMP/newtermux-bootstrap/bootstrap-aarch64.zip"
-          chmod +x scripts/fase8/verify-bootstrap-prefix.sh
-          scripts/fase8/verify-bootstrap-prefix.sh             "$RUNNER_TEMP/newtermux-bootstrap/bootstrap-aarch64.zip"             com.newtermux.dev
+          chmod +x scripts/fase8/rewrite-bootstrap-prefix.sh scripts/fase8/verify-bootstrap-prefix.sh
+          scripts/fase8/rewrite-bootstrap-prefix.sh \
+            "$RUNNER_TEMP/newtermux-bootstrap/bootstrap-aarch64.zip" \
+            com.newtermux.dev
+          scripts/fase8/verify-bootstrap-prefix.sh \
+            "$RUNNER_TEMP/newtermux-bootstrap/bootstrap-aarch64.zip" \
+            com.newtermux.dev
           sha256sum "$RUNNER_TEMP/newtermux-bootstrap/bootstrap-aarch64.zip"
 
       - name: Build ARM64 coexist APK with verified bootstrap
@@ -82,6 +119,16 @@ jobs:
           apk="$(find app/build/outputs/apk/coexist/debug -maxdepth 1 -type f -name '*arm64-v8a.apk' -print -quit)"
           test -n "$apk"
           sha256sum "$apk" | tee "$RUNNER_TEMP/newtermux-arm64.sha256"
+          python3 - <<'PY'
+          import json, pathlib, sys
+          meta = pathlib.Path("app/build/outputs/apk/coexist/debug/output-metadata.json")
+          data = json.loads(meta.read_text())
+          aid = data.get("applicationId")
+          variant = data.get("variantName")
+          if aid != "com.newtermux.dev" or variant != "coexistDebug":
+              raise SystemExit(f"FAIL identity {aid} {variant}")
+          print(f"PASS applicationId={aid} variantName={variant}")
+          PY
 
       - name: Upload prefix-aware bootstrap
         uses: actions/upload-artifact@v6
