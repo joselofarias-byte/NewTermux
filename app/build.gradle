@@ -23,6 +23,10 @@ android {
     def apkVersionTag = System.getenv("TERMUX_APK_VERSION_TAG") ?: ""
     def splitAPKsForDebugBuilds = System.getenv("TERMUX_SPLIT_APKS_FOR_DEBUG_BUILDS") ?: "1"
     def splitAPKsForReleaseBuilds = System.getenv("TERMUX_SPLIT_APKS_FOR_RELEASE_BUILDS") ?: "0" // F-Droid does not support split APKs #1904
+    def requestedAbis = (System.getenv("TERMUX_ABIS") ?: "x86,x86_64,armeabi-v7a,arm64-v8a")
+        .split(",")
+        .collect { it.trim() }
+        .findAll { !it.isEmpty() }
 
     dependencies {
         implementation "androidx.annotation:annotation:1.9.0"
@@ -75,7 +79,7 @@ android {
                 enable ((gradle.startParameter.taskNames.any { it.contains("Debug") } && splitAPKsForDebugBuilds == "1") ||
                     (gradle.startParameter.taskNames.any { it.contains("Release") } && splitAPKsForReleaseBuilds == "1"))
                 reset ()
-                include 'x86', 'x86_64', 'armeabi-v7a', 'arm64-v8a'
+                include(*requestedAbis as String[])
                 universalApk true
             }
         }
@@ -324,18 +328,42 @@ clean {
 task downloadBootstraps() {
     doLast {
         def packageVariant = project.ext.packageVariant
+        def abiToArch = [
+            "arm64-v8a": "aarch64",
+            "armeabi-v7a": "arm",
+            "x86": "i686",
+            "x86_64": "x86_64"
+        ]
+        def requested = (System.getenv("TERMUX_ABIS") ?: "x86,x86_64,armeabi-v7a,arm64-v8a")
+            .split(",")
+            .collect { it.trim() }
+            .findAll { !it.isEmpty() }
+
+        def arches = requested.collect { abi ->
+            if (!abiToArch.containsKey(abi)) {
+                throw new GradleException("Unsupported TERMUX_ABIS entry: " + abi)
+            }
+            abiToArch[abi]
+        }.unique()
+
         if (packageVariant == "apt-android-7") {
             def version = "2026.02.12-r1" + "%2B" + "apt.android-7"
-            downloadBootstrap("aarch64", "f73ee7d55630ae710c977691cd5157f3e27ac6563cc233298781cad0754acadd", version)
-            downloadBootstrap("arm", "dcef1a43fbf9daf4d89d8b2d8ae3ed34d8dba30acb401cd0f546aa48980936db", version)
-            downloadBootstrap("i686", "55b13765952279f2feffc13ce2291693c41501e79c5bb37b4986493ce36143be", version)
-            downloadBootstrap("x86_64", "2c6948a605205a39abe9fa2a079d6666048233cfd59a4896754ed910792b7c3c", version)
+            def sums = [
+                "aarch64": "f73ee7d55630ae710c977691cd5157f3e27ac6563cc233298781cad0754acadd",
+                "arm": "dcef1a43fbf9daf4d89d8b2d8ae3ed34d8dba30acb401cd0f546aa48980936db",
+                "i686": "55b13765952279f2feffc13ce2291693c41501e79c5bb37b4986493ce36143be",
+                "x86_64": "2c6948a605205a39abe9fa2a079d6666048233cfd59a4896754ed910792b7c3c"
+            ]
+            arches.each { arch -> downloadBootstrap(arch, sums[arch], version) }
         } else if (packageVariant == "apt-android-5") {
             def version = "2022.04.28-r6" + "+" + packageVariant
-            downloadBootstrap("aarch64", "913609d439415c828c5640be1b0561467e539cb1c7080662decaaca2fb4820e7", version)
-            downloadBootstrap("arm", "26bfb45304c946170db69108e5eb6e3641aad751406ce106c80df80cad2eccf8", version)
-            downloadBootstrap("i686", "46dcfeb5eef67ba765498db9fe4c50dc4690805139aa0dd141a9d8ee0693cd27", version)
-            downloadBootstrap("x86_64", "615b590679ee6cd885b7fd2ff9473c845e920f9b422f790bb158c63fe42b8481", version)
+            def sums = [
+                "aarch64": "913609d439415c828c5640be1b0561467e539cb1c7080662decaaca2fb4820e7",
+                "arm": "26bfb45304c946170db69108e5eb6e3641aad751406ce106c80df80cad2eccf8",
+                "i686": "46dcfeb5eef67ba765498db9fe4c50dc4690805139aa0dd141a9d8ee0693cd27",
+                "x86_64": "615b590679ee6cd885b7fd2ff9473c845e920f9b422f790bb158c63fe42b8481"
+            ]
+            arches.each { arch -> downloadBootstrap(arch, sums[arch], version) }
         } else {
             throw new GradleException("Unsupported TERMUX_PACKAGE_VARIANT \"" + packageVariant + "\"")
         }
