@@ -352,7 +352,8 @@ public final class TermuxConstants {
     /**
      * Termux package name / applicationId for this variant.
      * Comes from {@code termux-shared} {@link BuildConfig#TERMUX_APP_PACKAGE}:
-     * debug {@code com.newtermux.dev}, release {@code com.termux}, demo {@code com.termux.demo}.
+     * coexist {@code com.newtermux.dev}, playcompat {@code com.termux},
+     * playcompatDemo {@code com.termux.demo}.
      * Must match the app module applicationId or {@code TermuxAppSharedPreferences.build} fails.
      */
     public static final String TERMUX_PACKAGE_NAME = BuildConfig.TERMUX_APP_PACKAGE;

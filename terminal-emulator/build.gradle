@@ -22,6 +22,12 @@ android {
         }
     }
 
+    flavorDimensions "identity"
+    productFlavors {
+        playcompat { dimension "identity" }
+        coexist { dimension "identity" }
+    }
+
     buildTypes {
         debug {}
         release {
@@ -30,6 +36,12 @@ android {
         }
         demo {
             initWith debug
+        }
+    }
+
+    variantFilter { variant ->
+        if (variant.flavors.any { it.name == "coexist" } && variant.buildType.name == "demo") {
+            setIgnore(true)
         }
     }
 

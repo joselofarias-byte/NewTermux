@@ -82,14 +82,16 @@ Requires **JDK 17** and the Android SDK.
 git clone https://github.com/joselofarias-byte/NewTermux.git
 cd NewTermux
 
-# Main app (installs as com.termux)
-./gradlew assembleDebug
+# Play-safe debug (installs as com.newtermux.dev; does not update Termux Play)
+./gradlew assembleCoexistDebug
 
-# Coexist demo build (installs as com.termux.demo)
-./gradlew assembleDemo
+# Fake-shell demo (installs as com.termux.demo)
+./gradlew assemblePlaycompatDemo
 ```
 
-Built APKs are written to `app/build/outputs/apk/`.
+Do **not** install `assemblePlaycompatDebug` or `assemblePlaycompatRelease` over Termux Play: those variants keep `applicationId` `com.termux`.
+
+Built APKs are written to `app/build/outputs/apk/<flavor>/<buildType>/`.
 
 ---
 

@@ -53,6 +53,7 @@ android {
 
         buildConfigField "String", "TERMUX_PACKAGE_VARIANT", "\"" + project.ext.packageVariant + "\"" // Used by TermuxApplication class
 
+        // Overridden per identity flavor. AGP 8+ does not allow applicationId on BuildType.
         applicationId "com.termux"
         manifestPlaceholders.TERMUX_PACKAGE_NAME = "com.termux"
         manifestPlaceholders.TERMUX_APP_NAME = "NewTermux"
@@ -89,6 +90,25 @@ android {
         }
     }
 
+    // Fase 3: applicationId belongs on productFlavors, not buildTypes (AGP 8+).
+    // coexist = Play-safe debug identity. playcompat = com.termux (CI must not publish it).
+    flavorDimensions "identity"
+    productFlavors {
+        playcompat {
+            dimension "identity"
+            applicationId "com.termux"
+            manifestPlaceholders.TERMUX_PACKAGE_NAME = "com.termux"
+            manifestPlaceholders.TERMUX_APP_NAME = "NewTermux"
+        }
+        coexist {
+            dimension "identity"
+            // 16-char id; com.joselofarias.newtermux.debug rejected (PREFIX ELF length).
+            applicationId "com.newtermux.dev"
+            manifestPlaceholders.TERMUX_PACKAGE_NAME = "com.newtermux.dev"
+            manifestPlaceholders.TERMUX_APP_NAME = "NewTermux Dev"
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled true
@@ -100,28 +120,23 @@ android {
         debug {
             signingConfig signingConfigs.debug
             buildConfigField "boolean", "IS_DEMO", "false"
-            // Fase 3: debug must not share applicationId/sharedUserId with Termux Play.
-            // com.joselofarias.newtermux.debug is longer than the official PREFIX
-            // string and is rejected (see docs/NEWTERMUX_FASE3_COEXIST_2026-09-19.md).
-            applicationId "com.newtermux.dev"
-            manifestPlaceholders.TERMUX_PACKAGE_NAME = "com.newtermux.dev"
-            manifestPlaceholders.TERMUX_APP_NAME = "NewTermux Dev"
         }
 
-        // Test/coexist build: installs as com.termux.demo alongside real Termux and NewTermux.
-        // Fake shell — all Settings/toolbar/drawer/Text Expansion UI works; no real commands run.
+        // Fake shell. Only playcompatDemo is enabled (com.termux.demo).
+        // coexistDemo would become com.newtermux.dev.demo — not the documented demo id.
         demo {
             initWith debug
-            // Pin the full demo id; do not suffix the debug coexist id.
-            applicationId "com.termux.demo"
-            applicationIdSuffix ""
+            applicationIdSuffix ".demo"
             buildConfigField "boolean", "IS_DEMO", "true"
             matchingFallbacks = ['demo', 'debug']
-            // Override package name so sharedUserId and content provider authorities
-            // (com.termux.demo.documents, com.termux.demo.files) are unique and don't
-            // conflict with NewTermux Dev (com.newtermux.dev) or Termux Play (com.termux).
             manifestPlaceholders.TERMUX_PACKAGE_NAME = "com.termux.demo"
             manifestPlaceholders.TERMUX_APP_NAME = "NewTermux Demo"
+        }
+    }
+
+    variantFilter { variant ->
+        if (variant.flavors.any { it.name == "coexist" } && variant.buildType.name == "demo") {
+            setIgnore(true)
         }
     }
 

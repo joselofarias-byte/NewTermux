@@ -66,9 +66,10 @@ Ver tabla en el informe Fase 2. Resumen:
 
 Base: punta PR #10 `2493641`, no `main` viejo.
 
-- **Debug CI:** `applicationId` / `sharedUserId` / PREFIX / authorities = **`com.newtermux.dev`** (no Play).
-- **Release:** sigue `com.termux` (sigue chocando con Play; CI no lo construye).
-- **Demo:** `com.termux.demo` explícito (shell falso); no hereda suffix del debug.
+- **Debug CI:** `assembleCoexistDebug` → `applicationId` / `sharedUserId` / PREFIX / authorities = **`com.newtermux.dev`** (no Play).
+- **Playcompat:** sigue `com.termux` (sigue chocando con Play; CI **no** lo publica).
+- **Demo:** `assemblePlaycompatDemo` → `com.termux.demo` (shell falso). `coexistDemo` filtrado.
+- AGP: `applicationId` no va en `buildTypes` (CI `35445634939` FAIL). Flavors `identity`.
 - `com.joselofarias.newtermux.debug` **rechazado** (PREFIX ELF 31 chars).
 - No se parcheó el zip bootstrap (Fase 4). Guardas abortan si PREFIX apunta a Play.
 - Matriz: `docs/NEWTERMUX_FASE3_COEXIST_2026-09-19.md`.
@@ -83,8 +84,9 @@ No hay código de PRoot en la app. Queda post-bootstrap.
 
 ## 8. CI / artefactos (Fase 6 — parcial)
 
-- Workflow `Build` (`debug_build.yml`) en esta rama: run [35445138266](https://github.com/joselofarias-byte/NewTermux/actions/runs/35445138266) — **success** (`pull_request`, SHA `de24c28`).
-- Artefactos debug (no release): `termux-app_v1.6.2+de24c28-apt-android-{5,7}-github-debug_{universal,arm64-v8a,armeabi-v7a,x86_64,x86}` + sha256sums.
+- Workflow `Build` Fase 2: run [35445138266](https://github.com/joselofarias-byte/NewTermux/actions/runs/35445138266) — **success** (`de24c28`).
+- Fase 3 intento 1 (`b0540c7`, `applicationId` en BuildType): run [35445634939](https://github.com/joselofarias-byte/NewTermux/actions/runs/35445634939) — **FAIL** AGP. Corregido con flavors + `assembleCoexistDebug`.
+- Artefactos coexist (si el retry es verde): `app/build/outputs/apk/coexist/debug/termux-app_v1.6.2+<sha>-apt-android-{5,7}-github-debug_{universal,arm64-v8a,...}` + sha256sums.
 - Unit tests / wrapper validation siguen sin trigger útil.
 
 ## 9. Pruebas
@@ -119,7 +121,7 @@ Siguiente: Fase 4 (Go/goargs / bootstrap PREFIX-aware) en PR nuevo. No instalar 
 | Port 1.6.2 desde `main` + PR #8 | 2 | PASS |
 | Personalizaciones + NO_GO | 2 | PASS |
 | applicationId intacto en el port | 2 | PASS |
-| Debug `com.newtermux.dev` ≠ Play | 3 | PASS (estático; CI PENDIENTE al redactar) |
+| Debug `com.newtermux.dev` ≠ Play | 3 | PASS (estático; CI flavors PENDIENTE al redactar) |
 | Android 16 review documentada | 2 | PASS (estática) |
 | PendingIntent IMMUTABLE | 2 | FAIL (documentado) |
 | Unit tests CI | 1–2 | FAIL |

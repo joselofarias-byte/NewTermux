@@ -17,13 +17,23 @@
 | `com.newtermux.app` | **Rechazado** | Experimento abandonado 2026-03-02 (`94bbbc1`). Scripts/XML residuales no se reactivan |
 | **`com.newtermux.dev` (debug only)** | **Sí** | Distinto de Play; 16 chars (misma longitud que el experimento viejo) si Fase 4 reconstruye PREFIX; `sharedUserId` propio; authorities propias |
 
-**Release** permanece `com.termux` (drop-in futuro). Esta misión instala **debug**. CI `assembleDebug` produce la identidad coexistente.
+**Release / playcompat** permanece `com.termux` (drop-in futuro). Esta misión instala **`assembleCoexistDebug`**. CI no publica `playcompatDebug`.
+
+AGP 8+ **no** permite `applicationId` en `buildTypes` (CI `35445634939` falló con `Could not find method applicationId() on BuildType`). La identidad va en `productFlavors` dimensión `identity`: `coexist` / `playcompat`.
+
+| Tarea Gradle | applicationId | CI Build | Instalar junto a Play |
+| --- | --- | --- | --- |
+| `assembleCoexistDebug` | `com.newtermux.dev` | **sí** | objetivo Fase 3 |
+| `assemblePlaycompatDebug` | `com.termux` | no | **NO** (update/choque) |
+| `assemblePlaycompatRelease` | `com.termux` | no | **NO** |
+| `assemblePlaycompatDemo` | `com.termux.demo` | no (release workflow sí) | UI falsa, OK |
+| `assembleDebug` (todas las flavors debug) | ambas | **prohibido en CI** | incluiría Play-colliding |
 
 No se aplicó `scripts/patch-bootstrap.sh` ni patchelf. Ese hack (`.../fil`) se documenta como frágil y fuera de Fase 3.
 
 ---
 
-## 2. Matriz antes → después (`assembleDebug`)
+## 2. Matriz antes → después (`assembleCoexistDebug`)
 
 | Superficie | Antes (Fase 2 debug) | Después (este PR) | ¿Por qué? |
 | --- | --- | --- | --- |
@@ -37,25 +47,26 @@ No se aplicó `scripts/patch-bootstrap.sh` ni patchelf. Ese hack (`.../fil`) se 
 | Provider documents | `com.termux.documents` | `com.newtermux.dev.documents` | SAF aislado |
 | Provider files | `com.termux.files` | `com.newtermux.dev.files` | Content URIs aislados |
 | `taskAffinity` filereceiver | `com.termux.filereceiver` | `com.newtermux.dev.filereceiver` | Placeholder de manifiesto |
-| Shortcuts `targetPackage` | `com.termux` (main XML) | overlay debug → `com.newtermux.dev` | shortcuts.xml no interpola `${applicationId}` |
+| Shortcuts `targetPackage` | `com.termux` (main XML) | overlay `src/coexist` → `com.newtermux.dev` | shortcuts.xml no interpola `${applicationId}`; no va en `src/debug` para no ensuciar `playcompatDebug` |
 | Extra failsafe | `com.termux.app.failsafe_session` | `com.newtermux.dev.app.failsafe_session` | Constante derivada de `TERMUX_PACKAGE_NAME` |
 | Label launcher | NewTermux | **NewTermux Dev** | Distinguir iconos si ambos están instalados |
 | Firma debug | `app/testkey_untrusted.jks` | igual | Distinta de Play Store; no puede actualizar Play |
 | Bootstrap zip | `termux-packages` `2026.02.12-r1` | **igual, sin patch** | No mezclar goargs de Play; no ELF hack |
 | Plugin IDs derivados | `com.termux.api` etc. | `com.newtermux.dev.api` etc. | Debug no usa plugins oficiales de Play |
 
-### Release (`assembleRelease`) — sin cambio de ID
+### Playcompat (`assemblePlaycompatDebug` / `assemblePlaycompatRelease`) — sin cambio de ID
 
 | Superficie | Valor |
 | --- | --- |
 | applicationId / sharedUserId / PREFIX | `com.termux` / `/data/data/com.termux/files/usr` |
-| Sigue chocando con Play | Sí — no se construye en CI `Build` |
+| Sigue chocando con Play | Sí — **CI Build no lo construye** (`assembleCoexistDebug` only) |
 
-### Demo (`assembleDemo`) — ID explícito
+### Demo (`assemblePlaycompatDemo`) — suffix `.demo` sobre playcompat
 
 | Superficie | Valor |
 | --- | --- |
-| applicationId | `com.termux.demo` (fijado; **no** `com.newtermux.dev.demo`) |
+| applicationId | `com.termux.demo` (`playcompat` + `applicationIdSuffix ".demo"`) |
+| `coexistDemo` | **ignorado** (`variantFilter`) — sería `com.newtermux.dev.demo`, no el id documentado |
 | Shell | falso (`IS_DEMO`) |
 
 ---
@@ -114,7 +125,8 @@ No mergear este PR. `main` y PR #10 permanecen. Quitar la rama no toca Play.
 | Demo no hereda suffix del debug | código | PASS |
 | Guardas anti-PREFIX Play | código | PASS |
 | Replace textual ciego | proceso | PASS (no hecho) |
-| CI `assembleDebug` esta rama | cloud | PENDIENTE al escribir; se actualiza al correr |
+| CI `assembleDebug` con `applicationId` en BuildType | cloud | FAIL `35445634939` (AGP; corregido con flavors) |
+| CI `assembleCoexistDebug` esta rama | cloud | PENDIENTE al escribir; se actualiza al correr |
 | SHA-256 APK arm64 | CI artifact | PENDIENTE al escribir |
 | Instalación junto a Play | HONOR 200 | PENDIENTE |
 | Shell real / Go / PRoot | HONOR 200 + Fase 4–5 | PENDIENTE |
