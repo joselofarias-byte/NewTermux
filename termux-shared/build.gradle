@@ -36,6 +36,8 @@ android {
         minSdkVersion project.properties.minSdkVersion.toInteger()
         targetSdkVersion project.properties.targetSdkVersion.toInteger()
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        // Overridden per identity flavor so TERMUX_PACKAGE_NAME matches applicationId.
+        buildConfigField "String", "TERMUX_APP_PACKAGE", "\"com.termux\""
         externalNativeBuild {
             ndkBuild {
                 cppFlags ''
@@ -43,11 +45,39 @@ android {
         }
     }
 
+    flavorDimensions "identity"
+    productFlavors {
+        playcompat {
+            dimension "identity"
+            buildConfigField "String", "TERMUX_APP_PACKAGE", "\"com.termux\""
+        }
+        coexist {
+            dimension "identity"
+            buildConfigField "String", "TERMUX_APP_PACKAGE", "\"com.newtermux.dev\""
+        }
+    }
+
     buildTypes {
+        debug {}
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
+        demo {
+            initWith debug
+            // Only playcompatDemo is assembled; id stays com.termux.demo.
+            buildConfigField "String", "TERMUX_APP_PACKAGE", "\"com.termux.demo\""
+        }
+    }
+
+    variantFilter { variant ->
+        if (variant.flavors.any { it.name == "coexist" } && variant.buildType.name == "demo") {
+            setIgnore(true)
+        }
+    }
+
+    buildFeatures {
+        buildConfig true
     }
 
     compileOptions {
