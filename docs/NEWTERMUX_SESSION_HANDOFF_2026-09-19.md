@@ -201,7 +201,8 @@ Lista completa de producto tocado en Fases 3–6: `app/build.gradle` (flavors), 
 | PRoot/Debian/Codex scripts | 5 | PASS cloud / PENDIENTE-HARDWARE guest |
 | CI coexist debug + guards + SHA `2345efa0…` | 6 | PASS android-7; FAIL android-5 Maven 403 |
 | Unit tests CI en `main` | 6 | PASS `35446701056` |
-| Script físico + reporte 3 bloques | 7 | PASS cloud (exit 2) |
+| Script físico + reporte 3 bloques | 7 | PASS cloud (exit 2); workflow [35447245754](https://github.com/joselofarias-byte/NewTermux/actions/runs/35447245754) |
+| Fase4 inventory allowlist `scripts/fase7` | 7 | FAIL inicial `35447245674` (mención `goargs`); corregido |
 | Identidad / ABI / shell / PTY en teléfono | 7 | PENDIENTE-HARDWARE |
 | Paquetes / Go / PRoot / Node / Git / gh / Codex en teléfono | 7 | PENDIENTE-HARDWARE |
 | gh auth / Codex keys | 7 | BLOQUEADO (credenciales) |
