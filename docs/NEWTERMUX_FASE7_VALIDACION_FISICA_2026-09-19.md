@@ -55,7 +55,8 @@ Workflow: `.github/workflows/fase7_validate.yml` (artefacto del reporte cloud; n
 | --- | --- | --- |
 | Script + instrucciones + redacción | git | PASS |
 | APK canónico `2345efa0…` @ `f3eb365` documentado | git | PASS |
-| Clasificación CI / HONOR / bloqueado | cloud | PASS (se anota el run) |
+| Clasificación CI / HONOR / bloqueado | cloud | **PASS** Fase7 workflow [35447245754](https://github.com/joselofarias-byte/NewTermux/actions/runs/35447245754) |
+| Fase4 inventory vs script Fase 7 | cloud | **FAIL** [35447245674](https://github.com/joselofarias-byte/NewTermux/actions/runs/35447245674) (`goargs` en `scripts/fase7`); allowlist de inventario actualizada |
 | Identidad / ABI / shell / PTY | HONOR 200 | **PENDIENTE-HARDWARE** |
 | Paquetes / Go / PRoot / Debian | HONOR 200 | **PENDIENTE-HARDWARE** |
 | Node / Git / gh / Codex | HONOR 200 | **PENDIENTE-HARDWARE** |

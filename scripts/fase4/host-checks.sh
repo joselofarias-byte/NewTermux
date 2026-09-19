@@ -6,14 +6,14 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
 echo "== repo: goargs must stay absent =="
-if git grep -n --fixed-string 'goargs' -- ':!docs/' ':!scripts/fase4/' ':!.github/workflows/fase4_bootstrap_inventory.yml'; then
-  echo "FAIL: goargs leaked outside Fase 4 docs/scripts"
+if git grep -n --fixed-string 'goargs' -- ':!docs/' ':!scripts/fase4/' ':!scripts/fase7/' ':!.github/workflows/fase4_bootstrap_inventory.yml' ':!.github/workflows/fase7_validate.yml'; then
+  echo "FAIL: goargs leaked outside Fase 4/7 docs/scripts"
   exit 1
 fi
 echo "PASS: no product goargs"
 
 echo "== refuse Play golang patch filename in product trees =="
-if git grep -n 'src-runtime-runtime1.go.patch' -- ':!docs/' ':!scripts/fase4/' ':!.github/workflows/fase4_bootstrap_inventory.yml'; then
+if git grep -n 'src-runtime-runtime1.go.patch' -- ':!docs/' ':!scripts/fase4/' ':!scripts/fase7/' ':!.github/workflows/fase4_bootstrap_inventory.yml' ':!.github/workflows/fase7_validate.yml'; then
   echo "FAIL: Play runtime1 patch referenced in product code"
   exit 1
 fi
