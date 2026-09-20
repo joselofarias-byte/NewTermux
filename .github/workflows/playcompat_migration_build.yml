@@ -1,0 +1,72 @@
+name: Build playcompat migration APK
+
+on:
+  push:
+    branches:
+      - 'codex/playcompat-migration-build-*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-arm64:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Build playcompatDebug
+        env:
+          TERMUX_PACKAGE_VARIANT: apt-android-7
+          TERMUX_SPLIT_APKS_FOR_DEBUG_BUILDS: '1'
+          TERMUX_APP_VERSION_NAME: 1.6.2-playcompat
+          TERMUX_APK_VERSION_TAG: 1.6.2-playcompat-apt-android-7-debug
+        run: |
+          set -euo pipefail
+          ./gradlew assemblePlaycompatDebug --no-daemon
+
+      - name: Verify identity, bootstrap and architecture
+        id: verify
+        run: |
+          set -euo pipefail
+          DIR=app/build/outputs/apk/playcompat/debug
+          META="$DIR/output-metadata.json"
+          APK="$(find "$DIR" -maxdepth 1 -type f -name '*arm64-v8a.apk' -print -quit)"
+          test -n "$APK"
+          test -f "$META"
+
+          python3 - "$META" <<'PY'
+          import json, sys
+          meta = json.load(open(sys.argv[1], encoding="utf-8"))
+          assert meta.get("applicationId") == "com.termux", meta
+          assert meta.get("variantName") == "playcompatDebug", meta
+          print("PASS: playcompatDebug / com.termux")
+          PY
+
+          unzip -p "$APK" lib/arm64-v8a/libtermux-bootstrap.so > "$RUNNER_TEMP/bootstrap-aarch64.zip"
+          unzip -p "$RUNNER_TEMP/bootstrap-aarch64.zip" bin/login > "$RUNNER_TEMP/login" 2>/dev/null
+          grep -Fx '#!/data/data/com.termux/files/usr/bin/sh' "$RUNNER_TEMP/login"
+          unzip -l "$RUNNER_TEMP/bootstrap-aarch64.zip" 2>/dev/null |
+            grep -F 'lib/libandroid-support.so'
+
+          sha256sum "$APK" | tee "$APK.sha256"
+          printf 'apk=%s\n' "$APK" >> "$GITHUB_OUTPUT"
+          printf 'sha=%s\n' "$APK.sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Upload verified ARM64 migration APK
+        uses: actions/upload-artifact@v6
+        with:
+          name: NewTermux-playcompat-ARM64-verified
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            ${{ steps.verify.outputs.apk }}
+            ${{ steps.verify.outputs.sha }}
+            app/build/outputs/apk/playcompat/debug/output-metadata.json
