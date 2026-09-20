@@ -42,19 +42,25 @@ jobs:
           test -n "$APK"
           test -f "$META"
 
-          python3 - "$META" <<'PY'
-          import json, sys
-          meta = json.load(open(sys.argv[1], encoding="utf-8"))
-          assert meta.get("applicationId") == "com.termux", meta
-          assert meta.get("variantName") == "playcompatDebug", meta
-          print("PASS: playcompatDebug / com.termux")
-          PY
+          python3 - "$META" "$APK" <<'PY'
+          import io, json, sys, zipfile
 
-          unzip -p "$APK" lib/arm64-v8a/libtermux-bootstrap.so > "$RUNNER_TEMP/bootstrap-aarch64.zip"
-          unzip -p "$RUNNER_TEMP/bootstrap-aarch64.zip" bin/login > "$RUNNER_TEMP/login" 2>/dev/null
-          grep -Fx '#!/data/data/com.termux/files/usr/bin/sh' "$RUNNER_TEMP/login"
-          unzip -l "$RUNNER_TEMP/bootstrap-aarch64.zip" 2>/dev/null |
-            grep -F 'lib/libandroid-support.so'
+          metadata_path, apk_path = sys.argv[1:]
+          with open(metadata_path, encoding="utf-8") as stream:
+              metadata = json.load(stream)
+          assert metadata.get("applicationId") == "com.termux", metadata
+          assert metadata.get("variantName") == "playcompatDebug", metadata
+
+          with zipfile.ZipFile(apk_path) as apk:
+              bootstrap = apk.read("lib/arm64-v8a/libtermux-bootstrap.so")
+          with zipfile.ZipFile(io.BytesIO(bootstrap)) as archive:
+              names = set(archive.namelist())
+              login = archive.read("bin/login").decode("utf-8")
+          assert login.splitlines()[0] == "#!/data/data/com.termux/files/usr/bin/sh"
+          assert "lib/libandroid-support.so" in names
+          print("PASS: playcompatDebug / com.termux")
+          print("PASS: ARM64 bootstrap prefix and libandroid-support.so")
+          PY
 
           sha256sum "$APK" | tee "$APK.sha256"
           printf 'apk=%s\n' "$APK" >> "$GITHUB_OUTPUT"
