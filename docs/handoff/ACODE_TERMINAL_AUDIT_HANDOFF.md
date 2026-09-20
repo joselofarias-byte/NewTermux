@@ -394,8 +394,12 @@ Do not merge to `main` until physical validation (especially HONOR 200) and prod
 
 On this branch (implementation + handoff):
 
+On this branch (`git log origin/main..HEAD`):
+
 1. `90900b7` — `Harden session recovery, FGS notification actions, and RUN_COMMAND.`
-2. `b7410d6` — `Add Acode terminal audit handoff for research continuation.`
+2. `aeb0261` and follow-ups — `Add Acode terminal audit handoff for research continuation.` (plus tiny SHA/doc fixes if present)
+
+Canonical source of SHAs is `git log`, not this paragraph.
 
 Confirm with `git log origin/main..HEAD`.
 
