@@ -12,12 +12,15 @@
         android:name="android.software.leanback"
         android:required="false" />
 
+    <!-- Restored to Termux upstream `dangerous`. The fork had briefly used `normal`, which
+         granted RUN_COMMAND to any app at install with no prompt. Keep allow-external-apps=false
+         as the second gate. SettingsActivity stays exported for the launcher shortcut. -->
     <permission
         android:name="${TERMUX_PACKAGE_NAME}.permission.RUN_COMMAND"
         android:description="@string/permission_run_command_description"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/permission_run_command_label"
-        android:protectionLevel="normal" />
+        android:protectionLevel="dangerous" />
 
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.INTERNET" />
@@ -133,6 +136,7 @@
 
         <activity
             android:name=".shared.activities.ReportActivity"
+            android:exported="false"
             android:theme="@style/Theme.MarkdownViewActivity.DayNight"
             android:documentLaunchMode="intoExisting" />
 

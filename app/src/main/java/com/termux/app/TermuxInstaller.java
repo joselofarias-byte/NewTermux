@@ -301,6 +301,12 @@ public final class TermuxInstaller {
                         dialog.dismiss();
                         activity.finish();
                     })
+                    .setNeutralButton(R.string.bootstrap_error_failsafe, (dialog, which) -> {
+                        dialog.dismiss();
+                        if (activity instanceof TermuxActivity) {
+                            ((TermuxActivity) activity).startFailsafeSessionFromRecovery();
+                        }
+                    })
                     .setPositiveButton(R.string.bootstrap_error_try_again, (dialog, which) -> {
                         dialog.dismiss();
                         FileUtils.deleteFile("termux prefix directory", TERMUX_PREFIX_DIR_PATH, true);

@@ -181,6 +181,7 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
                 removeFinishedSession(finishedSession);
             }
         }
+        mActivity.updateSessionStatusBar();
     }
 
     @Override
@@ -366,10 +367,14 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
     }
 
     public void addNewSession(boolean isFailSafe, String sessionName) {
+        addNewSession(isFailSafe, sessionName, false);
+    }
+
+    public void addNewSession(boolean isFailSafe, String sessionName, boolean bypassMaxForRecovery) {
         TermuxService service = mActivity.getTermuxService();
         if (service == null) return;
 
-        if (service.getTermuxSessionsSize() >= MAX_SESSIONS) {
+        if (!bypassMaxForRecovery && service.getTermuxSessionsSize() >= MAX_SESSIONS) {
             new AlertDialog.Builder(mActivity).setTitle(R.string.title_max_terminals_reached).setMessage(R.string.msg_max_terminals_reached)
                 .setPositiveButton(android.R.string.ok, null).show();
         } else {
@@ -394,17 +399,67 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
 
             TerminalSession newTerminalSession = newTermuxSession.getTerminalSession();
             setCurrentSession(newTerminalSession);
-
-            // Startup script — dot-source into the live shell if enabled and file exists
-            if (NewTermuxSettings.isStartupScriptEnabled(mActivity)) {
-                String scriptPath = TermuxConstants.TERMUX_DATA_HOME_DIR_PATH + "/startup-script.sh";
-                if (new java.io.File(scriptPath).exists()) {
-                    String cmd = ". " + scriptPath + "\n";
-                    newTerminalSession.write(cmd.getBytes(), 0, cmd.length());
-                }
-            }
+            maybeRunStartupScript(isFailSafe, newTerminalSession);
 
             mActivity.getDrawer().closeDrawers();
+        }
+    }
+
+    /**
+     * Restart a session's shell: capture cwd/name/failsafe, remove the old session, create a new one.
+     * This is not a true PTY reconnect after process death (impossible in-UID); it recreates the shell.
+     */
+    public void restartSession(TerminalSession session) {
+        TermuxService service = mActivity.getTermuxService();
+        if (service == null || session == null) return;
+
+        boolean isFailSafe = false;
+        String sessionName = session.mSessionName;
+        String workingDirectory = session.getCwd();
+        TermuxSession existing = service.getTermuxSessionForTerminalSession(session);
+        if (existing != null && existing.getExecutionCommand() != null) {
+            isFailSafe = existing.getExecutionCommand().isFailsafe;
+        }
+
+        session.finishIfRunning();
+        int index = service.removeTermuxSession(session);
+
+        if (service.getTermuxSessionsSize() >= MAX_SESSIONS) {
+            new AlertDialog.Builder(mActivity).setTitle(R.string.title_max_terminals_reached).setMessage(R.string.msg_max_terminals_reached)
+                .setPositiveButton(android.R.string.ok, null).show();
+            return;
+        }
+
+        TermuxSession newTermuxSession = service.createTermuxSession(null, null, null, workingDirectory, isFailSafe, sessionName);
+        if (newTermuxSession == null) return;
+        TerminalSession newTerminalSession = newTermuxSession.getTerminalSession();
+        setCurrentSession(newTerminalSession);
+        maybeRunStartupScript(isFailSafe, newTerminalSession);
+        Logger.logDebug(LOG_TAG, "Restarted session at former index " + index);
+        mActivity.showToast(mActivity.getString(R.string.msg_session_restarted), false);
+    }
+
+    /** Re-attach the UI client to whatever sessions the service still holds. */
+    public void reconnectToExistingSessions() {
+        TermuxService service = mActivity.getTermuxService();
+        if (service == null) return;
+        service.setTermuxTerminalSessionClient(this);
+        TerminalSession stored = getCurrentStoredSessionOrLast();
+        if (stored != null) {
+            setCurrentSession(stored);
+        }
+        termuxSessionListNotifyUpdated();
+        mActivity.showToast(mActivity.getString(R.string.msg_session_reconnected), false);
+    }
+
+    private void maybeRunStartupScript(boolean isFailSafe, TerminalSession newTerminalSession) {
+        // Failsafe must stay a clean /system/bin/sh — do not inject ~/.termux/startup-script.sh.
+        if (isFailSafe) return;
+        if (!NewTermuxSettings.isStartupScriptEnabled(mActivity)) return;
+        String scriptPath = TermuxConstants.TERMUX_DATA_HOME_DIR_PATH + "/startup-script.sh";
+        if (new File(scriptPath).exists()) {
+            String cmd = ". " + scriptPath + "\n";
+            newTerminalSession.write(cmd.getBytes(), 0, cmd.length());
         }
     }
 

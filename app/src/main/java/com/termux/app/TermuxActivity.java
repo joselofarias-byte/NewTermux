@@ -80,6 +80,7 @@ import com.newtermux.features.AutoCorrectHandler;
 import com.newtermux.features.NewTermuxSettings;
 import com.newtermux.features.NewTermuxTheme;
 import com.newtermux.features.RootToggleManager;
+import com.newtermux.features.SessionStatusText;
 import com.newtermux.features.SpeechInputManager;
 import com.termux.app.terminal.MiniTerminalPipView;
 
@@ -228,8 +229,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     private static final int CONTEXT_MENU_SELECT_URL_ID = 0;
     private static final int CONTEXT_MENU_SHARE_TRANSCRIPT_ID = 1;
-    private static final int CONTEXT_MENU_SHARE_SELECTED_TEXT = 10;
-    private static final int CONTEXT_MENU_AUTOFILL_USERNAME = 11;
     private static final int CONTEXT_MENU_AUTOFILL_PASSWORD = 2;
     private static final int CONTEXT_MENU_RESET_TERMINAL_ID = 3;
     private static final int CONTEXT_MENU_KILL_PROCESS_ID = 4;
@@ -238,6 +237,11 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private static final int CONTEXT_MENU_HELP_ID = 7;
     private static final int CONTEXT_MENU_SETTINGS_ID = 8;
     private static final int CONTEXT_MENU_REPORT_ID = 9;
+    private static final int CONTEXT_MENU_SHARE_SELECTED_TEXT = 10;
+    private static final int CONTEXT_MENU_AUTOFILL_USERNAME = 11;
+    private static final int CONTEXT_MENU_RESTART_SESSION_ID = 12;
+    private static final int CONTEXT_MENU_FAILSAFE_SESSION_ID = 13;
+    private static final int CONTEXT_MENU_RECONNECT_SESSION_ID = 14;
 
     private static final String ARG_TERMINAL_TOOLBAR_TEXT_INPUT = "terminal_toolbar_text_input";
     private static final String ARG_ACTIVITY_RECREATED = "activity_recreated";
@@ -427,6 +431,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         if (mTermuxTerminalSessionActivityClient != null)
             mTermuxTerminalSessionActivityClient.checkForFontAndColors();
 
+        updateSessionStatusBar();
+
         // Run any command injected by Settings (e.g. "pkg install zsh\n")
         String pendingCmd = com.newtermux.features.NewTermuxSettings.getPendingCommand(this);
         if (pendingCmd != null) {
@@ -593,6 +599,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         // Now that the service is connected and sessions exist, populate the session chips.
         updateSessionTabs();
+        updateSessionStatusBar();
 
         // Ensure zsh plugins + shell are set up for existing installs that skipped first-run.
         new Thread(() -> TermuxInstaller.installZshPlugins(this)).start();
@@ -849,6 +856,23 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                     mTermuxTerminalSessionActivityClient.addNewSession(false, null);
                 }
             });
+            btnNewSession.setOnLongClickListener(v -> {
+                startFailsafeSessionFromRecovery();
+                return true;
+            });
+        }
+
+        View btnReconnect = findViewById(R.id.btn_reconnect_session);
+        if (btnReconnect != null) {
+            btnReconnect.setOnClickListener(v -> reconnectSessions());
+        }
+        View btnRestart = findViewById(R.id.btn_restart_session);
+        if (btnRestart != null) {
+            btnRestart.setOnClickListener(v -> restartCurrentSession());
+        }
+        View btnFailsafe = findViewById(R.id.btn_failsafe_session);
+        if (btnFailsafe != null) {
+            btnFailsafe.setOnClickListener(v -> startFailsafeSessionFromRecovery());
         }
 
         // Session pip row
@@ -906,9 +930,15 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             android.widget.TextView nameLabel = new android.widget.TextView(this);
             String displayName = (session.mSessionName != null && !session.mSessionName.isEmpty())
                     ? session.mSessionName : "#" + (i + 1);
+            boolean isFailsafe = termuxSession.getExecutionCommand() != null
+                && termuxSession.getExecutionCommand().isFailsafe;
+            if (isFailsafe) {
+                displayName = getString(R.string.session_pip_failsafe_prefix) + " " + displayName;
+            }
             nameLabel.setText(displayName);
             nameLabel.setTextSize(10f);
-            nameLabel.setTextColor(0xFFAAAAAA);
+            boolean sessionRunning = session.isRunning();
+            nameLabel.setTextColor(sessionRunning ? 0xFFAAAAAA : 0xFFCF6679);
             nameLabel.setMaxLines(1);
             nameLabel.setEllipsize(android.text.TextUtils.TruncateAt.END);
             nameLabel.setGravity(Gravity.CENTER_HORIZONTAL);
@@ -922,6 +952,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             MiniTerminalPipView pip = new MiniTerminalPipView(this);
             pip.setSession(session);
             pip.setActive(session == currentSession);
+            pip.setDead(!sessionRunning);
+            pip.setFailsafe(isFailsafe);
             pip.setLayoutParams(new LinearLayout.LayoutParams(pipWidthPx, pipHeightPx));
             wrapper.addView(pip);
 
@@ -939,12 +971,15 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
             mSessionPipContainer.addView(wrapper);
         }
+        updateSessionStatusBar();
     }
 
     private void showSessionPopupMenu(View anchor, TerminalSession session) {
         android.widget.PopupMenu popup = new android.widget.PopupMenu(this, anchor);
         popup.getMenu().add(0, 1, 0, "Rename");
-        popup.getMenu().add(0, 2, 1, "Close");
+        popup.getMenu().add(0, 4, 1, getString(R.string.action_restart_session));
+        popup.getMenu().add(0, 5, 2, getString(R.string.action_failsafe_session));
+        popup.getMenu().add(0, 2, 3, "Close");
         popup.setOnMenuItemClickListener(item -> {
             if (item.getItemId() == 1) {
                 if (mTermuxTerminalSessionActivityClient != null)
@@ -953,6 +988,11 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 session.finishIfRunning();
                 if (mTermuxTerminalSessionActivityClient != null)
                     mTermuxTerminalSessionActivityClient.removeFinishedSession(session);
+            } else if (item.getItemId() == 4) {
+                if (mTermuxTerminalSessionActivityClient != null)
+                    mTermuxTerminalSessionActivityClient.restartSession(session);
+            } else if (item.getItemId() == 5) {
+                startFailsafeSessionFromRecovery();
             }
             return true;
         });
@@ -1429,6 +1469,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         if (autoFillEnabled)
             menu.add(Menu.NONE, CONTEXT_MENU_AUTOFILL_PASSWORD, Menu.NONE, R.string.action_autofill_password);
         menu.add(Menu.NONE, CONTEXT_MENU_RESET_TERMINAL_ID, Menu.NONE, R.string.action_reset_terminal);
+        menu.add(Menu.NONE, CONTEXT_MENU_RESTART_SESSION_ID, Menu.NONE, R.string.action_restart_session);
+        menu.add(Menu.NONE, CONTEXT_MENU_RECONNECT_SESSION_ID, Menu.NONE, R.string.action_reconnect_session);
+        menu.add(Menu.NONE, CONTEXT_MENU_FAILSAFE_SESSION_ID, Menu.NONE, R.string.action_failsafe_session);
         menu.add(Menu.NONE, CONTEXT_MENU_KILL_PROCESS_ID, Menu.NONE, getResources().getString(R.string.action_kill_process, getCurrentSession().getPid())).setEnabled(currentSession.isRunning());
         menu.add(Menu.NONE, CONTEXT_MENU_STYLING_ID, Menu.NONE, R.string.action_style_terminal);
         menu.add(Menu.NONE, CONTEXT_MENU_TOGGLE_KEEP_SCREEN_ON, Menu.NONE, R.string.action_toggle_keep_screen_on).setCheckable(true).setChecked(mPreferences.shouldKeepScreenOn());
@@ -1466,6 +1509,15 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 return true;
             case CONTEXT_MENU_RESET_TERMINAL_ID:
                 onResetTerminalSession(session);
+                return true;
+            case CONTEXT_MENU_RESTART_SESSION_ID:
+                restartCurrentSession();
+                return true;
+            case CONTEXT_MENU_RECONNECT_SESSION_ID:
+                reconnectSessions();
+                return true;
+            case CONTEXT_MENU_FAILSAFE_SESSION_ID:
+                startFailsafeSessionFromRecovery();
                 return true;
             case CONTEXT_MENU_KILL_PROCESS_ID:
                 showKillSessionDialog(session);
@@ -1652,6 +1704,88 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         if (mTermuxSessionListViewController != null)
             mTermuxSessionListViewController.notifyDataSetChanged();
         updateSessionTabs();
+        updateSessionStatusBar();
+    }
+
+    /**
+     * Start a failsafe /system/bin/sh session from in-app recovery controls.
+     * Used by the status bar, long-press New Session, pip menu, context menu, and bootstrap errors.
+     */
+    public void startFailsafeSessionFromRecovery() {
+        if (mTermuxTerminalSessionActivityClient == null) {
+            showToast(getString(R.string.msg_reconnecting_service), false);
+            reconnectSessions();
+            return;
+        }
+        mTermuxTerminalSessionActivityClient.addNewSession(true, "failsafe", true);
+        showToast(getString(R.string.msg_failsafe_session_started), false);
+        updateSessionStatusBar();
+    }
+
+    public void restartCurrentSession() {
+        if (mTermuxTerminalSessionActivityClient == null) {
+            reconnectSessions();
+            return;
+        }
+        TerminalSession session = getCurrentSession();
+        if (session == null) {
+            mTermuxTerminalSessionActivityClient.addNewSession(false, null);
+            return;
+        }
+        mTermuxTerminalSessionActivityClient.restartSession(session);
+        updateSessionStatusBar();
+    }
+
+    public void reconnectSessions() {
+        if (mTermuxService == null) {
+            try {
+                Intent serviceIntent = new Intent(this, TermuxService.class);
+                startService(serviceIntent);
+                bindService(serviceIntent, this, 0);
+                showToast(getString(R.string.msg_reconnecting_service), false);
+            } catch (Exception e) {
+                Logger.logStackTraceWithMessage(LOG_TAG, "Failed to reconnect TermuxService", e);
+                showToast(getString(R.string.error_termux_service_start_failed_general), true);
+            }
+            updateSessionStatusBar();
+            return;
+        }
+        if (mTermuxTerminalSessionActivityClient != null) {
+            mTermuxTerminalSessionActivityClient.reconnectToExistingSessions();
+        }
+        updateSessionStatusBar();
+    }
+
+    /** Refresh the toolbar status strip and emphasize recovery actions when needed. */
+    public void updateSessionStatusBar() {
+        TextView statusView = findViewById(R.id.tv_session_status);
+        if (statusView == null) return;
+
+        TerminalSession session = getCurrentSession();
+        boolean serviceConnected = mTermuxService != null;
+        boolean sessionPresent = session != null;
+        boolean sessionRunning = sessionPresent && session.isRunning();
+        boolean failsafe = false;
+        boolean wakeLockHeld = serviceConnected && mTermuxService.isWakeLockHeld();
+        if (serviceConnected && sessionPresent) {
+            com.termux.shared.termux.shell.command.runner.terminal.TermuxSession termuxSession =
+                mTermuxService.getTermuxSessionForTerminalSession(session);
+            failsafe = termuxSession != null
+                && termuxSession.getExecutionCommand() != null
+                && termuxSession.getExecutionCommand().isFailsafe;
+        }
+
+        statusView.setText(SessionStatusText.format(serviceConnected, sessionPresent, sessionRunning, failsafe, wakeLockHeld));
+        statusView.setTextColor(sessionPresent && !sessionRunning ? 0xFFCF6679 : 0xFFAAAAAA);
+
+        View btnReconnect = findViewById(R.id.btn_reconnect_session);
+        View btnRestart = findViewById(R.id.btn_restart_session);
+        if (btnReconnect != null) {
+            btnReconnect.setAlpha(SessionStatusText.shouldOfferReconnect(serviceConnected) ? 1f : 0.7f);
+        }
+        if (btnRestart != null) {
+            btnRestart.setAlpha(SessionStatusText.shouldOfferRestart(serviceConnected, sessionPresent, sessionRunning) ? 1f : 0.7f);
+        }
     }
 
     public boolean isVisible() {
