@@ -79,7 +79,7 @@ jobs:
           import os, pathlib, re, sys
           root = pathlib.Path(os.environ["RUNNER_TEMP"]) / "termux-packages"
           text = (root / "scripts/build-bootstraps.sh").read_text()
-          names = re.findall(r'PACKAGES\+=\("([^"]+)"\)', text)
+          names = re.findall(r'PACKAGES\+=\("([a-z0-9][a-z0-9+-]*)"\)', text)
           missing = [n for n in names if not (root / "packages" / n / "build.sh").is_file()]
           print("bootstrap_packages=" + " ".join(names))
           if missing:
