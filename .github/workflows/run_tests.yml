@@ -5,10 +5,13 @@ on:
     branches:
       - master
       - android-10
+      - main
+      - 'research/**'
   pull_request:
     branches:
-      - master
-      - android-10
+    - master
+    - android-10
+    - main
 
 jobs:
   testing:

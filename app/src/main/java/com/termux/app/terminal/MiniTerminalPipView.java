@@ -22,11 +22,16 @@ public class MiniTerminalPipView extends View {
     private final TerminalRenderer mRenderer;
     private final Paint mBorderPaint = new Paint();
     private final Paint mBgPaint = new Paint();
+    private final Paint mOverlayPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private boolean mIsActive = false;
+    private boolean mIsDead = false;
+    private boolean mIsFailsafe = false;
 
     // Border colors
     private static final int COLOR_BORDER_ACTIVE  = 0xFFBB86FC;
     private static final int COLOR_BORDER_INACTIVE = 0xFF444444;
+    private static final int COLOR_BORDER_DEAD = 0xFFCF6679;
+    private static final int COLOR_BORDER_FAILSAFE = 0xFFFFB74D;
     private static final float BORDER_WIDTH = 2.5f;
 
     public MiniTerminalPipView(Context context) {
@@ -37,10 +42,15 @@ public class MiniTerminalPipView extends View {
         mBorderPaint.setStrokeWidth(BORDER_WIDTH);
         mBorderPaint.setAntiAlias(false);
         mBgPaint.setStyle(Paint.Style.FILL);
+        mOverlayPaint.setColor(0xCCCF6679);
+        mOverlayPaint.setTextSize(18f);
+        mOverlayPaint.setTypeface(Typeface.DEFAULT_BOLD);
+        mOverlayPaint.setTextAlign(Paint.Align.CENTER);
     }
 
     public void setSession(TerminalSession session) {
         mSession = session;
+        mIsDead = session != null && !session.isRunning();
         invalidate();
     }
 
@@ -54,8 +64,23 @@ public class MiniTerminalPipView extends View {
         invalidate();
     }
 
+    public void setDead(boolean dead) {
+        if (mIsDead == dead) return;
+        mIsDead = dead;
+        invalidate();
+    }
+
+    public void setFailsafe(boolean failsafe) {
+        if (mIsFailsafe == failsafe) return;
+        mIsFailsafe = failsafe;
+        invalidate();
+    }
+
     /** Call from onTextChanged() — safe from any thread. */
     public void notifyUpdate() {
+        if (mSession != null) {
+            mIsDead = !mSession.isRunning();
+        }
         postInvalidate();
     }
 
@@ -86,8 +111,21 @@ public class MiniTerminalPipView extends View {
             }
         }
 
-        // Border — accent when active, dim when inactive
-        mBorderPaint.setColor(mIsActive ? COLOR_BORDER_ACTIVE : COLOR_BORDER_INACTIVE);
+        if (mIsDead) {
+            canvas.drawText("EXIT", getWidth() / 2f, getHeight() / 2f + 6f, mOverlayPaint);
+        }
+
+        int borderColor;
+        if (mIsDead) {
+            borderColor = COLOR_BORDER_DEAD;
+        } else if (mIsFailsafe) {
+            borderColor = COLOR_BORDER_FAILSAFE;
+        } else if (mIsActive) {
+            borderColor = COLOR_BORDER_ACTIVE;
+        } else {
+            borderColor = COLOR_BORDER_INACTIVE;
+        }
+        mBorderPaint.setColor(borderColor);
         float half = BORDER_WIDTH / 2f;
         canvas.drawRect(half, half, getWidth() - half, getHeight() - half, mBorderPaint);
     }

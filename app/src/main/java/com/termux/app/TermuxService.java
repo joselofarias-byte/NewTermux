@@ -108,6 +108,17 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
     /** If the user has executed the {@link TERMUX_SERVICE#ACTION_STOP_SERVICE} intent. */
     boolean mWantsToStop = false;
 
+    /**
+     * Internal (non-exported) notification action to open a failsafe session.
+     * Not part of the plugin RUN_COMMAND API. TermuxService is {@code exported=false}.
+     */
+    static final String ACTION_NEW_FAILSAFE_SESSION = TermuxConstants.TERMUX_PACKAGE_NAME + ".service_new_failsafe_session";
+
+    private static final int PENDING_INTENT_CONTENT = 0;
+    private static final int PENDING_INTENT_EXIT = 1;
+    private static final int PENDING_INTENT_WAKE_LOCK = 2;
+    private static final int PENDING_INTENT_FAILSAFE = 3;
+
     private static final String LOG_TAG = "TermuxService";
 
     @Override
@@ -137,6 +148,12 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
         if (intent != null) {
             Logger.logVerboseExtended(LOG_TAG, "Intent Received:\n" + IntentUtils.getIntentString(intent));
             action = intent.getAction();
+        } else {
+            // START_STICKY restart after process death: in-memory sessions cannot be restored.
+            // Stop the empty FGS unless a wake lock / leftover task is somehow still tracked.
+            Logger.logWarn(LOG_TAG, "TermuxService sticky-restarted after process death; sessions were not restored");
+            updateNotification();
+            return Service.START_STICKY;
         }
 
         if (action != null) {
@@ -156,6 +173,10 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
                 case TERMUX_SERVICE.ACTION_SERVICE_EXECUTE:
                     Logger.logDebug(LOG_TAG, "ACTION_SERVICE_EXECUTE intent received");
                     actionServiceExecute(intent);
+                    break;
+                case ACTION_NEW_FAILSAFE_SESSION:
+                    Logger.logDebug(LOG_TAG, "ACTION_NEW_FAILSAFE_SESSION intent received");
+                    actionNewFailsafeSession();
                     break;
                 default:
                     Logger.logError(LOG_TAG, "Invalid action: \"" + action + "\"");
@@ -224,6 +245,17 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
         mWantsToStop = true;
         killAllTermuxExecutionCommands();
         requestStopService();
+    }
+
+    /** Open a failsafe /system/bin/sh session from the FGS notification. */
+    private void actionNewFailsafeSession() {
+        TermuxSession session = createTermuxSession(null, null, null, null, true, "failsafe");
+        if (session == null) {
+            Logger.logError(LOG_TAG, "Failed to create failsafe session from notification");
+            return;
+        }
+        handleSessionAction(TERMUX_SERVICE.VALUE_EXTRA_SESSION_ACTION_SWITCH_TO_NEW_SESSION_AND_OPEN_ACTIVITY,
+            session.getTerminalSession());
     }
 
     /** Kill all TermuxSessions and TermuxTasks by sending SIGKILL to their processes.
@@ -802,8 +834,9 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
         Resources res = getResources();
 
         // Set pending intent to be launched when notification is clicked
+        int pendingIntentFlags = PendingIntentFlags.immutableUpdateCurrent();
         Intent notificationIntent = TermuxActivity.newInstance(this);
-        PendingIntent contentIntent = PendingIntent.getActivity(this, 0, notificationIntent, 0);
+        PendingIntent contentIntent = PendingIntent.getActivity(this, PENDING_INTENT_CONTENT, notificationIntent, pendingIntentFlags);
 
 
         // Set notification text
@@ -846,7 +879,8 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
 
         // Set Exit button action
         Intent exitIntent = new Intent(this, TermuxService.class).setAction(TERMUX_SERVICE.ACTION_STOP_SERVICE);
-        builder.addAction(android.R.drawable.ic_delete, res.getString(R.string.notification_action_exit), PendingIntent.getService(this, 0, exitIntent, 0));
+        builder.addAction(android.R.drawable.ic_delete, res.getString(R.string.notification_action_exit),
+            PendingIntent.getService(this, PENDING_INTENT_EXIT, exitIntent, pendingIntentFlags));
 
 
         // Set Wakelock button actions
@@ -854,7 +888,14 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
         Intent toggleWakeLockIntent = new Intent(this, TermuxService.class).setAction(newWakeAction);
         String actionTitle = res.getString(wakeLockHeld ? R.string.notification_action_wake_unlock : R.string.notification_action_wake_lock);
         int actionIcon = wakeLockHeld ? android.R.drawable.ic_lock_idle_lock : android.R.drawable.ic_lock_lock;
-        builder.addAction(actionIcon, actionTitle, PendingIntent.getService(this, 0, toggleWakeLockIntent, 0));
+        builder.addAction(actionIcon, actionTitle,
+            PendingIntent.getService(this, PENDING_INTENT_WAKE_LOCK, toggleWakeLockIntent, pendingIntentFlags));
+
+
+        // Failsafe recovery without depending on launcher shortcuts.
+        Intent failsafeIntent = new Intent(this, TermuxService.class).setAction(ACTION_NEW_FAILSAFE_SESSION);
+        builder.addAction(android.R.drawable.ic_menu_revert, res.getString(R.string.notification_action_failsafe),
+            PendingIntent.getService(this, PENDING_INTENT_FAILSAFE, failsafeIntent, pendingIntentFlags));
 
 
         return builder.build();

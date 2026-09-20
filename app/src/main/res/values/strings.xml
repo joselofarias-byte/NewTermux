@@ -100,6 +100,20 @@
     <string name="notification_action_exit">Exit</string>
     <string name="notification_action_wake_lock">Acquire wakelock</string>
     <string name="notification_action_wake_unlock">Release wakelock</string>
+    <string name="notification_action_failsafe">Failsafe</string>
+
+    <!-- Session status / recovery -->
+    <string name="action_restart_session">Restart</string>
+    <string name="action_reconnect_session">Reconnect</string>
+    <string name="action_failsafe_session">Failsafe</string>
+    <string name="msg_session_reconnected">Reattached to existing sessions</string>
+    <string name="msg_session_restarted">Session restarted</string>
+    <string name="msg_failsafe_session_started">Failsafe session started</string>
+    <string name="msg_reconnecting_service">Reconnecting to service…</string>
+    <string name="session_pip_failsafe_prefix">FS</string>
+    <string name="session_pip_exited">EXIT</string>
+    <string name="content_description_new_session">New session. Long press for failsafe.</string>
+    <string name="bootstrap_error_failsafe">Failsafe</string>
 
 
 
