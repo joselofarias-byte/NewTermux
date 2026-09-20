@@ -59,6 +59,46 @@ jobs:
             exit 1
           fi
           grep -nE 'TERMUX_APP__PACKAGE_NAME=|TERMUX_APP_PACKAGE=' "$props" | head
+          # The image may already export ANDROID_HOME to a read-only tree.
+          # Force the writable copy once prepare-sdk has created it.
+          cat >> "$props" <<'EOF'
+
+if [ -d "${HOME}/android-sdk-writable/platforms/android-33" ]; then
+  export ANDROID_HOME="${HOME}/android-sdk-writable"
+  export ANDROID_SDK_ROOT="${ANDROID_HOME}"
+fi
+EOF
+
+      - name: Install a writable Android-33 SDK for termux-am
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/termux-packages"
+          # Fail fast before the ~1h apt compile. Run 35477142849 died at
+          # termux-am :app:assembleRelease with:
+          #   Failed to read or create install properties file
+          #   platforms;android-33 / build-tools;30.0.3
+          ./scripts/run-docker.sh bash -c '
+            set -eu
+            src="$(ls -d /home/builder/lib/android-sdk-* | head -n 1)"
+            dest=/home/builder/android-sdk-writable
+            echo "sdk_src=$src dest=$dest"
+            rm -rf "$dest"
+            cp -a "$src" "$dest"
+            if [ -x "$dest/cmdline-tools/latest/bin/sdkmanager" ]; then
+              sdk="$dest/cmdline-tools/latest/bin/sdkmanager"
+            elif [ -x "$dest/cmdline-tools/bin/sdkmanager" ]; then
+              sdk="$dest/cmdline-tools/bin/sdkmanager"
+            else
+              echo "FAIL: sdkmanager not found under $dest" >&2
+              find "$dest" -name sdkmanager >&2 || true
+              exit 1
+            fi
+            yes | "$sdk" --sdk_root="$dest" --licenses >/dev/null || true
+            yes | "$sdk" --sdk_root="$dest" "platforms;android-33" "build-tools;30.0.3"
+            test -d "$dest/platforms/android-33"
+            test -d "$dest/build-tools/30.0.3"
+            echo "writable_sdk_ready=$dest"
+          '
 
       - name: Build package-aware aarch64 bootstrap from source
         run: |
@@ -71,9 +111,13 @@ jobs:
           # dependencies against the com.newtermux.dev PREFIX.
           #
           # Run inside the official build container because build-bootstraps.sh
-          # intentionally uses /home/builder/termux-packages.
-          ./scripts/run-docker.sh ./scripts/build-bootstraps.sh \
-            --architectures aarch64
+          # intentionally uses /home/builder/termux-packages. ANDROID_HOME must
+          # be the writable tree prepared above so termux-am can compile.
+          ./scripts/run-docker.sh bash -c '
+            export ANDROID_HOME=/home/builder/android-sdk-writable
+            export ANDROID_SDK_ROOT="$ANDROID_HOME"
+            exec ./scripts/build-bootstraps.sh --architectures aarch64
+          '
 
           test -f bootstrap-aarch64.zip
           mkdir -p "$RUNNER_TEMP/newtermux-bootstrap"
