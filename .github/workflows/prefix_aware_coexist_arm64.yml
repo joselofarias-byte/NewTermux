@@ -167,7 +167,14 @@ jobs:
         run: |
           set -euo pipefail
           zip="$RUNNER_TEMP/newtermux-bootstrap/bootstrap-aarch64.zip"
-          chmod +x scripts/fase8/verify-bootstrap-prefix.sh
+          chmod +x scripts/fase8/rewrite-bootstrap-prefix.sh \
+            scripts/fase8/verify-bootstrap-prefix.sh
+          # Source-built dpkg/apt already embed com.newtermux.dev in ELF
+          # .rodata (run 35484720379: elf_rodata_old_prefix_files=0, login
+          # shebang and bash RUNPATH were already NewTermux). termux-tools
+          # scripts still hard-code /data/data/com.termux fallbacks; rewrite
+          # those text files without touching ELF.
+          scripts/fase8/rewrite-bootstrap-prefix.sh "$zip" com.newtermux.dev
           scripts/fase8/verify-bootstrap-prefix.sh "$zip" com.newtermux.dev
 
           # Physical HONOR 200 exposed that rewriting only ELF RUNPATH is not
