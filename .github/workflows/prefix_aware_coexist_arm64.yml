@@ -61,13 +61,14 @@ jobs:
           grep -nE 'TERMUX_APP__PACKAGE_NAME=|TERMUX_APP_PACKAGE=' "$props" | head
           # The image may already export ANDROID_HOME to a read-only tree.
           # Force the writable copy once prepare-sdk has created it.
-          cat >> "$props" <<'EOF'
-
-if [ -d "${HOME}/android-sdk-writable/platforms/android-33" ]; then
-  export ANDROID_HOME="${HOME}/android-sdk-writable"
-  export ANDROID_SDK_ROOT="${ANDROID_HOME}"
-fi
-EOF
+          # Keep this indented: an unindented heredoc breaks the workflow YAML
+          # (push run 35479419864 failed with zero jobs).
+          printf '%s\n' \
+            '' \
+            'if [ -d "${HOME}/android-sdk-writable/platforms/android-33" ]; then' \
+            '  export ANDROID_HOME="${HOME}/android-sdk-writable"' \
+            '  export ANDROID_SDK_ROOT="${ANDROID_HOME}"' \
+            'fi' >> "$props"
 
       - name: Install a writable Android-33 SDK for termux-am
         run: |
