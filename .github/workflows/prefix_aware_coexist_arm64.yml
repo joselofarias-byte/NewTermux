@@ -70,6 +70,24 @@ jobs:
             '  export ANDROID_SDK_ROOT="${ANDROID_HOME}"' \
             'fi' >> "$props"
 
+          # Pin 648666db ships the bzip2 tools as a libbz2 subpackage.
+          # build-package.sh only looks up packages/$name, so PACKAGES+=(bzip2)
+          # failed run 35479458793 after apt/termux-am already succeeded.
+          bs="$RUNNER_TEMP/termux-packages/scripts/build-bootstraps.sh"
+          sed -i 's/PACKAGES+=("bzip2")/PACKAGES+=("libbz2")/' "$bs"
+          python3 - <<'PY'
+          import os, pathlib, re, sys
+          root = pathlib.Path(os.environ["RUNNER_TEMP"]) / "termux-packages"
+          text = (root / "scripts/build-bootstraps.sh").read_text()
+          names = re.findall(r'PACKAGES\+=\("([^"]+)"\)', text)
+          missing = [n for n in names if not (root / "packages" / n / "build.sh").is_file()]
+          print("bootstrap_packages=" + " ".join(names))
+          if missing:
+              print("FAIL missing package dirs: " + " ".join(missing), file=sys.stderr)
+              sys.exit(1)
+          print("PASS all bootstrap package dirs exist")
+          PY
+
       - name: Install a writable Android-33 SDK for termux-am
         run: |
           set -euo pipefail
