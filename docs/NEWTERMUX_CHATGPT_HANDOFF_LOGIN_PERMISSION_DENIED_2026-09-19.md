@@ -71,21 +71,26 @@ Abandoned equal-length ELF surgery (`scripts/patch-bootstrap.sh`, `com.newtermux
 
 ### Prefix-aware bootstrap (source of truth)
 
-- Run `generate-bootstraps.sh` **on the host** (no Docker / AppArmor `mv` failure).
+Owner commit `7e9795d` switched Prefix-aware CI to **`build-bootstraps.sh` in Docker** so apt/dpkg compile against `com.newtermux.dev` (ELF `.rodata` cannot grow in-place from official debs). That path is now green.
+
+CI wiring that made the source build produce a zip + APK:
+
 - Patch `TERMUX_APP__PACKAGE_NAME=com.newtermux.dev` in pinned `properties.sh`.
-- If generate fails, fall back to pinned official zip `bootstrap-2026.02.12-r1+apt.android-7`.
-- New `scripts/fase8/rewrite-bootstrap-prefix.sh`:
-  - rewrite shebangs / text / SYMLINKS to `com.newtermux.dev` (any length);
-  - `patchelf --set-rpath` / `--set-interpreter` on ELF load paths.
-- `scripts/fase8/verify-bootstrap-prefix.sh` now:
+- Copy the package-builder Android SDK to a writable tree and install `platforms;android-33` + `build-tools;30.0.3` (`termux-am` died on a read-only SDK in run `35477142849`).
+- Map bootstrap `bzip2` → `libbz2` (subpackage only at pin `648666db`).
+- `docker cp` the zip from `/tmp` after AppArmor denied `mv` onto the bind-mount (run `35481800800` compiled every package, then lost the zip).
+- After the source zip: `scripts/fase8/rewrite-bootstrap-prefix.sh` for leftover `/data/data/com.termux` **text** in termux-tools (`login` body, `pkg`, …). ELF is not rewritten.
+- `scripts/fase8/verify-bootstrap-prefix.sh`:
   - **FAIL** if login shebang/body, text files, or ELF RUNPATH/interpreter still use `/data/data/com.termux`;
   - **FAIL** if expected PREFIX is missing;
-  - **WARN** leftover official-deb compile-time strings in ELF `.rodata` (cannot grow in-place).
-- Local proof on the stock aarch64 zip (before CI):
-  - login shebang → `#!/data/data/com.newtermux.dev/files/usr/bin/sh`
-  - login body bash/sh/termux-exec paths rewritten
-  - `bash` RUNPATH → `/data/data/com.newtermux.dev/files/usr/lib`
-  - verifier `RESULT=PASS`
+  - source-built dpkg/apt: `elf_rodata_old_prefix_files=0`.
+
+Verified on the green run:
+
+- login shebang → `#!/data/data/com.newtermux.dev/files/usr/bin/sh`
+- login body has no stock Termux paths
+- `bash` RUNPATH → `/data/data/com.newtermux.dev/files/usr/lib`
+- verifier `RESULT=PASS`
 
 ### Generic Build
 
@@ -114,23 +119,25 @@ Do **not** treat these as a substitute for the rewritten zip. They exist so a pr
 | --- | --- |
 | PR | https://github.com/joselofarias-byte/NewTermux/pull/16 (OPEN, do not merge) |
 | Branch | `fix/prefix-aware-bootstrap-runtime` |
-| APK-producing commit SHA | `1f076d1e923124886241d672adb26c65a7ed60b7` |
-| Prefix-aware workflow | [run 35476078813](https://github.com/joselofarias-byte/NewTermux/actions/runs/35476078813) — **success** |
+| APK-producing commit SHA | `5533ca59559ddc3211596b30ba5103dc30a025b3` |
+| Prefix-aware workflow | [run 35487813388](https://github.com/joselofarias-byte/NewTermux/actions/runs/35487813388) — **success** |
 | Package ID | `com.newtermux.dev` |
 | Variant | `coexistDebug` / `arm64-v8a` / `apt-android-7` |
 | APK file | `termux-app_apt-android-7-debug_arm64-v8a.apk` |
-| APK SHA-256 | `cc8646da36060661078cf21d98cb8a9646368d858dfc8f593b7182b622f59bcd` |
+| APK SHA-256 | `6e827422aad7caabd869050e4b464f3b91eca37584eb40346e5a845fcfac468e` |
 | ARM64 APK artifact name | `newtermux-prefix-aware-coexist-arm64` |
-| ARM64 APK artifact ID | `10593194586` |
-| Bootstrap zip SHA-256 | `771dc5166dda8da46fc581364dd6d9344e6d28c13e84acc592648dbbf661a430` |
+| ARM64 APK artifact ID | `10598907796` |
+| Bootstrap zip SHA-256 | `2b8c8255f2ccc2d8edf64a9feb45743b47e499889ca153ab3c138427febd4bcb` |
 | Bootstrap artifact name | `newtermux-prefix-aware-bootstrap-aarch64` |
-| Bootstrap artifact ID | `10593194581` |
+| Bootstrap artifact ID | `10598708244` |
 | Verified login shebang | `#!/data/data/com.newtermux.dev/files/usr/bin/sh` |
+| Verified login body | no `/data/data/com.termux` paths |
 | Verified bash RUNPATH | `/data/data/com.newtermux.dev/files/usr/lib` |
+| ELF `.rodata` stock PREFIX files | `0` (source-built apt/dpkg) |
 
-Download: Actions run 35476078813 → artifact `newtermux-prefix-aware-coexist-arm64` (id `10593194586`).
+Download: Actions run 35487813388 → artifact `newtermux-prefix-aware-coexist-arm64` (id `10598907796`).
 
-Generic **Build** on the same commit is a green skip (run `35476078809`): it does **not** publish a coexist APK.
+Generic **Build** is a green skip: it does **not** publish a coexist APK.
 
 Earlier failed Prefix-aware runs (fixed, do not use):
 
@@ -139,6 +146,12 @@ Earlier failed Prefix-aware runs (fixed, do not use):
 | `35469071995` @ `97064b76` | Docker `mv` Permission denied; locate found no zip; `TERMUX_APP_PACKAGE` env overwritten by `properties.sh` |
 | `35475342734` @ `b5e580b` | rewrite PASS, then verifier `sed \| head` SIGPIPE under `pipefail` |
 | `35475694300` @ `2aeaf5d` | verify PASS; Gradle 9 removed `Project.exec()` so `:app:downloadBootstraps` failed |
+| `35476078813` @ `1f076d1` | previous **host zip + rewrite** green APK (`cc8646da…`); superseded by source-built `5533ca5` |
+| `35477142849` @ `7e9795d` | `termux-am` Gradle: read-only Android SDK, missing platform 33 |
+| `35479458793` @ `ff94942` | `PACKAGES+=(bzip2)` — name is a `libbz2` subpackage |
+| `35481713155` @ `97d74bc` | preflight regex treated `$add_pkg` as a package name |
+| `35481800800` @ `820c90b` | all packages built; AppArmor `mv` of zip onto bind-mount; trap deleted `/tmp` zip |
+| `35484720379` @ `03b8570` | zip + shebang/RUNPATH/.rodata PASS; leftover stock **text** in termux-tools |
 
 ---
 
@@ -165,15 +178,15 @@ PASS only if HONOR 200 retest of **this** APK shows a usable shell:
 - Do not merge PR #16.
 - No release, no secrets, no Play/TBM touch.
 - Do not reactivate `scripts/patch-bootstrap.sh`, `com.newtermux.app`, or `/releases/latest` bootstrap.
-- Full `build-bootstraps.sh` from source (hours, historically brittle) is **not** required for this login fix. Official debs + shebang/text rewrite + patchelf RUNPATH is the path that matches the physical failure.
+- The green APK is from **source-built** `build-bootstraps.sh` plus text rewrite. Do not replace it with a stock official zip.
 
 ---
 
 ## 7. Files touched this iteration
 
-- `.github/workflows/prefix_aware_coexist_arm64.yml`
-- `.github/workflows/debug_build.yml`
-- `scripts/fase8/rewrite-bootstrap-prefix.sh` (new)
+- `.github/workflows/prefix_aware_coexist_arm64.yml` (source-build + writable SDK + libbz2 + docker-cp zip + text rewrite)
+- `.github/workflows/debug_build.yml` (skip stock coexist APK)
+- `scripts/fase8/rewrite-bootstrap-prefix.sh`
 - `scripts/fase8/verify-bootstrap-prefix.sh`
 - `app/src/main/java/com/termux/app/TermuxInstaller.java`
 - `termux-shared/src/main/java/com/termux/shared/termux/shell/TermuxShellUtils.java`
