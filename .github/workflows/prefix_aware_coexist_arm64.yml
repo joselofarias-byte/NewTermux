@@ -78,7 +78,8 @@ jobs:
           python3 - <<'PY'
           import os, pathlib, re, sys
           root = pathlib.Path(os.environ["RUNNER_TEMP"]) / "termux-packages"
-          text = (root / "scripts/build-bootstraps.sh").read_text()
+          bs = root / "scripts/build-bootstraps.sh"
+          text = bs.read_text()
           names = re.findall(r'PACKAGES\+=\("([a-z0-9][a-z0-9+-]*)"\)', text)
           missing = [n for n in names if not (root / "packages" / n / "build.sh").is_file()]
           print("bootstrap_packages=" + " ".join(names))
@@ -86,6 +87,20 @@ jobs:
               print("FAIL missing package dirs: " + " ".join(missing), file=sys.stderr)
               sys.exit(1)
           print("PASS all bootstrap package dirs exist")
+          old = '\tmv -f "${BOOTSTRAP_TMPDIR}/bootstrap-${1}.zip" "$TERMUX_PACKAGES_DIRECTORY/"\n'
+          new = (
+              '\t# Bind-mount + AppArmor blocks mv onto the repo dir (CI 35481800800).\n'
+              '\t# Keep a copy in /tmp so the host can docker cp it after EXIT trap\n'
+              '\t# deletes BOOTSTRAP_TMPDIR.\n'
+              '\tcp -f "${BOOTSTRAP_TMPDIR}/bootstrap-${1}.zip" "/tmp/bootstrap-${1}.zip"\n'
+              '\tcp -f "${BOOTSTRAP_TMPDIR}/bootstrap-${1}.zip" "$TERMUX_PACKAGES_DIRECTORY/" || \\\n'
+              '\t\techo "WARN: bind-mount zip write failed; zip left at /tmp/bootstrap-${1}.zip"\n'
+          )
+          if old not in text:
+              print("FAIL: create_bootstrap_archive mv line not found", file=sys.stderr)
+              sys.exit(1)
+          bs.write_text(text.replace(old, new, 1))
+          print("PASS patched zip copy to /tmp")
           PY
 
       - name: Install a writable Android-33 SDK for termux-am
@@ -138,6 +153,11 @@ jobs:
             exec ./scripts/build-bootstraps.sh --architectures aarch64
           '
 
+          if [ ! -f bootstrap-aarch64.zip ]; then
+            echo "bind-mount zip missing; docker cp from /tmp"
+            docker cp termux-package-builder:/tmp/bootstrap-aarch64.zip \
+              "$PWD/bootstrap-aarch64.zip"
+          fi
           test -f bootstrap-aarch64.zip
           mkdir -p "$RUNNER_TEMP/newtermux-bootstrap"
           cp bootstrap-aarch64.zip \
