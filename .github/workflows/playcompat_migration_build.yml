@@ -71,7 +71,10 @@ jobs:
         with:
           name: NewTermux-playcompat-ARM64-verified
           if-no-files-found: error
-          retention-days: 30
+          # Canonical verified playcompat migration APK for physical-install prep.
+          # 14 days is the canonical physical-test window. Do not raise this to
+          # 30+ without a new explicit justification.
+          retention-days: 14
           path: |
             ${{ steps.verify.outputs.apk }}
             ${{ steps.verify.outputs.sha }}
