@@ -96,6 +96,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: bootstrap-all
+          # Manual bootstrap zip, kept one week so it can be downloaded.
+          # Not a canonical physical-test artifact, and not justified at 30+.
+          retention-days: 7
           path: bootstrap-*.zip
 
       - name: Create Release
