@@ -58,4 +58,6 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: fase7-honor200-cloud-report
+          # Cloud classification report only. Not the canonical physical-test APK.
+          retention-days: 3
           path: ${{ runner.temp }}/NEWTERMUX_FASE7_HONOR200.md
