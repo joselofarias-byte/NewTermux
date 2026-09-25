@@ -25,8 +25,33 @@ onto `main` and does not authorize a device install.
 | Preflight | PASS (stock bootstrap, no PREFIX rewrite for `com.termux`) |
 | Identity check | PASS (`playcompatDebug`, login shebang `#!/data/data/com.termux/files/usr/bin/sh`, `libandroid-support.so`) |
 
-This docs commit does not change APK inputs. The hash above belongs to
-`112e1d4`, which is the commit Actions built.
+`29ec669` only edits this note. It does not change APK inputs. The hash
+above is from the first assemble, `112e1d4` / run
+[36105719357](https://github.com/joselofarias-byte/NewTermux/actions/runs/36105719357).
+
+That docs push still rebuilt. `pull_request.paths` filters the accumulated
+PR diff, which already contained the workflow and the assert script, so run
+[36106435512](https://github.com/joselofarias-byte/NewTermux/actions/runs/36106435512)
+ran `preflight` and `build-arm64` again at `29ec669`. Commit-message wording
+does not stop that.
+
+## Synchronize delta gate
+
+`scripts/fase8/classify-playcompat-build-delta.sh` decides `build-arm64` from
+the newly pushed range, not from the whole PR:
+
+| Event | Expensive ARM64 build |
+| --- | --- |
+| `pull_request` `synchronize` whose `github.event.before`..`github.event.after` diff does not touch a build input | Skipped. Preflight still runs and logs `reason=synchronize_no_build_inputs`. |
+| `synchronize` that changes the workflow, `app/build.gradle`, `TermuxInstaller.java`, `termux-shared/.../shell/**`, or `scripts/fase8/assert-playcompat-stock-bootstrap.sh` | Required (`synchronize_build_inputs`). |
+| `workflow_dispatch` | Allowed. Explicit force-build, even if the tree is docs-only. |
+| `reopened` | Not a new delta. Preflight runs; `build-arm64` stays skipped. |
+
+The classifier does not read commit messages. If the before/after SHAs cannot
+be resolved it fails open and builds. `scripts/fase8/test-playcompat-build-gate.sh`
+covers the docs-only skip (including the real `112e1d4`..`29ec669` range), a
+workflow/script/app input requiring a build, and `workflow_dispatch`. Editing
+the classifier or that test does not by itself require an assemble.
 
 ## Earlier APK, different tree (not this SHA)
 
@@ -48,6 +73,10 @@ stock-bootstrap refusal matches only task names that contain `Coexist`.
   `fix/prefix-aware-bootstrap-runtime`.
 - ARM64-only (`TERMUX_ABIS=arm64-v8a`), debug, no Release, no coexist bootstrap
   directory. Artifact retention 14 days.
+- `build-arm64` runs only when `preflight` sets `build_required=true`.
+  Synchronize pushes are judged by `github.event.before`..`github.event.after`.
+  `workflow_dispatch` forces a build. The accumulated `paths` filter still
+  starts the workflow; it is not the assemble decision.
 - `scripts/fase8/assert-playcompat-stock-bootstrap.sh` checks, without Gradle:
   - `playcompat` application id stays `com.termux`.
   - `assemblePlaycompatDebug` does not trip the coexist stock-bootstrap refusal.

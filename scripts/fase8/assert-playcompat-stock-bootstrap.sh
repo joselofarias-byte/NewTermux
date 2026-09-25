@@ -110,6 +110,17 @@ check(
 )
 check("lib/libandroid-support.so" in workflow, "workflow asserts libandroid-support.so")
 check("com.newtermux.dev" not in workflow, "workflow does not require the coexist package id")
+check(
+    "classify-playcompat-build-delta.sh" in workflow,
+    "workflow classifies the synchronize delta before assembling",
+)
+check("github.event.before" in workflow, "gate reads the synchronize before SHA")
+check("github.event.after" in workflow, "gate reads the synchronize after SHA")
+check(
+    "needs.preflight.outputs.build_required == 'true'" in workflow,
+    "build-arm64 runs only when the delta gate requires it",
+)
+check("workflow_dispatch:" in workflow, "workflow_dispatch remains an explicit force-build")
 
 if failures:
     print(f"\n{len(failures)} playcompat invariant(s) failed", file=sys.stderr)

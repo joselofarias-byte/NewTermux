@@ -3,6 +3,13 @@ name: Build playcompat migration APK
 # Migration APK only. Same package id as Termux Play (com.termux), stock
 # bootstrap, debug signing. Do not install it over Play data from this
 # workflow. Backup and signature checks stay on the HONOR 200.
+#
+# pull_request.paths matches the accumulated PR diff. After the first
+# build-input commit, a later docs-only synchronize still starts this
+# workflow. preflight classifies the push itself — github.event.before
+# to github.event.after — and skips build-arm64 when that delta does not
+# touch APK inputs. workflow_dispatch always builds. Commit messages are
+# not consulted.
 
 on:
   pull_request:
@@ -14,6 +21,8 @@ on:
       - 'app/src/main/java/com/termux/app/TermuxInstaller.java'
       - 'termux-shared/src/main/java/com/termux/shared/termux/shell/**'
       - 'scripts/fase8/assert-playcompat-stock-bootstrap.sh'
+      - 'scripts/fase8/classify-playcompat-build-delta.sh'
+      - 'scripts/fase8/test-playcompat-build-gate.sh'
   workflow_dispatch:
 
 permissions:
@@ -22,15 +31,38 @@ permissions:
 jobs:
   preflight:
     runs-on: ubuntu-latest
+    outputs:
+      build_required: ${{ steps.gate.outputs.build_required }}
+      build_reason: ${{ steps.gate.outputs.reason }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          # The PR head, not the synthetic merge commit, so before/after
+          # are commits in this checkout.
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
 
       - name: Assert playcompat keeps the stock com.termux bootstrap
         run: bash scripts/fase8/assert-playcompat-stock-bootstrap.sh
 
+      - name: Prove the synchronize delta gate
+        run: bash scripts/fase8/test-playcompat-build-gate.sh
+
+      - name: Decide whether this event must assemble the ARM64 APK
+        id: gate
+        env:
+          CLASSIFY_EVENT_NAME: ${{ github.event_name }}
+          CLASSIFY_EVENT_ACTION: ${{ github.event.action }}
+          CLASSIFY_BEFORE: ${{ github.event.before }}
+          CLASSIFY_AFTER: ${{ github.event.after }}
+          CLASSIFY_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          CLASSIFY_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bash scripts/fase8/classify-playcompat-build-delta.sh --from-git
+
   build-arm64:
     needs: preflight
+    if: needs.preflight.outputs.build_required == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
