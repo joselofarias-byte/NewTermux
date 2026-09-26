@@ -7,12 +7,12 @@
 # en HONOR 200. No desinstala Termux Play. No copia PREFIX. No imprime secretos.
 #
 # APK canónico (único; no sustituir por otro hash de un commit posterior):
-#   Archivo: termux-app_v1.6.2+f3eb365-apt-android-7-github-debug_arm64-v8a.apk
-#   SHA-256: 2345efa03c8677778fb418f5acc4bfd2a69e9bf383932e0a4d786247dcbd11e4
-#   Commit:  f3eb365 (PR #14 / Fase 6)
+#   Archivo: NewTermux-HONOR200-PR23-coexist-arm64.apk
+#   SHA-256: 40084278aa0ac2d2d55b27eec2985fe1646e630442cc8cee9912d6020fd37c6f
+#   Commit:  df390538 (PR #23 cutover candidate)
 #   Identidad: com.newtermux.dev / coexistDebug
-#   Run: https://github.com/joselofarias-byte/NewTermux/actions/runs/35446701028
-#   Job: https://github.com/joselofarias-byte/NewTermux/actions/runs/35446701028/job/105906757364
+#   Run: https://github.com/joselofarias-byte/NewTermux/actions/runs/36212898057
+#   Job: https://github.com/joselofarias-byte/NewTermux/actions/runs/36212898057/job/108322991221
 #
 # Antes de instalar en HONOR 200:
 #   1. Dejar Termux Play (com.termux) instalado. NO desinstalarlo. NO migrar datos.
@@ -38,13 +38,13 @@ set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
-CANONICAL_APK="termux-app_v1.6.2+f3eb365-apt-android-7-github-debug_arm64-v8a.apk"
-CANONICAL_SHA256="2345efa03c8677778fb418f5acc4bfd2a69e9bf383932e0a4d786247dcbd11e4"
-CANONICAL_COMMIT="f3eb365"
+CANONICAL_APK="NewTermux-HONOR200-PR23-coexist-arm64.apk"
+CANONICAL_SHA256="40084278aa0ac2d2d55b27eec2985fe1646e630442cc8cee9912d6020fd37c6f"
+CANONICAL_COMMIT="df390538"
 CANONICAL_APP_ID="com.newtermux.dev"
 CANONICAL_VARIANT="coexistDebug"
-CANONICAL_RUN="https://github.com/joselofarias-byte/NewTermux/actions/runs/35446701028"
-CANONICAL_JOB="https://github.com/joselofarias-byte/NewTermux/actions/runs/35446701028/job/105906757364"
+CANONICAL_RUN="https://github.com/joselofarias-byte/NewTermux/actions/runs/36212898057"
+CANONICAL_JOB="https://github.com/joselofarias-byte/NewTermux/actions/runs/36212898057/job/108322991221"
 WANT_ABI="arm64-v8a"
 INSTALL="${FASE7_INSTALL:-0}"
 STAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -127,7 +127,7 @@ run_cloud_inventory() {
   record ci "Debug ≠ GitHub Release" PASS \
     "DEBUG-NOT-RELEASE.txt + release.yml aborta; artefacto CI only"
   record ci "Unit tests / wrapper / Fase6 guard" PASS \
-    "runs 35446701056 / 35446701106 / 35446701043"
+    "PR #23 head df390538: prefix-aware/build/tests/guards en verde"
   record ci "Fase4 goargs ausente en producto" PASS \
     "golang no está en el APK; receta oficial 3:1.27.1 sin runtime1.go"
   record ci "Fase5 PRoot no está en el APK" PASS \
@@ -238,7 +238,7 @@ check_apk_hash() {
         "coincide ${CANONICAL_SHA256} (${apk})"
     else
       record honor "SHA-256 APK en dispositivo" FAIL \
-        "hash distinto al canónico f3eb365; no uses este APK"
+        "hash distinto al canónico df390538; no uses este APK"
     fi
   else
     record honor "SHA-256 APK en dispositivo" PENDIENTE \
