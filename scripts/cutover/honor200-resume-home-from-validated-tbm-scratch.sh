@@ -7,6 +7,7 @@ REPORT="/sdcard/Download/NEWTERMUX-TBM-HOME-FOREGROUND-$STAMP.txt"
 SOURCE_ROOT="$HOME/.tbm/cutover-source"
 SOURCE_HOME="$SOURCE_ROOT/home.tar.gz"
 SOURCE_MANIFEST="$SOURCE_ROOT/manifest.json"
+TBM_BIN="$HOME/.tbm/bin/tbm"
 TARGET="$HOME/.tbm/direct-cutover-stage-$STAMP"
 STAGE_POINTER="$HOME/.tbm/direct-cutover-current-stage.txt"
 WAKE=0
@@ -54,15 +55,21 @@ fi
 
 mkdir -p "$HOME/.tbm" "$SOURCE_ROOT" "$TARGET"
 
-echo "[1/7] Validando binario TBM del handoff..." | tee -a "$REPORT"
+echo "[1/7] Validando y preparando TBM 1.06..." | tee -a "$REPORT"
 (
   cd "$HANDOFF"
   sha256sum -c tbm.sha256
 ) 2>&1 | tee -a "$REPORT"
-chmod 700 "$HANDOFF/tbm"
-case "$("$HANDOFF/tbm" version 2>&1 | head -n1)" in
-  *1.06*) echo "TBM_VERSION=1.06" | tee -a "$REPORT" ;;
-  *) fail "Binario TBM del handoff no es 1.06." ;;
+
+mkdir -p "$(dirname "$TBM_BIN")"
+cp -f "$HANDOFF/tbm" "$TBM_BIN"
+chmod 700 "$TBM_BIN"
+
+TBM_VERSION="$("$TBM_BIN" version 2>&1 | head -n1)"
+echo "TBM_VERSION_SALIDA=$TBM_VERSION" | tee -a "$REPORT"
+case "$TBM_VERSION" in
+  "TBM 1.06") echo "TBM_VERSION=1.06_OK" | tee -a "$REPORT" ;;
+  *) fail "La copia privada de TBM no informa 'TBM 1.06'." ;;
 esac
 
 echo "[2/7] Preparando home.tar.gz persistente..." | tee -a "$REPORT"
@@ -200,7 +207,7 @@ rmdir "$RESCUE" 2>/dev/null || true
 echo "HOME_STAGE_PUBLICADO=OK" | tee -a "$REPORT"
 
 echo "[6/7] Restaurando solo migration_info..." | tee -a "$REPORT"
-"$HANDOFF/tbm" restore "$BUNDLE" "$TARGET" --yes --components info 2>&1 | tee -a "$REPORT"
+"$TBM_BIN" restore "$BUNDLE" "$TARGET" --yes --components info 2>&1 | tee -a "$REPORT"
 
 [ -d "$TARGET/migration_info" ] || fail "No se creo migration_info."
 [ ! -d "$TARGET/prefix_snapshot" ] || fail "SEGURIDAD: aparecio prefix_snapshot."
