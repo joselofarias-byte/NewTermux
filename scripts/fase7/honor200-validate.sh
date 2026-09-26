@@ -17,7 +17,7 @@
 # Antes de instalar en HONOR 200:
 #   1. Dejar Termux Play (com.termux) instalado. NO desinstalarlo. NO migrar datos.
 #   2. Descargar el artefacto arm64-v8a del run de arriba (no un GitHub Release).
-#   3. Verificar: sha256sum <apk>  → debe coincidir con 2345efa0… exactamente.
+#   3. Verificar: sha256sum <apk>  → debe coincidir con 40084278… exactamente.
 #   4. Instalar lado a lado (paquete nuevo). NUNCA un update sobre com.termux.
 #   5. Abrir "NewTermux Dev", conceder storage solo si querés el reporte en Downloads.
 #   6. termux-setup-storage (opcional, para ~/storage/downloads).
