@@ -84,7 +84,15 @@ public class TermuxTerminalExtraKeys extends TerminalExtraKeys {
     @SuppressLint("RtlHardcoded")
     @Override
     public void onTerminalExtraKeyButtonClick(View view, String key, boolean ctrlDown, boolean altDown, boolean shiftDown, boolean fnDown) {
-        if ("KEYBOARD".equals(key)) {
+        // NewTermux compact controls: H and C are actions, not literal text.
+        // H -> HOME key. C/CLEAR -> clear the current terminal screen.
+        if ("H".equals(key)) {
+            super.onTerminalExtraKeyButtonClick(view, "HOME", ctrlDown, altDown, shiftDown, fnDown);
+        } else if ("C".equals(key) || "CLEAR".equals(key)) {
+            com.termux.terminal.TerminalSession session =
+                mTermuxTerminalViewClient.getActivity().getCurrentSession();
+            if (session != null) session.write("clear\n");
+        } else if ("KEYBOARD".equals(key)) {
             if(mTermuxTerminalViewClient != null)
                 mTermuxTerminalViewClient.onToggleSoftKeyboardRequest();
         } else if ("DRAWER".equals(key)) {

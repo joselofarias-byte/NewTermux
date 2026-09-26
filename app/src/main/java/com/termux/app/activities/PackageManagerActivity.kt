@@ -117,10 +117,10 @@ private fun PackageManagerScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Package Manager") },
+                title = { Text("Gestor de paquetes") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Atrás")
                     }
                 },
             )
@@ -129,24 +129,24 @@ private fun PackageManagerScreen(
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             TabRow(selectedTabIndex = tab) {
                 Tab(selected = tab == TAB_INSTALLED, onClick = { tab = TAB_INSTALLED; query = "" },
-                    text = { Text("Installed (${if (installedLoaded) installed.size else "…"})") })
+                    text = { Text("Instalados (${if (installedLoaded) installed.size else "…"})") })
                 Tab(selected = tab == TAB_AVAILABLE, onClick = { tab = TAB_AVAILABLE; query = "" },
-                    text = { Text("Available (${if (availableLoaded) available.size else "…"})") })
+                    text = { Text("Disponibles (${if (availableLoaded) available.size else "…"})") })
             }
 
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
-                label = { Text("Search packages") },
+                label = { Text("Buscar paquetes") },
                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
             )
 
             val status = when {
-                !loaded -> "Loading…"
-                filtered.isEmpty() -> if (q.isEmpty()) "No packages found." else "No results for \"$q\"."
-                else -> "${filtered.size} package${if (filtered.size == 1) "" else "s"}"
+                !loaded -> "Cargando…"
+                filtered.isEmpty() -> if (q.isEmpty()) "No se encontraron paquetes." else "Sin resultados para \"$q\"."
+                else -> "${filtered.size} paquete${if (filtered.size == 1) "" else "s"}"
             }
             Text(
                 status,
@@ -160,9 +160,9 @@ private fun PackageManagerScreen(
                     PackageRow(
                         entry = entry,
                         subtitle = if (tab == TAB_INSTALLED) {
-                            if (entry.version != null) "v${entry.version}" else "installed"
+                            if (entry.version != null) "v${entry.version}" else "instalado"
                         } else {
-                            if (entry.name in installedNames) "Installed · Termux repo" else "Termux repo"
+                            if (entry.name in installedNames) "Instalado · Repositorio Termux" else "Repositorio Termux"
                         },
                         onClick = { detail = entry },
                     )
@@ -177,10 +177,10 @@ private fun PackageManagerScreen(
         val installedTab = tab == TAB_INSTALLED
         val alreadyInstalled = installedTab || entry.name in installedNames
         val message = buildString {
-            entry.version?.let { append("Version: $it\n\n") }
+            entry.version?.let { append("Versión: $it\n\n") }
             entry.description?.takeIf { it.isNotEmpty() }?.let { append("$it\n\n") }
-            append("Repository: Termux Package Repository\npkg.termux.dev\n\n")
-            append(if (installedTab) "Command: pkg uninstall ${entry.name}" else "Command: pkg install ${entry.name}")
+            append("Repositorio: Repositorio de paquetes Termux\npkg.termux.dev\n\n")
+            append(if (installedTab) "Comando: pkg uninstall ${entry.name}" else "Comando: pkg install ${entry.name}")
         }
         AlertDialog(
             onDismissRequest = { detail = null },
@@ -188,25 +188,25 @@ private fun PackageManagerScreen(
             text = { Text(message) },
             confirmButton = {
                 if (installedTab) {
-                    TextButton(onClick = { detail = null; confirmUninstall = entry }) { Text("Uninstall") }
+                    TextButton(onClick = { detail = null; confirmUninstall = entry }) { Text("Desinstalar") }
                 } else {
-                    val label = if (alreadyInstalled) "Reinstall" else "Install"
+                    val label = if (alreadyInstalled) "Reinstalar" else "Instalar"
                     TextButton(onClick = { detail = null; onRunCommand("pkg install -y ${entry.name}\n") }) { Text(label) }
                 }
             },
-            dismissButton = { TextButton(onClick = { detail = null }) { Text("Close") } },
+            dismissButton = { TextButton(onClick = { detail = null }) { Text("Cerrar") } },
         )
     }
 
     confirmUninstall?.let { entry ->
         AlertDialog(
             onDismissRequest = { confirmUninstall = null },
-            title = { Text("Uninstall ${entry.name}?") },
-            text = { Text("This will remove the package from your Termux environment.") },
+            title = { Text("¿Desinstalar ${entry.name}?") },
+            text = { Text("Esto eliminará el paquete del entorno de NewTermux.") },
             confirmButton = {
-                TextButton(onClick = { confirmUninstall = null; onRunCommand("pkg uninstall ${entry.name}\n") }) { Text("Uninstall") }
+                TextButton(onClick = { confirmUninstall = null; onRunCommand("pkg uninstall ${entry.name}\n") }) { Text("Desinstalar") }
             },
-            dismissButton = { TextButton(onClick = { confirmUninstall = null }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { confirmUninstall = null }) { Text("Cancelar") } },
         )
     }
 }

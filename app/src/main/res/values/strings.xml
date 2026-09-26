@@ -59,6 +59,18 @@
 
 
 
+    <!-- NewTermux compact terminal actions -->
+    <string name="action_cursor_home">Line start</string>
+    <string name="action_clear_screen">Clear screen</string>
+    <string name="action_rename">Rename</string>
+    <string name="action_close">Close</string>
+    <string name="newtermux_toolbar_packages">Packages</string>
+    <string name="newtermux_toolbar_clear">Clear</string>
+    <string name="newtermux_toolbar_speech">Speech to text</string>
+    <string name="newtermux_toolbar_root">Root access</string>
+    <string name="newtermux_toolbar_settings">Settings</string>
+    <string name="newtermux_toolbar_new_session">New session</string>
+
     <!-- Terminal Popup -->
     <string name="action_select_url">Select URL</string>
     <string name="title_select_url_dialog">Click URL to copy or long press to open</string>

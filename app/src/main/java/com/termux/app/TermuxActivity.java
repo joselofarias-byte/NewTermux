@@ -238,6 +238,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private static final int CONTEXT_MENU_HELP_ID = 7;
     private static final int CONTEXT_MENU_SETTINGS_ID = 8;
     private static final int CONTEXT_MENU_REPORT_ID = 9;
+    private static final int CONTEXT_MENU_HOME_ID = 12;
+    private static final int CONTEXT_MENU_CLEAR_ID = 13;
 
     private static final String ARG_TERMINAL_TOOLBAR_TEXT_INPUT = "terminal_toolbar_text_input";
     private static final String ARG_ACTIVITY_RECREATED = "activity_recreated";
@@ -1465,6 +1467,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         boolean autoFillEnabled = mTerminalView.isAutoFillEnabled();
 
+        menu.add(Menu.NONE, CONTEXT_MENU_HOME_ID, Menu.NONE, R.string.action_cursor_home);
+        menu.add(Menu.NONE, CONTEXT_MENU_CLEAR_ID, Menu.NONE, R.string.action_clear_screen);
         menu.add(Menu.NONE, CONTEXT_MENU_SELECT_URL_ID, Menu.NONE, R.string.action_select_url);
         menu.add(Menu.NONE, CONTEXT_MENU_SHARE_TRANSCRIPT_ID, Menu.NONE, R.string.action_share_transcript);
         if (!DataUtils.isNullOrEmpty(mTerminalView.getStoredSelectedText()))
@@ -1494,6 +1498,13 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         TerminalSession session = getCurrentSession();
 
         switch (item.getItemId()) {
+            case CONTEXT_MENU_HOME_ID:
+                if (mTermuxTerminalExtraKeys != null)
+                    mTermuxTerminalExtraKeys.onTerminalExtraKeyButtonClick(null, "HOME", false, false, false, false);
+                return true;
+            case CONTEXT_MENU_CLEAR_ID:
+                if (session != null) session.write("clear\n");
+                return true;
             case CONTEXT_MENU_SELECT_URL_ID:
                 mTermuxTerminalViewClient.showUrlSelection();
                 return true;
