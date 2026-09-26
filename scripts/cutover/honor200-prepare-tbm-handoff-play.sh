@@ -25,18 +25,32 @@ cp -f "$TBM_SRC" "$OUT/tbm"
 chmod 700 "$OUT/tbm"
 sha256sum "$OUT/tbm" > "$OUT/tbm.sha256"
 
-CANDIDATES="$(
-  find /sdcard/Download/tbm_backups /sdcard/Download/TBM-MIGRATION/handoff \
-    -maxdepth 2 -type f \( -name 'tbm_migration_*.tar' -o -name 'tbm_migration_*.tbmprot' \) \
-    -printf '%T@ %p\n' 2>/dev/null | sort -nr || true
-)"
-[ -n "$CANDIDATES" ] || fail "No encontre un backup de migracion TBM en Download/tbm_backups ni TBM-MIGRATION/handoff."
+KNOWN_BUNDLE="/storage/emulated/0/Download-Folders/tbm_backups/tbm_migration_20260923-001255.tar"
+KNOWN_SHA256="e4f77f060e0d39bb63a240821741c4ee3e4c21c8e345ed6ba68efe31582f91b3"
 
-BUNDLE="$(printf '%s\n' "$CANDIDATES" | head -n1 | cut -d' ' -f2-)"
+if [ -f "$KNOWN_BUNDLE" ]; then
+  BUNDLE="$KNOWN_BUNDLE"
+  echo "Usando bundle fisicamente validado: $BUNDLE" | tee -a "$REPORT"
+  GOT_KNOWN="$(sha256sum "$BUNDLE" | awk '{print $1}')"
+  [ "$GOT_KNOWN" = "$KNOWN_SHA256" ] || fail "El bundle conocido existe pero su SHA-256 cambio: $GOT_KNOWN"
+else
+  CANDIDATES="$(
+    find \
+      /storage/emulated/0/Download-Folders/tbm_backups \
+      /sdcard/Download-Folders/tbm_backups \
+      /sdcard/Download/tbm_backups \
+      /sdcard/Download/TBM-MIGRATION/handoff \
+      -maxdepth 2 -type f \( -name 'tbm_migration_*.tar' -o -name 'tbm_migration_*.tbmprot' \) \
+      -printf '%T@ %p\n' 2>/dev/null | sort -nr || true
+  )"
+  [ -n "$CANDIDATES" ] || fail "No encontre un backup de migracion TBM en Download-Folders/tbm_backups, Download/tbm_backups ni TBM-MIGRATION/handoff."
+  BUNDLE="$(printf '%s\n' "$CANDIDATES" | head -n1 | cut -d' ' -f2-)"
+fi
+
 [ -f "$BUNDLE" ] || fail "El candidato seleccionado no existe: $BUNDLE"
 
 case "$BUNDLE" in
-  *.tbmprot) fail "El backup mas reciente esta protegido (.tbmprot). Este flujo no pedira contrasenas automaticamente." ;;
+  *.tbmprot) fail "El backup seleccionado esta protegido (.tbmprot). Este flujo no pedira contrasenas automaticamente." ;;
 esac
 
 SIDECAR="$BUNDLE.sha256"
