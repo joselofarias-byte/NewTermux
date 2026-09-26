@@ -18,6 +18,7 @@ import android.view.ContextMenu.ContextMenuInfo;
 import android.view.Gravity;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.view.SubMenu;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
@@ -30,6 +31,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.google.android.material.button.MaterialButton;
+import com.google.android.material.snackbar.Snackbar;
 
 import com.termux.BuildConfig;
 import com.termux.R;
@@ -54,6 +56,7 @@ import com.termux.app.terminal.io.TerminalToolbarViewPager;
 import com.termux.app.terminal.TermuxTerminalViewClient;
 import com.termux.shared.termux.extrakeys.ExtraKeysView;
 import com.termux.shared.termux.interact.TextInputDialogUtils;
+import com.termux.shared.interact.ShareUtils;
 import com.termux.shared.logger.Logger;
 import com.termux.shared.termux.TermuxUtils;
 import com.termux.shared.termux.settings.properties.TermuxAppSharedProperties;
@@ -81,6 +84,7 @@ import com.newtermux.features.NewTermuxSettings;
 import com.newtermux.features.NewTermuxTheme;
 import com.newtermux.features.RootToggleManager;
 import com.newtermux.features.SpeechInputManager;
+import com.newtermux.features.TerminalTextExport;
 import com.termux.app.terminal.MiniTerminalPipView;
 
 import java.io.BufferedReader;
@@ -240,6 +244,11 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private static final int CONTEXT_MENU_REPORT_ID = 9;
     private static final int CONTEXT_MENU_HOME_ID = 12;
     private static final int CONTEXT_MENU_CLEAR_ID = 13;
+    private static final int CONTEXT_MENU_SCROLL_BOTTOM_ID = 14;
+    private static final int CONTEXT_MENU_SAVE_TRANSCRIPT_TXT_ID = 15;
+    private static final int CONTEXT_MENU_SAVE_SELECTED_TXT_ID = 16;
+    private static final int CONTEXT_MENU_COPY_TRANSCRIPT_ID = 17;
+    private static final int CONTEXT_MENU_SHARE_TRANSCRIPT_TXT_ID = 18;
 
     private static final String ARG_TERMINAL_TOOLBAR_TEXT_INPUT = "terminal_toolbar_text_input";
     private static final String ARG_ACTIVITY_RECREATED = "activity_recreated";
@@ -1466,12 +1475,21 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         if (currentSession == null) return;
 
         boolean autoFillEnabled = mTerminalView.isAutoFillEnabled();
+        boolean hasSelection = !DataUtils.isNullOrEmpty(mTerminalView.getStoredSelectedText());
 
+        SubMenu outputMenu = menu.addSubMenu(Menu.NONE, Menu.NONE, Menu.NONE, R.string.action_output_tools);
+        outputMenu.add(Menu.NONE, CONTEXT_MENU_SAVE_TRANSCRIPT_TXT_ID, Menu.NONE, R.string.action_save_transcript_txt);
+        if (hasSelection)
+            outputMenu.add(Menu.NONE, CONTEXT_MENU_SAVE_SELECTED_TXT_ID, Menu.NONE, R.string.action_save_selected_txt);
+        outputMenu.add(Menu.NONE, CONTEXT_MENU_SHARE_TRANSCRIPT_TXT_ID, Menu.NONE, R.string.action_share_transcript_txt);
+        outputMenu.add(Menu.NONE, CONTEXT_MENU_COPY_TRANSCRIPT_ID, Menu.NONE, R.string.action_copy_transcript);
+
+        menu.add(Menu.NONE, CONTEXT_MENU_SCROLL_BOTTOM_ID, Menu.NONE, R.string.action_scroll_bottom);
         menu.add(Menu.NONE, CONTEXT_MENU_HOME_ID, Menu.NONE, R.string.action_cursor_home);
         menu.add(Menu.NONE, CONTEXT_MENU_CLEAR_ID, Menu.NONE, R.string.action_clear_screen);
         menu.add(Menu.NONE, CONTEXT_MENU_SELECT_URL_ID, Menu.NONE, R.string.action_select_url);
         menu.add(Menu.NONE, CONTEXT_MENU_SHARE_TRANSCRIPT_ID, Menu.NONE, R.string.action_share_transcript);
-        if (!DataUtils.isNullOrEmpty(mTerminalView.getStoredSelectedText()))
+        if (hasSelection)
             menu.add(Menu.NONE, CONTEXT_MENU_SHARE_SELECTED_TEXT, Menu.NONE, R.string.action_share_selected_text);
         if (autoFillEnabled)
             menu.add(Menu.NONE, CONTEXT_MENU_AUTOFILL_USERNAME, Menu.NONE, R.string.action_autofill_username);
@@ -1498,6 +1516,24 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         TerminalSession session = getCurrentSession();
 
         switch (item.getItemId()) {
+            case CONTEXT_MENU_SAVE_TRANSCRIPT_TXT_ID:
+                saveTerminalTextAsTxt(false, false);
+                return true;
+            case CONTEXT_MENU_SAVE_SELECTED_TXT_ID:
+                saveTerminalTextAsTxt(true, false);
+                return true;
+            case CONTEXT_MENU_SHARE_TRANSCRIPT_TXT_ID:
+                saveTerminalTextAsTxt(false, true);
+                return true;
+            case CONTEXT_MENU_COPY_TRANSCRIPT_ID:
+                if (session != null && session.getEmulator() != null) {
+                    String transcript = session.getEmulator().getScreen().getTranscriptText();
+                    ShareUtils.copyTextToClipboard(this, transcript, getString(R.string.msg_transcript_copied));
+                }
+                return true;
+            case CONTEXT_MENU_SCROLL_BOTTOM_ID:
+                if (mTerminalView != null) mTerminalView.scrollToBottom();
+                return true;
             case CONTEXT_MENU_HOME_ID:
                 if (mTermuxTerminalExtraKeys != null)
                     mTermuxTerminalExtraKeys.onTerminalExtraKeyButtonClick(null, "HOME", false, false, false, false);
@@ -1551,6 +1587,61 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         super.onContextMenuClosed(menu);
         // onContextMenuClosed() is triggered twice if back button is pressed to dismiss instead of tap for some reason
         mTerminalView.onContextMenuClosed(menu);
+    }
+
+    private void saveTerminalTextAsTxt(boolean selectedOnly, boolean shareAfterSave) {
+        TerminalSession session = getCurrentSession();
+        if (session == null || session.getEmulator() == null) return;
+
+        String text = selectedOnly
+            ? mTerminalView.getStoredSelectedText()
+            : session.getEmulator().getScreen().getTranscriptText();
+        if (DataUtils.isNullOrEmpty(text)) return;
+
+        String prefix = selectedOnly ? "NewTermux-seleccion" : "NewTermux-terminal";
+        String fileName = TerminalTextExport.buildFileName(prefix);
+
+        TerminalTextExport.saveToDownloads(this, text, fileName, new TerminalTextExport.Callback() {
+            @Override
+            public void onSuccess(@Nullable Uri uri, @NonNull String displayName) {
+                if (shareAfterSave && uri != null) {
+                    try {
+                        TerminalTextExport.shareTextFile(
+                            TermuxActivity.this,
+                            uri,
+                            displayName,
+                            getString(R.string.title_share_txt)
+                        );
+                    } catch (Exception e) {
+                        showToast(getString(R.string.msg_txt_share_failed,
+                            e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()), true);
+                    }
+                } else {
+                    Snackbar snackbar = Snackbar.make(
+                        mTerminalView,
+                        getString(R.string.msg_txt_saved, displayName),
+                        Snackbar.LENGTH_LONG
+                    );
+                    if (uri != null) {
+                        snackbar.setAction(R.string.action_open_saved_file, v -> {
+                            try {
+                                TerminalTextExport.openText(TermuxActivity.this, uri);
+                            } catch (Exception e) {
+                                showToast(getString(R.string.msg_txt_open_failed,
+                                    e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()), true);
+                            }
+                        });
+                    }
+                    snackbar.show();
+                }
+            }
+
+            @Override
+            public void onError(@NonNull Exception error) {
+                showToast(getString(R.string.msg_txt_save_failed,
+                    error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage()), true);
+            }
+        });
     }
 
     private void showKillSessionDialog(TerminalSession session) {
