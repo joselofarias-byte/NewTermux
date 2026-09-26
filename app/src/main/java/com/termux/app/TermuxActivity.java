@@ -385,8 +385,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         registerTermuxActivityBroadcastReceiver();
 
-        if (mTermuxService != null)
-            mTermuxService.releaseWakeLockAuto();
+        // NOTE: the keep-alive wake lock is intentionally NOT released here anymore. It is now tied
+        // to the session lifecycle in TermuxService (held while any session is alive), not to the
+        // Activity lifecycle — releasing it on every foreground transition is what made it flap.
     }
 
     @Override
@@ -427,6 +428,11 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         if (mTermuxTerminalSessionActivityClient != null)
             mTermuxTerminalSessionActivityClient.checkForFontAndColors();
 
+        // One-time nudge to allowlist NewTermux from battery optimization / Doze, so the keep-alive
+        // foreground service actually survives backgrounding. Gated: only shows if keep-alive is on,
+        // we are not already exempt, and we have not asked before.
+        maybePromptBatteryOptimization();
+
         // Run any command injected by Settings (e.g. "pkg install zsh\n")
         String pendingCmd = com.newtermux.features.NewTermuxSettings.getPendingCommand(this);
         if (pendingCmd != null) {
@@ -437,6 +443,34 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 session.write(bytes, 0, bytes.length);
             }
         }
+    }
+
+    /**
+     * Show a one-time dialog asking the user to allowlist NewTermux from battery optimization /
+     * Doze. Without the exemption, Android can still tear the process down in the background even
+     * with a foreground service + wake lock. Gated so it is unobtrusive: only when keep-alive is
+     * enabled, we are not already exempt, and we have not prompted before.
+     */
+    private void maybePromptBatteryOptimization() {
+        if (!com.newtermux.features.NewTermuxSettings.isKeepAliveInBackground(this)) return;
+        if (com.newtermux.features.NewTermuxSettings.wasBatteryOptPrompted(this)) return;
+        if (PermissionUtils.checkIfBatteryOptimizationsDisabled(this)) return;
+
+        // Mark as prompted up front so this only ever appears once, regardless of the user's choice.
+        com.newtermux.features.NewTermuxSettings.setBatteryOptPrompted(this, true);
+
+        new AlertDialog.Builder(this)
+            .setTitle(R.string.battery_opt_prompt_title)
+            .setMessage(R.string.battery_opt_prompt_message)
+            .setPositiveButton(R.string.battery_opt_prompt_allow, (d, w) -> {
+                try {
+                    PermissionUtils.requestDisableBatteryOptimizations(this);
+                } catch (Exception e) {
+                    Logger.logError(LOG_TAG, "Failed to request battery optimization exemption: " + e);
+                }
+            })
+            .setNegativeButton(R.string.battery_opt_prompt_later, null)
+            .show();
     }
 
     private void applyAccentColor() {
@@ -502,8 +536,11 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         unregisterTermuxActivityBroadcastReceiver();
         getDrawer().closeDrawers();
 
+        // Snapshot the current tab list to disk as we go to background, so that if the process is
+        // torn down while a game is in the foreground, the next launch can rehydrate the tabs. The
+        // keep-alive wake lock is already held continuously by the service (session-driven).
         if (mTermuxService != null)
-            mTermuxService.acquireWakeLockAuto();
+            SessionStatePersister.save(this, mTermuxService.getTermuxSessions());
     }
 
     @Override
@@ -942,21 +979,19 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
     private void showSessionPopupMenu(View anchor, TerminalSession session) {
-        android.widget.PopupMenu popup = new android.widget.PopupMenu(this, anchor);
-        popup.getMenu().add(0, 1, 0, "Rename");
-        popup.getMenu().add(0, 2, 1, "Close");
-        popup.setOnMenuItemClickListener(item -> {
-            if (item.getItemId() == 1) {
-                if (mTermuxTerminalSessionActivityClient != null)
-                    mTermuxTerminalSessionActivityClient.renameSession(session);
-            } else if (item.getItemId() == 2) {
-                session.finishIfRunning();
-                if (mTermuxTerminalSessionActivityClient != null)
-                    mTermuxTerminalSessionActivityClient.removeFinishedSession(session);
-            }
-            return true;
-        });
-        popup.show();
+        // Bannerlator-style pop-out menu: rounded + outlined card with a thin gray divider
+        // between options (see NtPopupMenu).
+        com.newtermux.features.NtPopupMenu.showAsDropDown(this, anchor, null,
+            new String[]{"Rename", "Close"}, idx -> {
+                if (idx == 0) {
+                    if (mTermuxTerminalSessionActivityClient != null)
+                        mTermuxTerminalSessionActivityClient.renameSession(session);
+                } else {
+                    session.finishIfRunning();
+                    if (mTermuxTerminalSessionActivityClient != null)
+                        mTermuxTerminalSessionActivityClient.removeFinishedSession(session);
+                }
+            });
     }
 
     /**
@@ -1408,6 +1443,16 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         if (mLastToast != null) mLastToast.cancel();
         mLastToast = Toast.makeText(TermuxActivity.this, text, longDuration ? Toast.LENGTH_LONG : Toast.LENGTH_SHORT);
         mLastToast.setGravity(Gravity.TOP, 0, 0);
+        // Bannerlator-style outlined banner for the top-of-screen session-activity notice.
+        float density = getResources().getDisplayMetrics().density;
+        android.widget.TextView tv = new android.widget.TextView(this);
+        tv.setText(text);
+        tv.setTextColor(androidx.core.content.ContextCompat.getColor(this, com.termux.R.color.nt_on_surface));
+        tv.setTextSize(14f);
+        int ph = (int) (20 * density), pv = (int) (12 * density);
+        tv.setPadding(ph, pv, ph, pv);
+        tv.setBackgroundResource(com.termux.R.drawable.bg_popup_menu);
+        mLastToast.setView(tv);
         mLastToast.show();
     }
 

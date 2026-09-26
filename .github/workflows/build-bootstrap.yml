@@ -13,8 +13,16 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
+      - name: Refuse abandoned ELF bootstrap patch
+        run: |
+          echo "REFUSED: this workflow downloaded unpinned latest bootstrap and rewrote IDs to com.newtermux.app."
+          echo "That is the 2026-03-02 abandoned path (fil/file / patchelf)."
+          echo "Fase 4 path: scripts/fase4/prepare-prefix-aware-bootstrap.sh"
+          echo "See docs/NEWTERMUX_FASE4_GO_REPOS_2026-09-19.md"
+          exit 2
+
       - name: Checkout NewTermux
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install dependencies
         run: |
@@ -93,13 +101,13 @@ jobs:
           done
           
       - name: Upload Bootstrap
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: bootstrap-all
           path: bootstrap-*.zip
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/v')
         with:
           files: bootstrap-*.zip

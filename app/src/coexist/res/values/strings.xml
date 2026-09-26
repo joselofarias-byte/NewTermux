@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="application_name">NewTermux Dev</string>
+    <string name="shared_user_label">NewTermux Dev user</string>
+</resources>

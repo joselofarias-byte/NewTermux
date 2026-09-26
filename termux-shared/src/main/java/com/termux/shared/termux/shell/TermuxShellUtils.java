@@ -58,6 +58,14 @@ public class TermuxShellUtils {
                                         String[] parts = shebangExecutable.split("/");
                                         String binary = parts[parts.length - 1];
                                         interpreter = TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH + "/" + binary;
+                                    } else if (shebangExecutable.startsWith("/data/data/com.termux/")
+                                        && !"com.termux".equals(TermuxConstants.TERMUX_PACKAGE_NAME)) {
+                                        // Stock bootstrap login shebang still points at Play Termux.
+                                        // Kernel execve of that interpreter is EACCES under a coexist
+                                        // UID. Run the script with this variant's PREFIX interpreter.
+                                        interpreter = shebangExecutable.replace(
+                                            "/data/data/com.termux/",
+                                            "/data/data/" + TermuxConstants.TERMUX_PACKAGE_NAME + "/");
                                     }
                                     break;
                                 }

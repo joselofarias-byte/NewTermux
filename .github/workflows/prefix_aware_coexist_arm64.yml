@@ -1,0 +1,242 @@
+name: Prefix-aware coexist ARM64
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'app/build.gradle'
+      - 'app/src/main/java/com/termux/app/TermuxInstaller.java'
+      - 'termux-shared/src/main/java/com/termux/shared/termux/shell/**'
+      - 'scripts/fase8/**'
+      - '.github/workflows/prefix_aware_coexist_arm64.yml'
+  workflow_dispatch:
+
+jobs:
+  build-prefix-and-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      # Pin the package-builder image that was used by the last known-green
+      # source bootstrap run. The floating :latest moved from digest
+      # a753715... to 1db9272... on 2026-09-26 and no longer ships
+      # /home/builder/lib/android-ndk-r29, so the same pinned termux-packages
+      # commit began failing before apt could build.
+      TERMUX_BUILDER_IMAGE_NAME: ghcr.io/termux/package-builder@sha256:a753715a74c288a4006d5f0bd8c3fcbc0f9ee4313460706a3b77c1a6417b7ae6
+      TERMUX_PACKAGES_REF: 648666db57d93b830763ace591daf55ad0b5eb16
+      TERMUX_APP_PACKAGE: com.newtermux.dev
+      TERMUX_ABIS: arm64-v8a
+      TERMUX_PACKAGE_VARIANT: apt-android-7
+      PINNED_BOOTSTRAP_URL: https://github.com/termux/termux-packages/releases/download/bootstrap-2026.02.12-r1%2Bapt.android-7/bootstrap-aarch64.zip
+
+    steps:
+      - name: Checkout NewTermux
+        uses: actions/checkout@v6
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install host bootstrap tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y binutils zip unzip curl jq xz-utils gzip patchelf file
+
+      - name: Clone pinned termux-packages
+        run: |
+          git clone https://github.com/termux/termux-packages.git "$RUNNER_TEMP/termux-packages"
+          git -C "$RUNNER_TEMP/termux-packages" checkout "$TERMUX_PACKAGES_REF"
+          test "$(git -C "$RUNNER_TEMP/termux-packages" rev-parse HEAD)" = "$TERMUX_PACKAGES_REF"
+
+      - name: Point properties.sh at com.newtermux.dev
+        run: |
+          set -euo pipefail
+          props="$RUNNER_TEMP/termux-packages/scripts/properties.sh"
+          # properties.sh hardcodes TERMUX_APP__PACKAGE_NAME and then overwrites
+          # TERMUX_APP_PACKAGE from it. Exporting TERMUX_APP_PACKAGE is a no-op.
+          if grep -q '^TERMUX_APP__PACKAGE_NAME="com.termux"' "$props"; then
+            sed -i 's/^TERMUX_APP__PACKAGE_NAME="com.termux"/TERMUX_APP__PACKAGE_NAME="com.newtermux.dev"/' "$props"
+          elif grep -q '^TERMUX_APP_PACKAGE=' "$props"; then
+            sed -i 's/^TERMUX_APP_PACKAGE=.*/TERMUX_APP_PACKAGE=com.newtermux.dev/' "$props"
+          else
+            echo "FAIL: could not locate package-name assignment in properties.sh" >&2
+            exit 1
+          fi
+          grep -nE 'TERMUX_APP__PACKAGE_NAME=|TERMUX_APP_PACKAGE=' "$props" | head
+          # The image may already export ANDROID_HOME to a read-only tree.
+          # Force the writable copy once prepare-sdk has created it.
+          # Keep this indented: an unindented heredoc breaks the workflow YAML
+          # (push run 35479419864 failed with zero jobs).
+          printf '%s\n' \
+            '' \
+            'if [ -d "${HOME}/android-sdk-writable/platforms/android-33" ]; then' \
+            '  export ANDROID_HOME="${HOME}/android-sdk-writable"' \
+            '  export ANDROID_SDK_ROOT="${ANDROID_HOME}"' \
+            'fi' >> "$props"
+
+          # Pin 648666db ships the bzip2 tools as a libbz2 subpackage.
+          # build-package.sh only looks up packages/$name, so PACKAGES+=(bzip2)
+          # failed run 35479458793 after apt/termux-am already succeeded.
+          bs="$RUNNER_TEMP/termux-packages/scripts/build-bootstraps.sh"
+          sed -i 's/PACKAGES+=("bzip2")/PACKAGES+=("libbz2")/' "$bs"
+          python3 - <<'PY'
+          import os, pathlib, re, sys
+          root = pathlib.Path(os.environ["RUNNER_TEMP"]) / "termux-packages"
+          bs = root / "scripts/build-bootstraps.sh"
+          text = bs.read_text()
+          names = re.findall(r'PACKAGES\+=\("([a-z0-9][a-z0-9+-]*)"\)', text)
+          missing = [n for n in names if not (root / "packages" / n / "build.sh").is_file()]
+          print("bootstrap_packages=" + " ".join(names))
+          if missing:
+              print("FAIL missing package dirs: " + " ".join(missing), file=sys.stderr)
+              sys.exit(1)
+          print("PASS all bootstrap package dirs exist")
+          old = '\tmv -f "${BOOTSTRAP_TMPDIR}/bootstrap-${1}.zip" "$TERMUX_PACKAGES_DIRECTORY/"\n'
+          new = (
+              '\t# Bind-mount + AppArmor blocks mv onto the repo dir (CI 35481800800).\n'
+              '\t# Keep a copy in /tmp so the host can docker cp it after EXIT trap\n'
+              '\t# deletes BOOTSTRAP_TMPDIR.\n'
+              '\tcp -f "${BOOTSTRAP_TMPDIR}/bootstrap-${1}.zip" "/tmp/bootstrap-${1}.zip"\n'
+              '\tcp -f "${BOOTSTRAP_TMPDIR}/bootstrap-${1}.zip" "$TERMUX_PACKAGES_DIRECTORY/" || \\\n'
+              '\t\techo "WARN: bind-mount zip write failed; zip left at /tmp/bootstrap-${1}.zip"\n'
+          )
+          if old not in text:
+              print("FAIL: create_bootstrap_archive mv line not found", file=sys.stderr)
+              sys.exit(1)
+          bs.write_text(text.replace(old, new, 1))
+          print("PASS patched zip copy to /tmp")
+          PY
+
+      - name: Install a writable Android-33 SDK for termux-am
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/termux-packages"
+          # Fail fast before the ~1h apt compile. Run 35477142849 died at
+          # termux-am :app:assembleRelease with:
+          #   Failed to read or create install properties file
+          #   platforms;android-33 / build-tools;30.0.3
+          ./scripts/run-docker.sh bash -c '
+            set -eu
+            src="$(ls -d /home/builder/lib/android-sdk-* | head -n 1)"
+            dest=/home/builder/android-sdk-writable
+            echo "sdk_src=$src dest=$dest"
+            rm -rf "$dest"
+            cp -a "$src" "$dest"
+            if [ -x "$dest/cmdline-tools/latest/bin/sdkmanager" ]; then
+              sdk="$dest/cmdline-tools/latest/bin/sdkmanager"
+            elif [ -x "$dest/cmdline-tools/bin/sdkmanager" ]; then
+              sdk="$dest/cmdline-tools/bin/sdkmanager"
+            else
+              echo "FAIL: sdkmanager not found under $dest" >&2
+              find "$dest" -name sdkmanager >&2 || true
+              exit 1
+            fi
+            yes | "$sdk" --sdk_root="$dest" --licenses >/dev/null || true
+            yes | "$sdk" --sdk_root="$dest" "platforms;android-33" "build-tools;30.0.3"
+            test -d "$dest/platforms/android-33"
+            test -d "$dest/build-tools/30.0.3"
+            echo "writable_sdk_ready=$dest"
+          '
+
+      - name: Build package-aware aarch64 bootstrap from source
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/termux-packages"
+
+          # A renamed Termux package cannot safely mix binaries compiled for
+          # com.termux. build-bootstraps.sh is the upstream-supported path for
+          # forked package names: it builds apt/dpkg/core tools and their
+          # dependencies against the com.newtermux.dev PREFIX.
+          #
+          # Run inside the official build container because build-bootstraps.sh
+          # intentionally uses /home/builder/termux-packages. ANDROID_HOME must
+          # be the writable tree prepared above so termux-am can compile.
+          ./scripts/run-docker.sh bash -c '
+            export ANDROID_HOME=/home/builder/android-sdk-writable
+            export ANDROID_SDK_ROOT="$ANDROID_HOME"
+            exec ./scripts/build-bootstraps.sh --architectures aarch64
+          '
+
+          if [ ! -f bootstrap-aarch64.zip ]; then
+            echo "bind-mount zip missing; docker cp from /tmp"
+            docker cp termux-package-builder:/tmp/bootstrap-aarch64.zip \
+              "$PWD/bootstrap-aarch64.zip"
+          fi
+          test -f bootstrap-aarch64.zip
+          mkdir -p "$RUNNER_TEMP/newtermux-bootstrap"
+          cp bootstrap-aarch64.zip \
+            "$RUNNER_TEMP/newtermux-bootstrap/bootstrap-aarch64.zip"
+
+      - name: Verify source-built bootstrap identity
+        run: |
+          set -euo pipefail
+          zip="$RUNNER_TEMP/newtermux-bootstrap/bootstrap-aarch64.zip"
+          chmod +x scripts/fase8/rewrite-bootstrap-prefix.sh \
+            scripts/fase8/verify-bootstrap-prefix.sh
+          # Source-built dpkg/apt already embed com.newtermux.dev in ELF
+          # .rodata (run 35484720379: elf_rodata_old_prefix_files=0, login
+          # shebang and bash RUNPATH were already NewTermux). termux-tools
+          # scripts still hard-code /data/data/com.termux fallbacks; rewrite
+          # those text files without touching ELF.
+          scripts/fase8/rewrite-bootstrap-prefix.sh "$zip" com.newtermux.dev
+          scripts/fase8/verify-bootstrap-prefix.sh "$zip" com.newtermux.dev
+
+          # Physical HONOR 200 exposed that rewriting only ELF RUNPATH is not
+          # enough: dpkg embeds its configuration directory in ELF .rodata.
+          # Source-built dpkg/apt must contain the NewTermux PREFIX and must not
+          # retain the stock private app path.
+          tmp="$(mktemp -d)"
+          unzip -q "$zip" -d "$tmp"
+          test -x "$tmp/bin/dpkg"
+          test -x "$tmp/bin/apt"
+          strings "$tmp/bin/dpkg" | grep -Fq '/data/data/com.newtermux.dev/files/usr/etc/dpkg'
+          if strings "$tmp/bin/dpkg" | grep -Fq '/data/data/com.termux/files/usr/etc/dpkg'; then
+            echo "FAIL: dpkg still embeds stock com.termux configuration path" >&2
+            exit 1
+          fi
+          if strings "$tmp/bin/apt" | grep -Fq '/data/data/com.termux/files/usr'; then
+            echo "FAIL: apt still embeds stock com.termux PREFIX" >&2
+            exit 1
+          fi
+          rm -rf "$tmp"
+          sha256sum "$zip"
+
+      - name: Build ARM64 coexist APK with verified bootstrap
+        env:
+          NEWTERMUX_BOOTSTRAP_DIR: ${{ runner.temp }}/newtermux-bootstrap
+          TERMUX_ABIS: arm64-v8a
+          TERMUX_PACKAGE_VARIANT: apt-android-7
+          TERMUX_SPLIT_APKS_FOR_DEBUG_BUILDS: '1'
+        run: |
+          set -euo pipefail
+          ./gradlew assembleCoexistDebug --no-daemon
+          find app/build/outputs/apk/coexist/debug -maxdepth 1 -type f -name '*arm64-v8a.apk' -print
+          apk="$(find app/build/outputs/apk/coexist/debug -maxdepth 1 -type f -name '*arm64-v8a.apk' -print -quit)"
+          test -n "$apk"
+          sha256sum "$apk" | tee "$RUNNER_TEMP/newtermux-arm64.sha256"
+          python3 - <<'PY'
+          import json, pathlib, sys
+          meta = pathlib.Path("app/build/outputs/apk/coexist/debug/output-metadata.json")
+          data = json.loads(meta.read_text())
+          aid = data.get("applicationId")
+          variant = data.get("variantName")
+          if aid != "com.newtermux.dev" or variant != "coexistDebug":
+              raise SystemExit(f"FAIL identity {aid} {variant}")
+          print(f"PASS applicationId={aid} variantName={variant}")
+          PY
+
+      - name: Upload prefix-aware bootstrap
+        uses: actions/upload-artifact@v6
+        with:
+          name: newtermux-prefix-aware-bootstrap-aarch64
+          path: ${{ runner.temp }}/newtermux-bootstrap/bootstrap-aarch64.zip
+
+      - name: Upload ARM64 coexist APK
+        uses: actions/upload-artifact@v6
+        with:
+          name: newtermux-prefix-aware-coexist-arm64
+          path: |
+            app/build/outputs/apk/coexist/debug/*arm64-v8a.apk
+            ${{ runner.temp }}/newtermux-arm64.sha256
