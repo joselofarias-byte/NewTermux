@@ -15,20 +15,25 @@ jobs:
     
     steps:
       - name: Checkout NewTermux
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Clone termux-packages
         run: |
           git clone --depth 1 https://github.com/termux/termux-packages.git
           
       - name: Set up Docker
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build Bootstrap using official scripts
         run: |
           cd termux-packages
           
-          # Configure for NewTermux package name
+          # Abandoned 2026-03-02. Official rebuild uses com.newtermux.dev only
+          # after an explicit pinned termux-packages SHA (see scripts/fase4/).
+          echo "REFUSED: TERMUX_APP_PACKAGE=com.newtermux.app is the abandoned experiment."
+          echo "Use scripts/fase4/prepare-prefix-aware-bootstrap.sh"
+          echo "See docs/NEWTERMUX_FASE4_GO_REPOS_2026-09-19.md"
+          exit 2
           export TERMUX_APP_PACKAGE="com.newtermux.app"
           
           # The wiki says: Set TERMUX_APP_PACKAGE to your package name.
@@ -46,13 +51,13 @@ jobs:
           ./scripts/run-docker.sh ./scripts/generate-bootstraps.sh --architectures ${{ github.event.inputs.arch }}
           
       - name: Upload Bootstrap
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: bootstrap-${{ github.event.inputs.arch }}-source
           path: termux-packages/bootstrap-${{ github.event.inputs.arch }}.zip
 
       - name: Create Release with Source Bootstrap
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/v')
         with:
           files: termux-packages/bootstrap-${{ github.event.inputs.arch }}.zip

@@ -1,5 +1,7 @@
 plugins {
     id "com.android.application"
+    id "org.jetbrains.kotlin.android"
+    id "org.jetbrains.kotlin.plugin.compose"
 }
 
 ext {
@@ -21,6 +23,10 @@ android {
     def apkVersionTag = System.getenv("TERMUX_APK_VERSION_TAG") ?: ""
     def splitAPKsForDebugBuilds = System.getenv("TERMUX_SPLIT_APKS_FOR_DEBUG_BUILDS") ?: "1"
     def splitAPKsForReleaseBuilds = System.getenv("TERMUX_SPLIT_APKS_FOR_RELEASE_BUILDS") ?: "0" // F-Droid does not support split APKs #1904
+    def requestedAbis = (System.getenv("TERMUX_ABIS") ?: "x86,x86_64,armeabi-v7a,arm64-v8a")
+        .split(",")
+        .collect { it.trim() }
+        .findAll { !it.isEmpty() }
 
     dependencies {
         implementation "androidx.annotation:annotation:1.9.0"
@@ -43,14 +49,15 @@ android {
     defaultConfig {
         minSdkVersion project.properties.minSdkVersion.toInteger()
         targetSdkVersion project.properties.targetSdkVersion.toInteger()
-        versionCode 18
-        versionName "1.5.5"
+        versionCode 28
+        versionName "1.6.2"
 
         if (appVersionName) versionName = appVersionName
         validateVersionName(versionName)
 
         buildConfigField "String", "TERMUX_PACKAGE_VARIANT", "\"" + project.ext.packageVariant + "\"" // Used by TermuxApplication class
 
+        // Overridden per identity flavor. AGP 8+ does not allow applicationId on BuildType.
         applicationId "com.termux"
         manifestPlaceholders.TERMUX_PACKAGE_NAME = "com.termux"
         manifestPlaceholders.TERMUX_APP_NAME = "NewTermux"
@@ -72,7 +79,7 @@ android {
                 enable ((gradle.startParameter.taskNames.any { it.contains("Debug") } && splitAPKsForDebugBuilds == "1") ||
                     (gradle.startParameter.taskNames.any { it.contains("Release") } && splitAPKsForReleaseBuilds == "1"))
                 reset ()
-                include 'x86', 'x86_64', 'armeabi-v7a', 'arm64-v8a'
+                include(*requestedAbis as String[])
                 universalApk true
             }
         }
@@ -84,6 +91,25 @@ android {
             keyAlias 'alias'
             storePassword 'xrj45yWGLbsO7W0v'
             keyPassword 'xrj45yWGLbsO7W0v'
+        }
+    }
+
+    // Fase 3: applicationId belongs on productFlavors, not buildTypes (AGP 8+).
+    // coexist = Play-safe debug identity. playcompat = com.termux (CI must not publish it).
+    flavorDimensions "identity"
+    productFlavors {
+        playcompat {
+            dimension "identity"
+            applicationId "com.termux"
+            manifestPlaceholders.TERMUX_PACKAGE_NAME = "com.termux"
+            manifestPlaceholders.TERMUX_APP_NAME = "NewTermux"
+        }
+        coexist {
+            dimension "identity"
+            // 16-char id; com.joselofarias.newtermux.debug rejected (PREFIX ELF length).
+            applicationId "com.newtermux.dev"
+            manifestPlaceholders.TERMUX_PACKAGE_NAME = "com.newtermux.dev"
+            manifestPlaceholders.TERMUX_APP_NAME = "NewTermux Dev"
         }
     }
 
@@ -100,17 +126,21 @@ android {
             buildConfigField "boolean", "IS_DEMO", "false"
         }
 
-        // Test/coexist build: installs as com.termux.demo alongside real Termux and NewTermux.
-        // Fake shell — all Settings/toolbar/drawer/Text Expansion UI works; no real commands run.
+        // Fake shell. Only playcompatDemo is enabled (com.termux.demo).
+        // coexistDemo would become com.newtermux.dev.demo — not the documented demo id.
         demo {
             initWith debug
             applicationIdSuffix ".demo"
             buildConfigField "boolean", "IS_DEMO", "true"
-            matchingFallbacks = ['debug']  // library submodules don't have 'demo', fall back to debug
-            // Override package name so sharedUserId and content provider authorities
-            // (com.termux.demo.documents, com.termux.demo.files) are unique and don't
-            // conflict with NewTermux (com.termux) or original Termux already installed.
+            matchingFallbacks = ['demo', 'debug']
             manifestPlaceholders.TERMUX_PACKAGE_NAME = "com.termux.demo"
+            manifestPlaceholders.TERMUX_APP_NAME = "NewTermux Demo"
+        }
+    }
+
+    variantFilter { variant ->
+        if (variant.flavors.any { it.name == "coexist" } && variant.buildType.name == "demo") {
+            setIgnore(true)
         }
     }
 
@@ -118,8 +148,12 @@ android {
         // Flag to enable support for the new language APIs
         coreLibraryDesugaringEnabled true
 
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+
+    kotlinOptions {
+        jvmTarget = "11"
     }
 
     externalNativeBuild {
@@ -161,10 +195,21 @@ android {
 
     buildFeatures {
         buildConfig true
+        compose true
     }
 }
 
 dependencies {
+    // Jetpack Compose (BOM-managed versions) — used by the migrated NewTermux screens.
+    def composeBom = platform("androidx.compose:compose-bom:2025.06.01")
+    implementation composeBom
+    implementation "androidx.compose.ui:ui"
+    implementation "androidx.compose.ui:ui-tooling-preview"
+    implementation "androidx.compose.material3:material3"
+    implementation "androidx.compose.material:material-icons-extended"
+    implementation "androidx.activity:activity-compose:1.10.1"
+    debugImplementation "androidx.compose.ui:ui-tooling"
+
     testImplementation "junit:junit:4.13.2"
     testImplementation "org.robolectric:robolectric:4.10"
     coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:1.1.5"
@@ -184,10 +229,55 @@ def validateVersionName(String versionName) {
 }
 
 def downloadBootstrap(String arch, String expectedChecksum, String version) {
+    // Fase 4: checksum compare stays commented. The 2026.02.12-r1 aarch64
+    // asset on GitHub no longer matches expectedChecksum (see
+    // docs/NEWTERMUX_FASE4_GO_REPOS_2026-09-19.md). Do not retarget to
+    // /releases/latest and do not apply scripts/patch-bootstrap.sh.
     def digest = java.security.MessageDigest.getInstance("SHA-256")
 
     def localUrl = "src/main/cpp/bootstrap-" + arch + ".zip"
     def file = new File(projectDir, localUrl)
+
+    // Coexist builds must never embed the stock com.termux bootstrap. That
+    // bootstrap hard-codes /data/data/com.termux and can compile successfully
+    // while failing at runtime under com.newtermux.dev.
+    def coexistRequested = gradle.startParameter.taskNames.any { it.contains("Coexist") }
+    def externalBootstrapDir = System.getenv("NEWTERMUX_BOOTSTRAP_DIR")
+    if (coexistRequested) {
+        if (externalBootstrapDir == null || externalBootstrapDir.isBlank()) {
+            throw new GradleException(
+                "Refusing coexist build with stock Termux bootstrap. " +
+                "Set NEWTERMUX_BOOTSTRAP_DIR to PREFIX-aware bootstraps built with " +
+                "TERMUX_APP_PACKAGE=com.newtermux.dev."
+            )
+        }
+
+        def source = new File(externalBootstrapDir, "bootstrap-" + arch + ".zip")
+        if (!source.isFile()) {
+            throw new GradleException("Missing PREFIX-aware bootstrap: " + source)
+        }
+
+        file.parentFile.mkdirs()
+        java.nio.file.Files.copy(
+            source.toPath(),
+            file.toPath(),
+            java.nio.file.StandardCopyOption.REPLACE_EXISTING
+        )
+
+        def verifier = new File(rootProject.projectDir, "scripts/fase8/verify-bootstrap-prefix.sh")
+        // Gradle 9 removed Project.exec(); use ProcessBuilder so coexist
+        // still re-checks the zip that NEWTERMUX_BOOTSTRAP_DIR supplied.
+        def proc = new ProcessBuilder("bash", verifier.absolutePath, file.absolutePath, "com.newtermux.dev")
+            .directory(rootProject.projectDir)
+            .inheritIO()
+            .start()
+        def exit = proc.waitFor()
+        if (exit != 0) {
+            file.delete()
+            throw new GradleException("PREFIX-aware bootstrap verification failed for " + arch)
+        }
+        return
+    }
     /*
     if (file.exists()) {
         def buffer = new byte[8192]
@@ -241,18 +331,42 @@ clean {
 task downloadBootstraps() {
     doLast {
         def packageVariant = project.ext.packageVariant
+        def abiToArch = [
+            "arm64-v8a": "aarch64",
+            "armeabi-v7a": "arm",
+            "x86": "i686",
+            "x86_64": "x86_64"
+        ]
+        def requested = (System.getenv("TERMUX_ABIS") ?: "x86,x86_64,armeabi-v7a,arm64-v8a")
+            .split(",")
+            .collect { it.trim() }
+            .findAll { !it.isEmpty() }
+
+        def arches = requested.collect { abi ->
+            if (!abiToArch.containsKey(abi)) {
+                throw new GradleException("Unsupported TERMUX_ABIS entry: " + abi)
+            }
+            abiToArch[abi]
+        }.unique()
+
         if (packageVariant == "apt-android-7") {
             def version = "2026.02.12-r1" + "%2B" + "apt.android-7"
-            downloadBootstrap("aarch64", "f73ee7d55630ae710c977691cd5157f3e27ac6563cc233298781cad0754acadd", version)
-            downloadBootstrap("arm", "dcef1a43fbf9daf4d89d8b2d8ae3ed34d8dba30acb401cd0f546aa48980936db", version)
-            downloadBootstrap("i686", "55b13765952279f2feffc13ce2291693c41501e79c5bb37b4986493ce36143be", version)
-            downloadBootstrap("x86_64", "2c6948a605205a39abe9fa2a079d6666048233cfd59a4896754ed910792b7c3c", version)
+            def sums = [
+                "aarch64": "f73ee7d55630ae710c977691cd5157f3e27ac6563cc233298781cad0754acadd",
+                "arm": "dcef1a43fbf9daf4d89d8b2d8ae3ed34d8dba30acb401cd0f546aa48980936db",
+                "i686": "55b13765952279f2feffc13ce2291693c41501e79c5bb37b4986493ce36143be",
+                "x86_64": "2c6948a605205a39abe9fa2a079d6666048233cfd59a4896754ed910792b7c3c"
+            ]
+            arches.each { arch -> downloadBootstrap(arch, sums[arch], version) }
         } else if (packageVariant == "apt-android-5") {
             def version = "2022.04.28-r6" + "+" + packageVariant
-            downloadBootstrap("aarch64", "913609d439415c828c5640be1b0561467e539cb1c7080662decaaca2fb4820e7", version)
-            downloadBootstrap("arm", "26bfb45304c946170db69108e5eb6e3641aad751406ce106c80df80cad2eccf8", version)
-            downloadBootstrap("i686", "46dcfeb5eef67ba765498db9fe4c50dc4690805139aa0dd141a9d8ee0693cd27", version)
-            downloadBootstrap("x86_64", "615b590679ee6cd885b7fd2ff9473c845e920f9b422f790bb158c63fe42b8481", version)
+            def sums = [
+                "aarch64": "913609d439415c828c5640be1b0561467e539cb1c7080662decaaca2fb4820e7",
+                "arm": "26bfb45304c946170db69108e5eb6e3641aad751406ce106c80df80cad2eccf8",
+                "i686": "46dcfeb5eef67ba765498db9fe4c50dc4690805139aa0dd141a9d8ee0693cd27",
+                "x86_64": "615b590679ee6cd885b7fd2ff9473c845e920f9b422f790bb158c63fe42b8481"
+            ]
+            arches.each { arch -> downloadBootstrap(arch, sums[arch], version) }
         } else {
             throw new GradleException("Unsupported TERMUX_PACKAGE_VARIANT \"" + packageVariant + "\"")
         }

@@ -21,6 +21,12 @@
 
         <!-- Critical Termux Attributes to prevent InflateException -->
         <item name="android:windowActionModeOverlay">true</item>
+
+        <!-- Rounded + outlined pop-out menus (Bannerlator look) for native PopupMenu/spinners -->
+        <item name="android:popupMenuStyle">@style/Widget.NewTermux.PopupMenu</item>
+        <item name="popupMenuStyle">@style/Widget.NewTermux.PopupMenu</item>
+        <item name="android:listPopupWindowStyle">@style/Widget.NewTermux.ListPopupWindow</item>
+        <item name="listPopupWindowStyle">@style/Widget.NewTermux.ListPopupWindow</item>
         <item name="termuxActivityDrawerBackground">@color/nt_surface</item>
         <item name="termuxActivityDrawerImageTint">@color/nt_on_surface</item>
         <item name="extraKeysButtonTextColor">@color/nt_terminal_fg</item>
@@ -72,6 +78,14 @@
     <!-- Bottom sheet dialogs -->
     <style name="Widget.NewTermux.BottomSheet" parent="Widget.MaterialComponents.BottomSheet">
         <item name="android:background">@drawable/nt_bottom_sheet_bg</item>
+    </style>
+
+    <!-- Pop-out menus: rounded + outlined background (Bannerlator look) -->
+    <style name="Widget.NewTermux.PopupMenu" parent="Widget.MaterialComponents.PopupMenu">
+        <item name="android:popupBackground">@drawable/bg_popup_menu</item>
+    </style>
+    <style name="Widget.NewTermux.ListPopupWindow" parent="Widget.MaterialComponents.PopupMenu.ListPopupWindow">
+        <item name="android:popupBackground">@drawable/bg_popup_menu</item>
     </style>
 
 </resources>
