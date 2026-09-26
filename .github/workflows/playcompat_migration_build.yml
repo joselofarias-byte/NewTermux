@@ -1,0 +1,132 @@
+name: Build playcompat migration APK
+
+# Migration APK only. Same package id as Termux Play (com.termux), stock
+# bootstrap, debug signing. Do not install it over Play data from this
+# workflow. Backup and signature checks stay on the HONOR 200.
+#
+# pull_request.paths matches the accumulated PR diff. After the first
+# build-input commit, a later docs-only synchronize still starts this
+# workflow. preflight classifies the push itself — github.event.before
+# to github.event.after — and skips build-arm64 when that delta does not
+# touch APK inputs. workflow_dispatch always builds. Commit messages are
+# not consulted.
+
+on:
+  pull_request:
+    branches:
+      - fix/prefix-aware-bootstrap-runtime
+    paths:
+      - '.github/workflows/playcompat_migration_build.yml'
+      - 'app/build.gradle'
+      - 'app/src/main/java/com/termux/app/TermuxInstaller.java'
+      - 'termux-shared/src/main/java/com/termux/shared/termux/shell/**'
+      - 'scripts/fase8/assert-playcompat-stock-bootstrap.sh'
+      - 'scripts/fase8/classify-playcompat-build-delta.sh'
+      - 'scripts/fase8/test-playcompat-build-gate.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    outputs:
+      build_required: ${{ steps.gate.outputs.build_required }}
+      build_reason: ${{ steps.gate.outputs.reason }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          # The PR head, not the synthetic merge commit, so before/after
+          # are commits in this checkout.
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Assert playcompat keeps the stock com.termux bootstrap
+        run: bash scripts/fase8/assert-playcompat-stock-bootstrap.sh
+
+      - name: Prove the synchronize delta gate
+        run: bash scripts/fase8/test-playcompat-build-gate.sh
+
+      - name: Decide whether this event must assemble the ARM64 APK
+        id: gate
+        env:
+          CLASSIFY_EVENT_NAME: ${{ github.event_name }}
+          CLASSIFY_EVENT_ACTION: ${{ github.event.action }}
+          CLASSIFY_BEFORE: ${{ github.event.before }}
+          CLASSIFY_AFTER: ${{ github.event.after }}
+          CLASSIFY_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          CLASSIFY_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bash scripts/fase8/classify-playcompat-build-delta.sh --from-git
+
+  build-arm64:
+    needs: preflight
+    if: needs.preflight.outputs.build_required == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Build playcompatDebug
+        env:
+          TERMUX_ABIS: arm64-v8a
+          TERMUX_PACKAGE_VARIANT: apt-android-7
+          TERMUX_SPLIT_APKS_FOR_DEBUG_BUILDS: '1'
+          TERMUX_APP_VERSION_NAME: 1.6.2-playcompat
+          TERMUX_APK_VERSION_TAG: 1.6.2-playcompat-apt-android-7-debug
+        run: |
+          set -euo pipefail
+          ./gradlew assemblePlaycompatDebug --no-daemon
+
+      - name: Verify identity, bootstrap and architecture
+        id: verify
+        run: |
+          set -euo pipefail
+          DIR=app/build/outputs/apk/playcompat/debug
+          META="$DIR/output-metadata.json"
+          APK="$(find "$DIR" -maxdepth 1 -type f -name '*arm64-v8a.apk' -print -quit)"
+          test -n "$APK"
+          test -f "$META"
+
+          python3 - "$META" "$APK" <<'PY'
+          import io, json, sys, zipfile
+
+          metadata_path, apk_path = sys.argv[1:]
+          with open(metadata_path, encoding="utf-8") as stream:
+              metadata = json.load(stream)
+          assert metadata.get("applicationId") == "com.termux", metadata
+          assert metadata.get("variantName") == "playcompatDebug", metadata
+
+          with zipfile.ZipFile(apk_path) as apk:
+              bootstrap = apk.read("lib/arm64-v8a/libtermux-bootstrap.so")
+          with zipfile.ZipFile(io.BytesIO(bootstrap)) as archive:
+              names = set(archive.namelist())
+              login = archive.read("bin/login").decode("utf-8")
+          assert login.splitlines()[0] == "#!/data/data/com.termux/files/usr/bin/sh"
+          assert "lib/libandroid-support.so" in names
+          print("PASS: playcompatDebug / com.termux")
+          print("PASS: ARM64 bootstrap prefix and libandroid-support.so")
+          PY
+
+          sha256sum "$APK" | tee "$APK.sha256"
+          printf 'apk=%s\n' "$APK" >> "$GITHUB_OUTPUT"
+          printf 'sha=%s\n' "$APK.sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Upload verified ARM64 migration APK
+        uses: actions/upload-artifact@v6
+        with:
+          name: NewTermux-playcompat-ARM64-verified
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            ${{ steps.verify.outputs.apk }}
+            ${{ steps.verify.outputs.sha }}
+            app/build/outputs/apk/playcompat/debug/output-metadata.json

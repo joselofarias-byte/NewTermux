@@ -166,6 +166,7 @@ public final class TermuxInstaller {
                     public void run() {
                         repairStockPrefixReferencesIfNeeded();
                         chmodExtractedExecutables();
+                        suppressBootstrapMotd();
                         activity.runOnUiThread(whenDone);
                     }
                 }.start();
@@ -281,6 +282,7 @@ public final class TermuxInstaller {
 
                     repairStockPrefixReferencesIfNeeded();
                     chmodExtractedExecutables();
+                    suppressBootstrapMotd();
 
                     Logger.logInfo(LOG_TAG, "Bootstrap packages installed successfully.");
 
@@ -618,6 +620,24 @@ public final class TermuxInstaller {
             } catch (Exception e) {
                 Logger.logError(LOG_TAG, "Failed repairing " + file + ": " + e.getMessage());
             }
+        }
+    }
+
+    private static void suppressBootstrapMotd() {
+        File motd = new File(TermuxConstants.TERMUX_PREFIX_DIR_PATH, "etc/motd");
+        try {
+            File parent = motd.getParentFile();
+            if (parent != null && !parent.exists() && !parent.mkdirs()) {
+                Logger.logError(LOG_TAG, "Could not create motd parent directory: " + parent);
+                return;
+            }
+            try (FileOutputStream out = new FileOutputStream(motd, false)) {
+                // Intentionally empty: NewTermux uses the terminal space for the user's shell,
+                // not the upstream Docs/Donate/Community/package-help banner.
+            }
+            Logger.logInfo(LOG_TAG, "Suppressed upstream Termux MOTD.");
+        } catch (Exception e) {
+            Logger.logError(LOG_TAG, "Failed to suppress MOTD: " + e.getMessage());
         }
     }
 
