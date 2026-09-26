@@ -231,12 +231,17 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: newtermux-prefix-aware-bootstrap-aarch64
+          # Intermediate ARM64 bootstrap from the coexist debug job.
+          retention-days: 3
           path: ${{ runner.temp }}/newtermux-bootstrap/bootstrap-aarch64.zip
 
       - name: Upload ARM64 coexist APK
         uses: actions/upload-artifact@v6
         with:
           name: newtermux-prefix-aware-coexist-arm64
+          # Debug coexist delivery is already ARM64-only. Short retention;
+          # the canonical playcompat physical-test artifact is a separate upload.
+          retention-days: 3
           path: |
             app/build/outputs/apk/coexist/debug/*arm64-v8a.apk
             ${{ runner.temp }}/newtermux-arm64.sha256

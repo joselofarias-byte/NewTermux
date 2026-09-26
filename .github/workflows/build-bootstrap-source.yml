@@ -54,6 +54,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: bootstrap-${{ github.event.inputs.arch }}-source
+          # Manual source bootstrap. Seven days covers download after the long
+          # build. Not a canonical physical-test artifact, and not justified at 30+.
+          retention-days: 7
           path: termux-packages/bootstrap-${{ github.event.inputs.arch }}.zip
 
       - name: Create Release with Source Bootstrap
