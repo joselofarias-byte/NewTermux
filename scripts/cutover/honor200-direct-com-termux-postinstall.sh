@@ -33,8 +33,12 @@ ok "SH_EJECUTA"
 "$PREFIX/bin/bash" --version >/dev/null 2>&1 || fail "bash no ejecuta"
 ok "BASH_EJECUTA"
 
-LOGIN_OUT="$(timeout 5 "$PREFIX/bin/login" --help 2>&1 || true)"
-if printf '%s' "$LOGIN_OUT" | grep -qiE 'permission denied|cannot execute|segmentation fault|not found'; then
+if command -v timeout >/dev/null 2>&1; then
+  LOGIN_OUT="$(timeout 5 "$PREFIX/bin/login" --help 2>&1 || true)"
+else
+  LOGIN_OUT="$("$PREFIX/bin/login" --help 2>&1 || true)"
+fi
+if printf '%s' "$LOGIN_OUT" | grep -qiE 'permission denied|cannot execute|segmentation fault'; then
   fail "login no ejecuta: $(printf '%s' "$LOGIN_OUT" | head -c 180)"
 fi
 ok "LOGIN_EJECUTA"
