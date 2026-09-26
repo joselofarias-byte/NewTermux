@@ -2,11 +2,11 @@
 set -Eeuo pipefail
 
 KNOWN_MIG="$HOME/.tbm/tmp/tbm-migration-restore-staging-1059385793"
-KNOWN_PAYLOAD="$HOME/.tbm/tmp/tbm-restore-payload-staging-798187682"
 TARGET="$HOME/.tbm/direct-cutover-stage-20260926-124519"
 HANDOFF="/sdcard/Download/TBM-NEWTERMUX-HANDOFF"
-REPORT="/sdcard/Download/NEWTERMUX-TBM-HOME-RESUME-$(date +%Y%m%d-%H%M%S).txt"
-RESCUE="$HOME/.tbm/tmp/tbm-home-resume-$(date +%Y%m%d-%H%M%S)-$$"
+REPORT="/sdcard/Download/NEWTERMUX-TBM-HOME-FOREGROUND-$(date +%Y%m%d-%H%M%S).txt"
+RESCUE="$HOME/.tbm/tmp/tbm-home-foreground-$(date +%Y%m%d-%H%M%S)-$$"
+ARCHIVE="$KNOWN_MIG/home.tar.gz"
 
 WAKE=0
 cleanup_wake() {
@@ -22,81 +22,77 @@ fail() {
 }
 
 {
-  echo "=== NEWTERMUX - REANUDAR HOME DESDE SCRATCH TBM VALIDADO ==="
+  echo "=== NEWTERMUX - HOME DESDE SCRATCH TBM VALIDADO ==="
   date
   echo "HOME=$HOME"
   echo "TARGET=$TARGET"
+  echo "ARCHIVE=$ARCHIVE"
   echo
 } | tee "$REPORT"
 
 [ "${PREFIX:-}" = "/data/data/com.termux/files/usr" ] || fail "PREFIX inesperado."
+[ -d "$KNOWN_MIG" ] || fail "Falta scratch de migracion: $KNOWN_MIG"
+[ -f "$ARCHIVE" ] || fail "Falta home.tar.gz."
+[ -f "$KNOWN_MIG/manifest.json" ] || fail "Falta manifest.json."
+grep -q 'tbm-migration-backup-v1' "$KNOWN_MIG/manifest.json" || fail "Manifest inesperado."
 
 if ps -A -o ARGS 2>/dev/null | grep -Eq '[t]bm restore|[t]ar .*home\.tar\.gz'; then
-  fail "Hay una restauracion/extraccion activa. No iniciar otra."
+  fail "Ya hay una restauracion/extraccion activa."
 fi
-
-[ -d "$KNOWN_MIG" ] || fail "Falta scratch de migracion validado: $KNOWN_MIG"
-[ -f "$KNOWN_MIG/home.tar.gz" ] || fail "Falta home.tar.gz validado."
-[ -f "$KNOWN_MIG/manifest.json" ] || fail "Falta manifest.json."
-grep -q 'tbm-migration-backup-v1' "$KNOWN_MIG/manifest.json" || fail "Manifest de migracion inesperado."
-
-# La existencia de este staging parcial demuestra que TBM ya completo
-# preflightValidatedArchive() + el control exacto de espacio antes de crear
-# el staging de payload y lanzar tar.
-[ -d "$KNOWN_PAYLOAD" ] || fail "Falta evidencia del staging de payload ya validado."
 
 mkdir -p "$TARGET"
 if find "$TARGET" -mindepth 1 -print -quit 2>/dev/null | grep -q .; then
-  fail "El stage final ya contiene entradas; no se sobrescribe nada."
+  fail "El stage final ya contiene entradas; no se sobrescribe."
 fi
 
-if command -v termux-wake-lock >/dev/null 2>&1; then
-  if termux-wake-lock >/dev/null 2>&1; then
-    WAKE=1
-    echo "WAKE_LOCK=ACTIVO" | tee -a "$REPORT"
-  else
-    echo "WAKE_LOCK=NO_CONCEDIDO" | tee -a "$REPORT"
-  fi
+if command -v termux-wake-lock >/dev/null 2>&1 && termux-wake-lock >/dev/null 2>&1; then
+  WAKE=1
+  echo "WAKE_LOCK=ACTIVO" | tee -a "$REPORT"
 else
   echo "WAKE_LOCK=NO_DISPONIBLE" | tee -a "$REPORT"
 fi
 
 mkdir -p "$RESCUE"
-ARCHIVE="$KNOWN_MIG/home.tar.gz"
-echo "ARCHIVE=$ARCHIVE" | tee -a "$REPORT"
+echo "RESCUE=$RESCUE" | tee -a "$REPORT"
 echo "ARCHIVE_SIZE=$(du -sh "$ARCHIVE" 2>/dev/null | awk '{print $1}')" | tee -a "$REPORT"
+echo | tee -a "$REPORT"
 
-echo "[1/4] Reanudando extraccion desde home.tar.gz ya validado..." | tee -a "$REPORT"
+echo "[1/5] Extrayendo HOME en primer plano." | tee -a "$REPORT"
+echo "      El archivo historico contiene arboles .tbm/rehearse* gigantes." | tee -a "$REPORT"
+echo "      Se omiten, pero gzip debe recorrer igualmente sus bytes." | tee -a "$REPORT"
+echo "      Cada mensaje PROGRESO_TAR confirma que sigue avanzando." | tee -a "$REPORT"
+echo | tee -a "$REPORT"
 
+set +e
 tar --preserve-permissions -xzf "$ARCHIVE" -C "$RESCUE" \
   --exclude='./.tbm/rehearse*' \
   --exclude='.tbm/rehearse*' \
   --exclude='./.tbm/reports' \
   --exclude='.tbm/reports' \
+  --exclude='./.tbm/reports/*' \
+  --exclude='.tbm/reports/*' \
   --exclude='./.codex/tmp/arg0/*' \
   --exclude='.codex/tmp/arg0/*' \
   --exclude='*/.codex/tmp/arg0/*' \
-  -- &
-TAR_PID=$!
-
-while kill -0 "$TAR_PID" 2>/dev/null; do
-  LINE="$(ps -A -o PID,ELAPSED,PCPU,PMEM,ARGS 2>/dev/null | awk -v p="$TAR_PID" '$1==p {print; exit}')"
-  printf '... tar activo: %s\n' "${LINE:-PID=$TAR_PID}" | tee -a "$REPORT"
-  sleep 30
-done
-
-set +e
-wait "$TAR_PID"
-TAR_RC=$?
+  --checkpoint=500000 \
+  "--checkpoint-action=echo=PROGRESO_TAR: home.tar.gz sigue recorriendose" \
+  -- 2>&1 | tee -a "$REPORT"
+TAR_RC=${PIPESTATUS[0]}
 set -e
-[ "$TAR_RC" -eq 0 ] || fail "tar termino con codigo $TAR_RC; el stage final sigue intacto."
 
-echo "EXTRACCION=OK" | tee -a "$REPORT"
+echo "TAR_EXIT=$TAR_RC" | tee -a "$REPORT"
+[ "$TAR_RC" -eq 0 ] || fail "tar termino con codigo $TAR_RC; TARGET sigue intacto."
 
-echo "[2/4] Publicando staging completo en destino aislado..." | tee -a "$REPORT"
-mapfile -d '' ENTRIES < <(find "$RESCUE" -mindepth 1 -maxdepth 1 -print0)
-[ "${#ENTRIES[@]}" -gt 0 ] || fail "La extraccion termino pero el staging esta vacio."
+echo "[2/5] Controlando exclusiones..." | tee -a "$REPORT"
+if find "$RESCUE/.tbm" -mindepth 1 \( -path "$RESCUE/.tbm/reports" -o -path "$RESCUE/.tbm/reports/*" -o -name 'rehearse*' \) -print -quit 2>/dev/null | grep -q .; then
+  fail "Aparecio contenido TBM transitorio que debia quedar excluido."
+fi
+if find "$RESCUE" -path '*/.codex/tmp/arg0/*' -print -quit 2>/dev/null | grep -q .; then
+  fail "Aparecio un shim Codex arg0 que debia quedar excluido."
+fi
+echo "EXCLUSIONES=OK" | tee -a "$REPORT"
 
+echo "[3/5] Publicando HOME completo al stage aislado..." | tee -a "$REPORT"
 MOVED=()
 rollback() {
   local name
@@ -107,7 +103,7 @@ rollback() {
   done
 }
 
-for entry in "${ENTRIES[@]}"; do
+while IFS= read -r -d '' entry; do
   name="${entry##*/}"
   if [ -e "$TARGET/$name" ] || [ -L "$TARGET/$name" ]; then
     rollback
@@ -118,12 +114,13 @@ for entry in "${ENTRIES[@]}"; do
     fail "Fallo publicando $name; se intento rollback."
   fi
   MOVED+=("$name")
-done
+done < <(find "$RESCUE" -mindepth 1 -maxdepth 1 -print0)
 
+[ "${#MOVED[@]}" -gt 0 ] || fail "Extraccion vacia."
 rmdir "$RESCUE" 2>/dev/null || true
 echo "HOME_STAGE_PUBLICADO=OK" | tee -a "$REPORT"
 
-echo "[3/4] Restaurando solo migration_info con TBM 1.06..." | tee -a "$REPORT"
+echo "[4/5] Restaurando migration_info con TBM 1.06..." | tee -a "$REPORT"
 mkdir -p "$HOME/.tbm/bin"
 cp -f "$HANDOFF/tbm" "$HOME/.tbm/bin/tbm"
 chmod 700 "$HOME/.tbm/bin/tbm"
@@ -135,7 +132,7 @@ chmod 700 "$HOME/.tbm/bin/tbm"
 TBM="$HOME/.tbm/bin/tbm"
 case "$("$TBM" version 2>&1 | head -n1)" in
   *1.06*) ;;
-  *) fail "Binario TBM de handoff no es 1.06." ;;
+  *) fail "Binario TBM del handoff no es 1.06." ;;
 esac
 
 BUNDLE="$(cat "$HANDOFF/BUNDLE_PATH.txt")"
@@ -148,16 +145,16 @@ if find "$TARGET" -maxdepth 1 -type d -name 'proot_*' | grep -q .; then
   fail "SEGURIDAD: aparecio proot raw."
 fi
 
-echo "[4/4] Control final..." | tee -a "$REPORT"
+echo "[5/5] Control final..." | tee -a "$REPORT"
 {
   echo "TARGET=$TARGET"
   echo "COMPONENTS=home,info"
   echo "PREFIX_SNAPSHOT_RESTORED=NO"
   echo "PROOT_RAW_RESTORED=NO"
   echo "HOME_STAGE_SIZE=$(du -sh "$TARGET" 2>/dev/null | awk '{print $1}')"
-  echo "NEWTERMUX_HOME_RESUME_STAGE=PASS"
+  echo "NEWTERMUX_HOME_FOREGROUND_STAGE=PASS"
+  echo "INFORME=$REPORT"
+  echo
+  echo "No se modifico el HOME real."
+  echo "No borrar scratch viejos hasta revisar este PASS."
 } | tee -a "$REPORT"
-
-echo "INFORME=$REPORT"
-echo
-echo "No se modifico el HOME real. No borrar los scratch viejos hasta revisar este PASS."
