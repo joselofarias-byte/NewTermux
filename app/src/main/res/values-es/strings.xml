@@ -51,8 +51,8 @@
     <string name="action_autofill_password">Autocompletar contraseña</string>
     <string name="action_reset_terminal">Restablecer terminal</string>
     <string name="msg_terminal_reset">Terminal restablecido</string>
-    <string name="action_kill_process">Finalizar proceso (%d)</string>
-    <string name="title_confirm_kill_process">¿Finalizar esta sesión?</string>
+    <string name="action_kill_process">Finalizar sesión/proceso (%d)</string>
+    <string name="title_confirm_kill_process">¿Finalizar esta sesión/proceso?</string>
     <string name="action_style_terminal">Apariencia</string>
     <string name="action_toggle_keep_screen_on">Mantener pantalla encendida</string>
     <string name="action_open_help">Ayuda</string>
