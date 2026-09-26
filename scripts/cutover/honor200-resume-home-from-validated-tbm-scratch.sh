@@ -74,7 +74,7 @@ tar --preserve-permissions -xzf "$ARCHIVE" -C "$RESCUE" \
   --exclude='./.codex/tmp/arg0/*' \
   --exclude='.codex/tmp/arg0/*' \
   --exclude='*/.codex/tmp/arg0/*' \
-  --checkpoint=500000 \
+  --checkpoint=50000 \
   "--checkpoint-action=echo=PROGRESO_TAR: home.tar.gz sigue recorriendose" \
   -- 2>&1 | tee -a "$REPORT"
 TAR_RC=${PIPESTATUS[0]}
