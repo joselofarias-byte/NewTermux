@@ -17,6 +17,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 360
     env:
+      # Pin the package-builder image that was used by the last known-green
+      # source bootstrap run. The floating :latest moved from digest
+      # a753715... to 1db9272... on 2026-09-26 and no longer ships
+      # /home/builder/lib/android-ndk-r29, so the same pinned termux-packages
+      # commit began failing before apt could build.
+      TERMUX_BUILDER_IMAGE_NAME: ghcr.io/termux/package-builder@sha256:a753715a74c288a4006d5f0bd8c3fcbc0f9ee4313460706a3b77c1a6417b7ae6
       TERMUX_PACKAGES_REF: 648666db57d93b830763ace591daf55ad0b5eb16
       TERMUX_APP_PACKAGE: com.newtermux.dev
       TERMUX_ABIS: arm64-v8a
