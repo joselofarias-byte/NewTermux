@@ -14,6 +14,18 @@
 
     <string name="action_cursor_home">Inicio de línea</string>
     <string name="action_clear_screen">Limpiar pantalla</string>
+    <string name="action_output_tools">Salida y archivos</string>
+    <string name="action_save_transcript_txt">Guardar pantalla como TXT</string>
+    <string name="action_save_selected_txt">Guardar selección como TXT</string>
+    <string name="action_share_transcript_txt">Compartir como TXT</string>
+    <string name="action_copy_transcript">Copiar contenido del terminal</string>
+    <string name="action_scroll_bottom">Ir a la salida más reciente</string>
+    <string name="msg_transcript_copied">Contenido del terminal copiado</string>
+    <string name="msg_txt_saved">Guardado en Descargas: %1$s</string>
+    <string name="msg_txt_save_failed">No se pudo guardar el TXT: %1$s</string>
+    <string name="action_open_saved_file">ABRIR</string>
+    <string name="title_share_txt">Compartir TXT del terminal</string>
+
     <string name="action_rename">Renombrar</string>
     <string name="action_close">Cerrar</string>
     <string name="newtermux_toolbar_packages">Paquetes</string>
