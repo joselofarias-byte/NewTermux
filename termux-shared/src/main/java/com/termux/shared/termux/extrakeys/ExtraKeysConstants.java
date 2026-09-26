@@ -164,6 +164,13 @@ public class ExtraKeysConstants {
             putAll(CLASSIC_ARROWS_DISPLAY);
             putAll(WELL_KNOWN_CHARACTERS_DISPLAY);
             putAll(NICER_LOOKING_DISPLAY);
+
+            // NewTermux Spanish-first labels. These are display names only:
+            // the underlying key values remain HOME, END, PGUP and PGDN.
+            put("HOME", "INICIO");
+            put("END", "FIN");
+            put("PGUP", "PÁG↑");
+            put("PGDN", "PÁG↓");
             // all other characters are displayed as themselves
         }};
 
