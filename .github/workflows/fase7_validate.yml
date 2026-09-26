@@ -27,9 +27,9 @@ jobs:
           grep -q 'Comprobado en CI / cloud' "$FASE7_REPORT"
           grep -q 'Pendiente en HONOR 200' "$FASE7_REPORT"
           grep -q 'Bloqueado por hardware, credenciales o acceso' "$FASE7_REPORT"
-          grep -q '2345efa03c8677778fb418f5acc4bfd2a69e9bf383932e0a4d786247dcbd11e4' "$FASE7_REPORT"
+          grep -q '40084278aa0ac2d2d55b27eec2985fe1646e630442cc8cee9912d6020fd37c6f' "$FASE7_REPORT"
           grep -q 'com.newtermux.dev' "$FASE7_REPORT"
-          grep -q 'f3eb365' "$FASE7_REPORT"
+          grep -q 'df390538' "$FASE7_REPORT"
           grep -q 'Bloque ejecutable' "$FASE7_REPORT"
           if grep -qE 'éxito físico declarado|declared physical success' "$FASE7_REPORT"; then
             echo "FAIL: report claimed physical success"
