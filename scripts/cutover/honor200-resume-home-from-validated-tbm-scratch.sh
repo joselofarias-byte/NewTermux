@@ -75,41 +75,39 @@ else
   echo "No hay copia persistente util; se recupera desde el bundle verificado." | tee -a "$REPORT"
   echo "BUNDLE=$BUNDLE" | tee -a "$REPORT"
 
-  MEMBER_HOME="$(tar -tf "$BUNDLE" -- 2>/dev/null | awk '
+  echo "Localizando manifest.json y home.tar.gz en una sola pasada..." | tee -a "$REPORT"
+  set +e
+  MEMBER_PAIR="$(tar -tf "$BUNDLE" -- 2>/dev/null | awk '
     {
-      n=$0
+      raw=$0
+      n=raw
       sub(/^\.\//,"",n)
-      if (n=="home.tar.gz") { print $0; exit }
+      if (n=="manifest.json" && manifest=="") {
+        manifest=raw
+        print "MANIFEST=" raw
+      }
+      if (n=="home.tar.gz" && home=="") {
+        home=raw
+        print "HOME=" raw
+      }
+      if (manifest!="" && home!="") exit
     }'
   )"
-  MEMBER_MANIFEST="$(tar -tf "$BUNDLE" -- 2>/dev/null | awk '
-    {
-      n=$0
-      sub(/^\.\//,"",n)
-      if (n=="manifest.json") { print $0; exit }
-    }'
-  )"
+  set -e
+
+  MEMBER_MANIFEST="$(printf '%s\n' "$MEMBER_PAIR" | sed -n 's/^MANIFEST=//p' | head -n1)"
+  MEMBER_HOME="$(printf '%s\n' "$MEMBER_PAIR" | sed -n 's/^HOME=//p' | head -n1)"
   [ -n "$MEMBER_HOME" ] || fail "El bundle no contiene home.tar.gz."
   [ -n "$MEMBER_MANIFEST" ] || fail "El bundle no contiene manifest.json."
 
-  echo "Extrayendo manifest.json..." | tee -a "$REPORT"
-  tar --preserve-permissions -xf "$BUNDLE" -C "$SOURCE_ROOT" -- "$MEMBER_MANIFEST" 2>&1 | tee -a "$REPORT"
-
-  if [ "$MEMBER_MANIFEST" != "manifest.json" ]; then
-    FOUND_MANIFEST="$SOURCE_ROOT/$MEMBER_MANIFEST"
-    [ -f "$FOUND_MANIFEST" ] || fail "manifest.json no aparecio tras extraer."
-    mv -f "$FOUND_MANIFEST" "$SOURCE_MANIFEST"
-  fi
-  grep -q 'tbm-migration-backup-v1' "$SOURCE_MANIFEST" || fail "Manifest de migracion inesperado."
-
-  echo "Extrayendo home.tar.gz desde el bundle." | tee -a "$REPORT"
+  echo "Extrayendo manifest.json + home.tar.gz en una unica pasada del bundle." | tee -a "$REPORT"
   echo "Puede demorar; se mostrara un latido cada 30 segundos." | tee -a "$REPORT"
 
   (
     while :; do
       sleep 30
-      if [ -e "$SOURCE_ROOT/$MEMBER_HOME" ]; then
-        SIZE="$(du -sh "$SOURCE_ROOT/$MEMBER_HOME" 2>/dev/null | awk '{print $1}')"
+      if [ -e "$SOURCE_HOME" ]; then
+        SIZE="$(du -sh "$SOURCE_HOME" 2>/dev/null | awk '{print $1}')"
       else
         SIZE="0"
       fi
@@ -119,19 +117,15 @@ else
   HEART_PID=$!
 
   set +e
-  tar --preserve-permissions -xf "$BUNDLE" -C "$SOURCE_ROOT" -- "$MEMBER_HOME" 2>&1 | tee -a "$REPORT"
+  tar --preserve-permissions -xf "$BUNDLE" -C "$SOURCE_ROOT" -- "$MEMBER_MANIFEST" "$MEMBER_HOME" 2>&1 | tee -a "$REPORT"
   OUTER_RC=${PIPESTATUS[0]}
   set -e
   kill "$HEART_PID" 2>/dev/null || true
   wait "$HEART_PID" 2>/dev/null || true
 
-  [ "$OUTER_RC" -eq 0 ] || fail "No se pudo recuperar home.tar.gz desde el bundle (tar=$OUTER_RC)."
-
-  if [ "$MEMBER_HOME" != "home.tar.gz" ]; then
-    FOUND_HOME="$SOURCE_ROOT/$MEMBER_HOME"
-    [ -f "$FOUND_HOME" ] || fail "home.tar.gz no aparecio tras extraer."
-    mv -f "$FOUND_HOME" "$SOURCE_HOME"
-  fi
+  [ "$OUTER_RC" -eq 0 ] || fail "No se pudieron recuperar manifest.json/home.tar.gz desde el bundle (tar=$OUTER_RC)."
+  [ -s "$SOURCE_MANIFEST" ] || fail "manifest.json no aparecio tras extraer."
+  grep -q 'tbm-migration-backup-v1' "$SOURCE_MANIFEST" || fail "Manifest de migracion inesperado."
   [ -s "$SOURCE_HOME" ] || fail "home.tar.gz recuperado esta vacio."
   echo "HOME_ARCHIVE=RECUPERADO" | tee -a "$REPORT"
 fi
