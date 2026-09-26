@@ -71,6 +71,8 @@
     <string name="msg_transcript_copied">Terminal content copied</string>
     <string name="msg_txt_saved">Saved to Downloads: %1$s</string>
     <string name="msg_txt_save_failed">Could not save TXT: %1$s</string>
+    <string name="msg_txt_open_failed">Could not open TXT: %1$s</string>
+    <string name="msg_txt_share_failed">Could not share TXT: %1$s</string>
     <string name="action_open_saved_file">OPEN</string>
     <string name="title_share_txt">Share terminal TXT</string>
 
