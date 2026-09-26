@@ -2,12 +2,12 @@
 set -Eeuo pipefail
 
 REPO="joselofarias-byte/NewTermux"
-RUN_ID="35491347814"
+RUN_ID="36212880258"
 ARTIFACT="newtermux-prefix-aware-coexist-arm64"
 DEST="$HOME/storage/downloads/NewTermux-HONOR200-22c2b0e"
 
 echo "=== NEWTERMUX - DESCARGA APK HONOR 200 ==="
-echo "Run: $RUN_ID (reintento actual del build prefix-aware)"
+echo "Run: $RUN_ID (PR #23, build prefix-aware reproducible)"
 mkdir -p "$DEST"
 rm -f "$DEST"/*.apk "$DEST"/*.sha256 2>/dev/null || true
 
