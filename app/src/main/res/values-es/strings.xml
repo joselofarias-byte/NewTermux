@@ -23,6 +23,8 @@
     <string name="msg_transcript_copied">Contenido del terminal copiado</string>
     <string name="msg_txt_saved">Guardado en Descargas: %1$s</string>
     <string name="msg_txt_save_failed">No se pudo guardar el TXT: %1$s</string>
+    <string name="msg_txt_open_failed">No se pudo abrir el TXT: %1$s</string>
+    <string name="msg_txt_share_failed">No se pudo compartir el TXT: %1$s</string>
     <string name="action_open_saved_file">ABRIR</string>
     <string name="title_share_txt">Compartir TXT del terminal</string>
 
