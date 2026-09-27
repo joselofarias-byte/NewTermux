@@ -833,6 +833,15 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             }
         }
 
+        View btnCopyVisible = findViewById(R.id.btn_copy_visible);
+        if (btnCopyVisible != null) {
+            btnCopyVisible.setOnClickListener(v -> copyVisibleTerminalOutput());
+            btnCopyVisible.setOnLongClickListener(v -> {
+                copyFullTerminalTranscript();
+                return true;
+            });
+        }
+
         View btnPackages = findViewById(R.id.btn_packages_menu);
         if (btnPackages != null) {
             btnPackages.setOnClickListener(v -> mPackageManagerMenu.show(v));
@@ -914,6 +923,21 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 runOnUiThread(() -> updateSTTButtonState(false));
             }
         });
+    }
+
+    private void copyVisibleTerminalOutput() {
+        if (mTerminalView == null) return;
+        String text = mTerminalView.getVisibleText();
+        if (DataUtils.isNullOrEmpty(text)) return;
+        ShareUtils.copyTextToClipboard(this, text, getString(R.string.msg_visible_screen_copied));
+    }
+
+    private void copyFullTerminalTranscript() {
+        TerminalSession session = getCurrentSession();
+        if (session == null || session.getEmulator() == null) return;
+        String text = session.getEmulator().getScreen().getTranscriptText();
+        if (DataUtils.isNullOrEmpty(text)) return;
+        ShareUtils.copyTextToClipboard(this, text, getString(R.string.msg_full_transcript_copied));
     }
 
     private void showMoreActionsMenu(View anchor) {
