@@ -37,6 +37,27 @@ jobs:
       - name: Generate and validate reviewed resources
         run: |
           set -euo pipefail
+          # Logger supplies CharSequence[] rather than int[]. Keep the generated
+          # source and its one-shot migration in sync; this is a no-op after commit.
+          python3 - <<'PY'
+          from pathlib import Path
+          before = "    val labels = Logger.getLogLevelsArray().map { level ->\n        val label = when (level) {"
+          after = "    val labels = values.map { rawLevel ->\n        val level = rawLevel.toInt()\n        val label = when (level) {"
+          logger = Path('termux-shared/src/main/java/com/termux/shared/logger/Logger.java').read_text()
+          assert 'public static CharSequence[] getLogLevelsArray()' in logger
+          paths = [Path('scripts/i18n/localize-settings-es.py')]
+          settings = Path('app/src/main/java/com/termux/app/activities/SettingsActivity.kt')
+          if Path('app/src/main/res/values-es/newtermux_settings_strings.xml').exists():
+              paths.append(settings)
+          for path in paths:
+              text = path.read_text(encoding='utf-8')
+              if before in text:
+                  assert text.count(before) == 1, path
+                  path.write_text(text.replace(before, after), encoding='utf-8')
+              else:
+                  assert after in text, f'Unexpected log-level implementation: {path}'
+          print('PASS log-level values are parsed as integers before label selection')
+          PY
           python3 -m py_compile scripts/i18n/localize-settings-es.py
           if test -f app/src/main/res/values-es/newtermux_settings_strings.xml; then
             python3 scripts/i18n/localize-settings-es.py --check
@@ -53,7 +74,8 @@ jobs:
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add app/src/main/java/com/termux/app/activities/SettingsActivity.kt \
+          git add scripts/i18n/localize-settings-es.py \
+            app/src/main/java/com/termux/app/activities/SettingsActivity.kt \
             app/src/main/java/com/termux/app/activities/FileManagerActivity.kt \
             app/src/main/java/com/termux/app/activities/SshManagerActivity.kt \
             app/src/main/java/com/termux/app/activities/ThemePickerActivity.kt \
@@ -62,7 +84,7 @@ jobs:
             app/src/main/res/values/newtermux_settings_strings.xml \
             app/src/main/res/values-es/newtermux_settings_strings.xml
           if ! git diff --cached --quiet; then
-            git commit -m 'feat(i18n): localize settings, files, SSH and colors in Spanish [skip ci]'
+            git commit -m 'fix(i18n): commit validated settings resources and typed log levels [skip ci]'
             git push origin "HEAD:refs/heads/$TARGET_BRANCH"
           fi
           echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
@@ -127,6 +149,21 @@ jobs:
           git diff 343069e32d055101d006c501db5f7e4fa6db2a66 "$SOURCE_SHA" -- app/src/main \
             > "$RUNNER_TEMP/es-delivery/settings-spanish.patch"
           python3 scripts/i18n/localize-settings-es.py --check | tee "$RUNNER_TEMP/es-delivery/resource-checks.txt"
+          python3 - <<'PY' | tee "$RUNNER_TEMP/es-delivery/unit-tests.txt"
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          reports = list(Path('app/build/test-results/testPlaycompatDebugUnitTest').glob('TEST-*.xml'))
+          totals = dict.fromkeys(('tests', 'failures', 'errors', 'skipped'), 0)
+          for report in reports:
+              suite = ET.parse(report).getroot()
+              for key in totals:
+                  totals[key] += int(suite.attrib.get(key, 0))
+          assert totals['failures'] == 0 and totals['errors'] == 0, totals
+          print('XML_REPORTS=' + str(len(reports)))
+          for key, value in totals.items():
+              print(key.upper() + '=' + str(value))
+          print('PHYSICAL_VALIDATION=PENDING')
+          PY
 
       - name: Upload the single ARM64 delivery
         uses: actions/upload-artifact@v6
