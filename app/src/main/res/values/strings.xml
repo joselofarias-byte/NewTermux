@@ -84,6 +84,15 @@
     <string name="newtermux_toolbar_root">Root access</string>
     <string name="newtermux_toolbar_settings">Settings</string>
     <string name="newtermux_toolbar_new_session">New session</string>
+    <string name="newtermux_toolbar_more">More actions</string>
+    <string name="more_save_txt">Save screen as TXT</string>
+    <string name="more_paste">Paste</string>
+    <string name="more_home">Line start</string>
+    <string name="more_latest">Go to latest output</string>
+    <string name="more_keyboard">Show/hide keyboard</string>
+    <string name="more_files">Files</string>
+    <string name="more_autocorrect_on">Autocorrect: on</string>
+    <string name="more_autocorrect_off">Autocorrect: off</string>
 
     <!-- Terminal Popup -->
     <string name="action_select_url">Select URL</string>
