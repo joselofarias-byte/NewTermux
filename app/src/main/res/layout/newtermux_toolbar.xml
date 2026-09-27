@@ -37,11 +37,11 @@
             android:clickable="true"
             android:focusable="true"
             android:gravity="center"
-            android:paddingStart="12dp"
-            android:paddingEnd="12dp"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
             android:text="AC"
             android:textColor="@color/nt_primary"
-            android:textSize="12sp"
+            android:textSize="11sp"
             android:textStyle="bold" />
 
         <!-- Packages Button -->
@@ -54,11 +54,11 @@
             android:clickable="true"
             android:focusable="true"
             android:gravity="center"
-            android:paddingStart="12dp"
-            android:paddingEnd="12dp"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
             android:text="@string/newtermux_toolbar_packages"
             android:textColor="@color/nt_on_surface"
-            android:textSize="12sp"
+            android:textSize="11sp"
             android:textStyle="bold" />
 
         <!-- Clear Button -->
@@ -71,11 +71,11 @@
             android:clickable="true"
             android:focusable="true"
             android:gravity="center"
-            android:paddingStart="12dp"
-            android:paddingEnd="12dp"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
             android:text="@string/newtermux_toolbar_clear"
             android:textColor="@color/nt_on_surface"
-            android:textSize="12sp"
+            android:textSize="11sp"
             android:textStyle="bold" />
 
         <!-- Speech-to-Text button -->
@@ -89,16 +89,19 @@
             android:tint="@color/nt_stt_idle"
             android:padding="10dp" />
 
-        <!-- Root toggle button -->
-        <ImageButton
-            android:id="@+id/btn_root_toggle"
-            android:layout_width="44dp"
+        <!-- Compact overflow for secondary terminal actions -->
+        <TextView
+            android:id="@+id/btn_more_actions"
+            android:layout_width="40dp"
             android:layout_height="44dp"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/newtermux_toolbar_root"
-            android:src="@drawable/ic_root_toggle"
-            android:tint="@color/nt_root_inactive"
-            android:padding="10dp" />
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:contentDescription="@string/newtermux_toolbar_more"
+            android:text="⋮"
+            android:textColor="@color/nt_toolbar_icon"
+            android:textSize="28sp" />
 
         <!-- Settings button -->
         <ImageButton
