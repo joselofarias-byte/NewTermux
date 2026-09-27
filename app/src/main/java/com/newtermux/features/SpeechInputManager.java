@@ -8,6 +8,8 @@ import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
 import android.util.Log;
 
+import com.termux.R;
+
 import java.util.ArrayList;
 import java.util.Locale;
 
@@ -47,7 +49,7 @@ public class SpeechInputManager {
         if (mIsListening) return;
 
         if (!SpeechRecognizer.isRecognitionAvailable(mContext)) {
-            if (mCallback != null) mCallback.onError("Speech recognition not available on this device.");
+            if (mCallback != null) mCallback.onError(mContext.getString(R.string.speech_recognition_unavailable));
             return;
         }
 
@@ -90,7 +92,7 @@ public class SpeechInputManager {
         intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault());
         intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
         intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
-        intent.putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak a command...");
+        intent.putExtra(RecognizerIntent.EXTRA_PROMPT, mContext.getString(R.string.speech_prompt));
 
         mSpeechRecognizer.startListening(intent);
     }
@@ -116,16 +118,16 @@ public class SpeechInputManager {
 
     private String speechErrorToString(int error) {
         switch (error) {
-            case SpeechRecognizer.ERROR_AUDIO: return "Audio recording error";
-            case SpeechRecognizer.ERROR_CLIENT: return "Client error";
-            case SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS: return "Microphone permission denied";
-            case SpeechRecognizer.ERROR_NETWORK: return "Network error";
-            case SpeechRecognizer.ERROR_NETWORK_TIMEOUT: return "Network timeout";
-            case SpeechRecognizer.ERROR_NO_MATCH: return "No speech recognized";
-            case SpeechRecognizer.ERROR_RECOGNIZER_BUSY: return "Recognizer busy";
-            case SpeechRecognizer.ERROR_SERVER: return "Server error";
-            case SpeechRecognizer.ERROR_SPEECH_TIMEOUT: return "No speech input";
-            default: return "Unknown error (" + error + ")";
+            case SpeechRecognizer.ERROR_AUDIO: return mContext.getString(R.string.speech_error_audio);
+            case SpeechRecognizer.ERROR_CLIENT: return mContext.getString(R.string.speech_error_client);
+            case SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS: return mContext.getString(R.string.speech_error_permission);
+            case SpeechRecognizer.ERROR_NETWORK: return mContext.getString(R.string.speech_error_network);
+            case SpeechRecognizer.ERROR_NETWORK_TIMEOUT: return mContext.getString(R.string.speech_error_network_timeout);
+            case SpeechRecognizer.ERROR_NO_MATCH: return mContext.getString(R.string.speech_error_no_match);
+            case SpeechRecognizer.ERROR_RECOGNIZER_BUSY: return mContext.getString(R.string.speech_error_busy);
+            case SpeechRecognizer.ERROR_SERVER: return mContext.getString(R.string.speech_error_server);
+            case SpeechRecognizer.ERROR_SPEECH_TIMEOUT: return mContext.getString(R.string.speech_error_timeout);
+            default: return mContext.getString(R.string.speech_error_unknown, error);
         }
     }
 }

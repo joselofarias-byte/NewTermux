@@ -13,6 +13,8 @@ import android.provider.MediaStore;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import com.termux.R;
+
 import java.io.File;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
@@ -58,16 +60,16 @@ public final class TerminalTextExport {
                 } else {
                     File downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
                     if (!downloads.exists() && !downloads.mkdirs()) {
-                        throw new IllegalStateException("Could not create Downloads directory");
+                        throw new IllegalStateException(context.getString(R.string.error_downloads_dir_create));
                     }
                     values.put(MediaStore.MediaColumns.DATA, new File(downloads, displayName).getAbsolutePath());
                     uri = resolver.insert(MediaStore.Files.getContentUri("external"), values);
                 }
 
-                if (uri == null) throw new IllegalStateException("MediaStore insert returned null");
+                if (uri == null) throw new IllegalStateException(context.getString(R.string.error_mediastore_insert));
 
                 try (OutputStream os = resolver.openOutputStream(uri, "w")) {
-                    if (os == null) throw new IllegalStateException("Could not open output stream");
+                    if (os == null) throw new IllegalStateException(context.getString(R.string.error_output_stream_open));
                     os.write(text.getBytes(StandardCharsets.UTF_8));
                     os.flush();
                 }

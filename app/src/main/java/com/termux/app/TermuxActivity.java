@@ -315,9 +315,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 new Thread(() -> {
                     try (OutputStream os = getContentResolver().openOutputStream(uri)) {
                         if (os != null) os.write(text.getBytes());
-                        runOnUiThread(() -> Toast.makeText(this, "Screen exported", Toast.LENGTH_SHORT).show());
+                        runOnUiThread(() -> Toast.makeText(this, getString(R.string.msg_screen_exported), Toast.LENGTH_SHORT).show());
                     } catch (Exception e) {
-                        runOnUiThread(() -> Toast.makeText(this, "Export failed: " + e.getMessage(), Toast.LENGTH_LONG).show());
+                        runOnUiThread(() -> Toast.makeText(this, getString(R.string.msg_export_failed, e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()), Toast.LENGTH_LONG).show());
                     }
                 }).start();
             });
@@ -335,9 +335,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                         for (String line : lines) {
                             os.write((line + "\n").getBytes());
                         }
-                        runOnUiThread(() -> Toast.makeText(this, "Script saved", Toast.LENGTH_SHORT).show());
+                        runOnUiThread(() -> Toast.makeText(this, getString(R.string.msg_script_saved), Toast.LENGTH_SHORT).show());
                     } catch (Exception e) {
-                        runOnUiThread(() -> Toast.makeText(this, "Save failed: " + e.getMessage(), Toast.LENGTH_LONG).show());
+                        runOnUiThread(() -> Toast.makeText(this, getString(R.string.msg_save_failed, e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()), Toast.LENGTH_LONG).show());
                     }
                 }).start();
             });
@@ -1156,7 +1156,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             mPendingOriginal = text;
             runOnUiThread(() -> {
                 if (mAutocorrectBar != null && mAutocorrectText != null) {
-                    mAutocorrectText.setText("Did you mean: " + corrected + "?");
+                    mAutocorrectText.setText(getString(R.string.autocorrect_suggestion, corrected));
                     mAutocorrectBar.setVisibility(View.VISIBLE);
                 }
             });
@@ -1253,7 +1253,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             exportBtn.setLayoutParams(lp);
             exportBtn.setStrokeColor(accentCsl);
             exportBtn.setTextColor(accentColor);
-            exportBtn.setText("Export Screen");
+            exportBtn.setText(R.string.drawer_export_screen);
             exportBtn.setOnClickListener(v -> {
                 getDrawer().closeDrawers();
                 mScreenExportSaver.launch("screen.txt");
@@ -1268,7 +1268,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             scriptBtn.setLayoutParams(lp2);
             scriptBtn.setStrokeColor(accentCsl);
             scriptBtn.setTextColor(accentColor);
-            scriptBtn.setText("Make Script");
+            scriptBtn.setText(R.string.drawer_make_script);
             scriptBtn.setOnClickListener(v -> {
                 getDrawer().closeDrawers();
                 showMakeScriptDialog();
@@ -1285,7 +1285,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             pkgBtn.setLayoutParams(lp);
             pkgBtn.setStrokeColor(accentCsl);
             pkgBtn.setTextColor(accentColor);
-            pkgBtn.setText("Pkg Update");
+            pkgBtn.setText(R.string.drawer_pkg_update);
             pkgBtn.setOnClickListener(v -> {
                 getDrawer().closeDrawers();
                 TerminalSession s = getCurrentSession();
@@ -1327,7 +1327,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             btn.setBackgroundTintList(accentCsl);
 
             boolean isUnset = name.isEmpty() && cmd.isEmpty();
-            btn.setText(isUnset ? "long press to set" : (name.isEmpty() ? "Button " + (i + 1) : name));
+            btn.setText(isUnset ? getString(R.string.drawer_long_press_to_set) : (name.isEmpty() ? getString(R.string.drawer_button_number, i + 1) : name));
             if (isUnset) btn.setAlpha(0.5f);
 
             btn.setOnClickListener(v -> {
@@ -1335,7 +1335,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                     idx < DRAWER_BTN_DEFAULT_CMDS.length ? DRAWER_BTN_DEFAULT_CMDS[idx] : "");
                 String n = prefs.getString("btn_" + (idx + 1) + "_name",
                     idx < DRAWER_BTN_DEFAULT_NAMES.length ? DRAWER_BTN_DEFAULT_NAMES[idx] : "");
-                String label = n.isEmpty() ? "Button " + (idx + 1) : n;
+                String label = n.isEmpty() ? getString(R.string.drawer_button_number, idx + 1) : n;
                 if (mTermuxTerminalSessionActivityClient != null) {
                     mTermuxTerminalSessionActivityClient.addNewSession(false, label);
                     if (!c.isEmpty()) {
@@ -1402,19 +1402,19 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         layout.setPadding(pad, pad, pad, 0);
 
         EditText nameField = new EditText(this);
-        nameField.setHint("Button label");
+        nameField.setHint(R.string.drawer_button_label_hint);
         nameField.setText(currentName);
         layout.addView(nameField);
 
         EditText cmdField = new EditText(this);
-        cmdField.setHint("Command");
+        cmdField.setHint(R.string.drawer_command_hint);
         cmdField.setText(currentCmd);
         layout.addView(cmdField);
 
         new AlertDialog.Builder(this)
-            .setTitle("Edit Button " + (idx + 1))
+            .setTitle(getString(R.string.drawer_edit_button_title, idx + 1))
             .setView(layout)
-            .setPositiveButton("Save", (d, w) -> {
+            .setPositiveButton(R.string.action_save, (d, w) -> {
                 String newName = nameField.getText().toString().trim();
                 String newCmd  = cmdField.getText().toString().trim();
                 prefs.edit()
@@ -1423,14 +1423,14 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                     .apply();
                 setupDrawerCommandButtons();
             })
-            .setNeutralButton("Reset", (d, w) -> {
+            .setNeutralButton(R.string.action_reset, (d, w) -> {
                 prefs.edit()
                     .remove("btn_" + (idx + 1) + "_name")
                     .remove("btn_" + (idx + 1) + "_cmd")
                     .apply();
                 setupDrawerCommandButtons();
             })
-            .setNegativeButton("Cancel", null)
+            .setNegativeButton(R.string.action_cancel, null)
             .show();
     }
 
@@ -1444,7 +1444,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             File histFile = new File(TermuxConstants.TERMUX_HOME_DIR_PATH, ".zsh_history");
             if (!histFile.exists()) histFile = new File(TermuxConstants.TERMUX_HOME_DIR_PATH, ".bash_history");
             if (!histFile.exists()) {
-                runOnUiThread(() -> Toast.makeText(this, "No history file found", Toast.LENGTH_SHORT).show());
+                runOnUiThread(() -> Toast.makeText(this, getString(R.string.msg_no_history_file), Toast.LENGTH_SHORT).show());
                 return;
             }
 
@@ -1461,7 +1461,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                     if (!line.isEmpty()) seen.put(line, line);
                 }
             } catch (Exception e) {
-                runOnUiThread(() -> Toast.makeText(this, "Failed to read history", Toast.LENGTH_SHORT).show());
+                runOnUiThread(() -> Toast.makeText(this, getString(R.string.msg_history_read_failed), Toast.LENGTH_SHORT).show());
                 return;
             }
 
@@ -1476,23 +1476,23 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             runOnUiThread(() -> {
                 CharSequence[] items = finalEntries.toArray(new CharSequence[0]);
                 new AlertDialog.Builder(this)
-                    .setTitle("Make Script — select commands")
+                    .setTitle(R.string.title_make_script)
                     .setMultiChoiceItems(items, checked, (d, which, isChecked) -> checked[which] = isChecked)
-                    .setPositiveButton("Save Script", (d, w) -> {
+                    .setPositiveButton(R.string.action_save_script, (d, w) -> {
                         // Collect in chronological order (reverse of display order)
                         List<String> selected = new ArrayList<>();
                         for (int i = checked.length - 1; i >= 0; i--) {
                             if (checked[i]) selected.add(finalEntries.get(i));
                         }
                         if (selected.isEmpty()) {
-                            Toast.makeText(this, "No commands selected", Toast.LENGTH_SHORT).show();
+                            Toast.makeText(this, getString(R.string.msg_no_commands_selected), Toast.LENGTH_SHORT).show();
                             return;
                         }
                         mPendingScriptLines.clear();
                         mPendingScriptLines.addAll(selected);
                         mScriptSaver.launch("script.sh");
                     })
-                    .setNegativeButton("Cancel", null)
+                    .setNegativeButton(R.string.action_cancel, null)
                     .show();
             });
         }).start();
@@ -1809,7 +1809,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 if (mSpeechInputManager != null) mSpeechInputManager.startListening();
             } else {
-                showToast("Microphone permission required for speech input", false);
+                showToast(getString(R.string.msg_microphone_permission_required), false);
             }
         }
     }

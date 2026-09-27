@@ -1,5 +1,7 @@
 package com.termux.app.activities
 
+import com.termux.R
+
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.os.Bundle
@@ -98,7 +100,7 @@ private fun ThemePickerScreen(onBack: () -> Unit) {
 
     // Custom-theme editor state
     var showScope by remember { mutableStateOf(false) }
-    var editorKeys by remember { mutableStateOf<List<Pair<String, String>>?>(null) } // key -> label
+    var editorKeys by remember { mutableStateOf<List<Pair<String, Int>>?>(null) } // key -> label
 
     val terminalKeys = remember {
         NewTermuxColorTheme.THEME_KEYS.filter { it != NewTermuxColorTheme.THEME_KEY_CUSTOM }
@@ -108,18 +110,18 @@ private fun ThemePickerScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Themes & Colors") },
+                title = { Text(context.getString(R.string.nt_l10n_themes_colors)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = context.getString(R.string.nt_l10n_back))
                     }
                 },
                 actions = {
                     IconButton(onClick = { overflowOpen = true }) {
-                        Icon(Icons.Filled.MoreVert, contentDescription = "More")
+                        Icon(Icons.Filled.MoreVert, contentDescription = context.getString(R.string.nt_l10n_more))
                     }
                     DropdownMenu(expanded = overflowOpen, onDismissRequest = { overflowOpen = false }, modifier = Modifier.outlinedMenuCard()) {
-                        DropdownMenuItem(text = { Text("Custom Theme") }, onClick = { overflowOpen = false; showScope = true })
+                        DropdownMenuItem(text = { Text(context.getString(R.string.nt_l10n_custom_theme)) }, onClick = { overflowOpen = false; showScope = true })
                     }
                 },
             )
@@ -132,7 +134,7 @@ private fun ThemePickerScreen(onBack: () -> Unit) {
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            item(span = { GridItemSpan(maxLineSpan) }) { SectionHeader("Terminal Theme") }
+            item(span = { GridItemSpan(maxLineSpan) }) { SectionHeader(context.getString(R.string.nt_l10n_terminal_theme)) }
 
             items(terminalKeys, key = { it }) { key ->
                 TerminalThemeCard(
@@ -146,14 +148,14 @@ private fun ThemePickerScreen(onBack: () -> Unit) {
                 )
             }
 
-            item(span = { GridItemSpan(maxLineSpan) }) { SectionHeader("Accent Color") }
+            item(span = { GridItemSpan(maxLineSpan) }) { SectionHeader(context.getString(R.string.nt_l10n_accent_color)) }
 
             items(accentColors, key = { it }) { color ->
                 AccentSwatch(
                     color = color,
                     active = color == activeAccent,
                     isCustomSlot = false,
-                    label = NewTermuxTheme.getColorName(color),
+                    label = accentColorName(context, color),
                     onClick = {
                         NewTermuxTheme.setAccentColor(context, color)
                         activeAccent = color
@@ -167,7 +169,7 @@ private fun ThemePickerScreen(onBack: () -> Unit) {
                     color = if (customActive) activeAccent else 0xFF666666.toInt(),
                     active = customActive,
                     isCustomSlot = true,
-                    label = "Custom…",
+                    label = context.getString(R.string.nt_l10n_custom_color_slot),
                     onClick = {
                         ColorPickerDialog(context)
                             .setInitialColor(NewTermuxTheme.getAccentColor(context))
@@ -186,22 +188,22 @@ private fun ThemePickerScreen(onBack: () -> Unit) {
     if (showScope) {
         AlertDialog(
             onDismissRequest = { showScope = false },
-            title = { Text("Custom Theme Scope") },
+            title = { Text(context.getString(R.string.nt_l10n_custom_scope)) },
             text = {
                 Column {
                     DropdownMenuItem(
-                        text = { Text("Core 3  (Background, Foreground, Cursor)") },
+                        text = { Text(context.getString(R.string.nt_l10n_core_colors)) },
                         onClick = { showScope = false; editorKeys = CORE_KEYS },
                     )
                     MenuItemDivider()
                     DropdownMenuItem(
-                        text = { Text("All 18 terminal colors") },
+                        text = { Text(context.getString(R.string.nt_l10n_all_colors)) },
                         onClick = { showScope = false; editorKeys = ALL_KEYS },
                     )
                 }
             },
             confirmButton = {},
-            dismissButton = { TextButton(onClick = { showScope = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { showScope = false }) { Text(context.getString(R.string.nt_l10n_cancel)) } },
         )
     }
 
@@ -230,6 +232,7 @@ private fun SectionHeader(text: String) {
 
 @Composable
 private fun TerminalThemeCard(key: String, active: Boolean, accent: Int, onClick: () -> Unit) {
+    val context = LocalContext.current
     Card(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             TerminalPreview(
@@ -239,7 +242,7 @@ private fun TerminalThemeCard(key: String, active: Boolean, accent: Int, onClick
                 modifier = Modifier.fillMaxWidth().aspectRatio(1.3f).padding(4.dp),
             )
             Text(
-                NewTermuxColorTheme.getThemeName(key),
+                terminalThemeName(context, key),
                 style = MaterialTheme.typography.bodySmall,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -367,7 +370,7 @@ private fun AccentSwatch(color: Int, active: Boolean, isCustomSlot: Boolean, lab
 
 @Composable
 private fun CustomThemeEditorDialog(
-    keys: List<Pair<String, String>>,
+    keys: List<Pair<String, Int>>,
     onDismiss: () -> Unit,
     onApply: (Map<String, Int>) -> Unit,
 ) {
@@ -378,7 +381,7 @@ private fun CustomThemeEditorDialog(
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Custom Theme") },
+        title = { Text(context.getString(R.string.nt_l10n_custom_theme)) },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 keys.forEach { (key, label) ->
@@ -387,7 +390,7 @@ private fun CustomThemeEditorDialog(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                        Text(context.getString(label), modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                         Spacer(Modifier.size(8.dp))
                         Box(
                             modifier = Modifier
@@ -406,8 +409,8 @@ private fun CustomThemeEditorDialog(
                 }
             }
         },
-        confirmButton = { TextButton(onClick = { onApply(colorMap.toMap()) }) { Text("Apply") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        confirmButton = { TextButton(onClick = { onApply(colorMap.toMap()) }) { Text(context.getString(R.string.nt_l10n_apply)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(context.getString(R.string.nt_l10n_cancel)) } },
     )
 }
 
@@ -461,29 +464,46 @@ private fun buildThemeContent(baseContent: String?, colorMap: Map<String, Int>):
 }
 
 private val CORE_KEYS = listOf(
-    "background" to "Background",
-    "foreground" to "Foreground",
-    "cursor" to "Cursor",
+    "background" to R.string.nt_l10n_color_background,
+    "foreground" to R.string.nt_l10n_color_foreground,
+    "cursor" to R.string.nt_l10n_color_cursor,
 )
 
 private val ALL_KEYS = listOf(
-    "background" to "Background",
-    "foreground" to "Foreground",
-    "cursor" to "Cursor",
-    "color0" to "Color 0 (Black)",
-    "color1" to "Color 1 (Red)",
-    "color2" to "Color 2 (Green)",
-    "color3" to "Color 3 (Yellow)",
-    "color4" to "Color 4 (Blue)",
-    "color5" to "Color 5 (Magenta)",
-    "color6" to "Color 6 (Cyan)",
-    "color7" to "Color 7 (White)",
-    "color8" to "Color 8 (Bright Black)",
-    "color9" to "Color 9 (Bright Red)",
-    "color10" to "Color 10 (Bright Green)",
-    "color11" to "Color 11 (Bright Yellow)",
-    "color12" to "Color 12 (Bright Blue)",
-    "color13" to "Color 13 (Bright Magenta)",
-    "color14" to "Color 14 (Bright Cyan)",
-    "color15" to "Color 15 (Bright White)",
+    "background" to R.string.nt_l10n_color_background,
+    "foreground" to R.string.nt_l10n_color_foreground,
+    "cursor" to R.string.nt_l10n_color_cursor,
+    "color0" to R.string.nt_l10n_color_0,
+    "color1" to R.string.nt_l10n_color_1,
+    "color2" to R.string.nt_l10n_color_2,
+    "color3" to R.string.nt_l10n_color_3,
+    "color4" to R.string.nt_l10n_color_4,
+    "color5" to R.string.nt_l10n_color_5,
+    "color6" to R.string.nt_l10n_color_6,
+    "color7" to R.string.nt_l10n_color_7,
+    "color8" to R.string.nt_l10n_color_8,
+    "color9" to R.string.nt_l10n_color_9,
+    "color10" to R.string.nt_l10n_color_10,
+    "color11" to R.string.nt_l10n_color_11,
+    "color12" to R.string.nt_l10n_color_12,
+    "color13" to R.string.nt_l10n_color_13,
+    "color14" to R.string.nt_l10n_color_14,
+    "color15" to R.string.nt_l10n_color_15,
 )
+
+
+// Display labels are localized; persisted keys and actual colors stay unchanged.
+private fun accentColorName(context: android.content.Context, color: Int): String {
+    val labels = intArrayOf(R.string.nt_l10n_accent_purple, R.string.nt_l10n_accent_blue, R.string.nt_l10n_accent_green, R.string.nt_l10n_accent_orange, R.string.nt_l10n_accent_red, R.string.nt_l10n_accent_teal, R.string.nt_l10n_accent_pink, R.string.nt_l10n_accent_gold, R.string.nt_l10n_accent_white)
+    val index = NewTermuxTheme.COLORS.indexOf(color)
+    return if (index in labels.indices) context.getString(labels[index]) else NewTermuxTheme.getColorName(color)
+}
+
+private fun terminalThemeName(context: android.content.Context, key: String): String = when (key) {
+    "default_dark" -> context.getString(R.string.nt_l10n_theme_default_dark)
+    "oled_black" -> context.getString(R.string.nt_l10n_theme_oled_black)
+    "amber" -> context.getString(R.string.nt_l10n_theme_amber)
+    "low_contrast" -> context.getString(R.string.nt_l10n_theme_low_contrast)
+    "custom" -> context.getString(R.string.nt_l10n_theme_custom)
+    else -> NewTermuxColorTheme.getThemeName(key)
+}

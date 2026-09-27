@@ -1,5 +1,7 @@
 package com.termux.app.activities
 
+import com.termux.R
+
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -115,20 +117,20 @@ private fun FileManagerScreen(onExit: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("File Manager") },
+                title = { Text(context.getString(R.string.nt_l10n_files)) },
                 navigationIcon = {
                     IconButton(onClick = { navigateUpOrExit() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Up")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = context.getString(R.string.nt_l10n_up))
                     }
                 },
                 actions = {
                     IconButton(onClick = { overflowOpen = true }) {
-                        Icon(Icons.Filled.MoreVert, contentDescription = "More")
+                        Icon(Icons.Filled.MoreVert, contentDescription = context.getString(R.string.nt_l10n_more))
                     }
                     DropdownMenu(expanded = overflowOpen, onDismissRequest = { overflowOpen = false }, modifier = Modifier.outlinedMenuCard()) {
-                        DropdownMenuItem(text = { Text("New File") }, onClick = { overflowOpen = false; newFileDialog = true })
+                        DropdownMenuItem(text = { Text(context.getString(R.string.nt_l10n_new_file)) }, onClick = { overflowOpen = false; newFileDialog = true })
                         MenuItemDivider()
-                        DropdownMenuItem(text = { Text("New Folder") }, onClick = { overflowOpen = false; newFolderDialog = true })
+                        DropdownMenuItem(text = { Text(context.getString(R.string.nt_l10n_new_folder)) }, onClick = { overflowOpen = false; newFolderDialog = true })
                     }
                 },
             )
@@ -150,7 +152,7 @@ private fun FileManagerScreen(onExit: () -> Unit) {
                     verticalArrangement = Arrangement.Center,
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Text("Empty folder", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(context.getString(R.string.nt_l10n_empty_folder), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
@@ -176,13 +178,13 @@ private fun FileManagerScreen(onExit: () -> Unit) {
     // --- Text editor ---
     editorFile?.let { file ->
         if (file.length() > MAX_TEXT_SIZE) {
-            Toast.makeText(context, "File too large to edit in-app", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, context.getString(R.string.nt_l10n_file_too_large), Toast.LENGTH_SHORT).show()
             editorFile = null
         } else {
             TextEditorDialog(
                 file = file,
                 onDismiss = { editorFile = null },
-                onSaved = { editorFile = null; Toast.makeText(context, "Saved", Toast.LENGTH_SHORT).show() },
+                onSaved = { editorFile = null; Toast.makeText(context, context.getString(R.string.nt_l10n_saved), Toast.LENGTH_SHORT).show() },
                 onError = { msg -> Toast.makeText(context, msg, Toast.LENGTH_LONG).show() },
             )
         }
@@ -191,8 +193,8 @@ private fun FileManagerScreen(onExit: () -> Unit) {
     // --- File options ---
     optionsFile?.let { file ->
         val actions = buildList {
-            if (isTextFile(file)) add("Edit")
-            add("Share"); add("Copy path"); add("Delete")
+            if (isTextFile(file)) add(R.string.nt_l10n_edit)
+            add(R.string.nt_l10n_share); add(R.string.nt_l10n_copy_path); add(R.string.nt_l10n_delete)
         }
         AlertDialog(
             onDismissRequest = { optionsFile = null },
@@ -201,20 +203,20 @@ private fun FileManagerScreen(onExit: () -> Unit) {
                 Column {
                     actions.forEachIndexed { i, action ->
                         if (i > 0) MenuItemDivider()
-                        DropdownMenuItem(text = { Text(action) }, onClick = {
+                        DropdownMenuItem(text = { Text(context.getString(action)) }, onClick = {
                             optionsFile = null
                             when (action) {
-                                "Edit" -> editorFile = file
-                                "Share" -> shareFile(context, file)
-                                "Copy path" -> copyPath(context, file)
-                                "Delete" -> deleteFile = file
+                                R.string.nt_l10n_edit -> editorFile = file
+                                R.string.nt_l10n_share -> shareFile(context, file)
+                                R.string.nt_l10n_copy_path -> copyPath(context, file)
+                                R.string.nt_l10n_delete -> deleteFile = file
                             }
                         })
                     }
                 }
             },
             confirmButton = {},
-            dismissButton = { TextButton(onClick = { optionsFile = null }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { optionsFile = null }) { Text(context.getString(R.string.nt_l10n_cancel)) } },
         )
     }
 
@@ -222,34 +224,34 @@ private fun FileManagerScreen(onExit: () -> Unit) {
     deleteFile?.let { file ->
         AlertDialog(
             onDismissRequest = { deleteFile = null },
-            title = { Text("Delete") },
-            text = { Text("Delete \"${file.name}\"?") },
+            title = { Text(context.getString(R.string.nt_l10n_delete)) },
+            text = { Text(context.getString(R.string.nt_l10n_delete_named, file.name)) },
             confirmButton = {
                 TextButton(onClick = {
                     val ok = deleteRecursive(file)
                     deleteFile = null
-                    if (ok) { refresh(); Toast.makeText(context, "Deleted", Toast.LENGTH_SHORT).show() }
-                    else Toast.makeText(context, "Delete failed", Toast.LENGTH_SHORT).show()
-                }) { Text("Delete") }
+                    if (ok) { refresh(); Toast.makeText(context, context.getString(R.string.nt_l10n_deleted), Toast.LENGTH_SHORT).show() }
+                    else Toast.makeText(context, context.getString(R.string.nt_l10n_delete_failed), Toast.LENGTH_SHORT).show()
+                }) { Text(context.getString(R.string.nt_l10n_delete)) }
             },
-            dismissButton = { TextButton(onClick = { deleteFile = null }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { deleteFile = null }) { Text(context.getString(R.string.nt_l10n_cancel)) } },
         )
     }
 
     // --- New file ---
     if (newFileDialog) {
         NameEntryDialog(
-            title = "New File",
-            hint = "filename.txt",
+            title = context.getString(R.string.nt_l10n_new_file),
+            hint = context.getString(R.string.nt_l10n_filename_hint),
             onDismiss = { newFileDialog = false },
             onConfirm = { name ->
                 newFileDialog = false
                 val f = File(currentDir, name)
                 try {
                     if (f.createNewFile()) refresh()
-                    else Toast.makeText(context, "File already exists", Toast.LENGTH_SHORT).show()
+                    else Toast.makeText(context, context.getString(R.string.nt_l10n_file_exists), Toast.LENGTH_SHORT).show()
                 } catch (e: Exception) {
-                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, context.getString(R.string.nt_l10n_error_detail, e.message), Toast.LENGTH_SHORT).show()
                 }
             },
         )
@@ -258,14 +260,14 @@ private fun FileManagerScreen(onExit: () -> Unit) {
     // --- New folder ---
     if (newFolderDialog) {
         NameEntryDialog(
-            title = "New Folder",
-            hint = "folder-name",
+            title = context.getString(R.string.nt_l10n_new_folder),
+            hint = context.getString(R.string.nt_l10n_foldername_hint),
             onDismiss = { newFolderDialog = false },
             onConfirm = { name ->
                 newFolderDialog = false
                 val f = File(currentDir, name)
                 if (f.mkdir()) refresh()
-                else Toast.makeText(context, "Could not create folder", Toast.LENGTH_SHORT).show()
+                else Toast.makeText(context, context.getString(R.string.nt_l10n_folder_failed), Toast.LENGTH_SHORT).show()
             },
         )
     }
@@ -274,6 +276,7 @@ private fun FileManagerScreen(onExit: () -> Unit) {
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FileRow(file: File, onClick: () -> Unit, onLongClick: () -> Unit) {
+    val context = LocalContext.current
     val isDir = file.isDirectory
     Row(
         modifier = Modifier
@@ -286,7 +289,7 @@ private fun FileRow(file: File, onClick: () -> Unit, onLongClick: () -> Unit) {
         Column(modifier = Modifier.weight(1f)) {
             Text(file.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
-                if (isDir) "Folder" else formatSize(file.length()),
+                if (isDir) context.getString(R.string.nt_l10n_folder) else formatSize(file.length()),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -301,6 +304,7 @@ private fun TextEditorDialog(
     onSaved: () -> Unit,
     onError: (String) -> Unit,
 ) {
+    val context = LocalContext.current
     var text by remember { mutableStateOf(readFile(file)) }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -318,11 +322,11 @@ private fun TextEditorDialog(
                     file.writeText(text)
                     onSaved()
                 } catch (e: Exception) {
-                    onError("Save failed: ${e.message}")
+                    onError(context.getString(R.string.nt_l10n_editor_save_failed, e.message))
                 }
-            }) { Text("Save") }
+            }) { Text(context.getString(R.string.nt_l10n_save)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(context.getString(R.string.nt_l10n_cancel)) } },
     )
 }
 
@@ -333,6 +337,7 @@ private fun NameEntryDialog(
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
+    val context = LocalContext.current
     var name by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -347,9 +352,9 @@ private fun NameEntryDialog(
             )
         },
         confirmButton = {
-            TextButton(onClick = { if (name.trim().isNotEmpty()) onConfirm(name.trim()) }) { Text("Create") }
+            TextButton(onClick = { if (name.trim().isNotEmpty()) onConfirm(name.trim()) }) { Text(context.getString(R.string.nt_l10n_create)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(context.getString(R.string.nt_l10n_cancel)) } },
     )
 }
 
@@ -404,15 +409,15 @@ private fun shareFile(context: Context, file: File) {
             putExtra(Intent.EXTRA_STREAM, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        context.startActivity(Intent.createChooser(intent, "Share ${file.name}"))
+        context.startActivity(Intent.createChooser(intent, context.getString(R.string.nt_l10n_share_named, file.name)))
     } catch (e: Exception) {
         copyPath(context, file)
-        Toast.makeText(context, "Share unavailable, path copied", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, context.getString(R.string.nt_l10n_share_unavailable), Toast.LENGTH_SHORT).show()
     }
 }
 
 private fun copyPath(context: Context, file: File) {
     val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
     cm?.setPrimaryClip(ClipData.newPlainText("path", file.absolutePath))
-    Toast.makeText(context, "Path copied", Toast.LENGTH_SHORT).show()
+    Toast.makeText(context, context.getString(R.string.nt_l10n_path_copied), Toast.LENGTH_SHORT).show()
 }
