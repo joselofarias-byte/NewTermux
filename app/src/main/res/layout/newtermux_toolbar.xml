@@ -18,12 +18,13 @@
 
         <TextView
             android:id="@+id/tv_app_title"
-            android:layout_width="0dp"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="NewTermux"
+            android:layout_marginEnd="6dp"
+            android:text="NT"
+            android:singleLine="true"
             android:textColor="@color/nt_toolbar_text"
-            android:textSize="18sp"
+            android:textSize="16sp"
             android:textStyle="bold"
             android:fontFamily="monospace" />
 
