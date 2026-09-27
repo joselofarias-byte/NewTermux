@@ -1067,7 +1067,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         // Bannerlator-style pop-out menu: rounded + outlined card with a thin gray divider
         // between options (see NtPopupMenu).
         com.newtermux.features.NtPopupMenu.showAsDropDown(this, anchor, null,
-            new String[]{"Rename", "Close"}, idx -> {
+            new String[]{getString(R.string.action_rename), getString(R.string.action_close)}, idx -> {
                 if (idx == 0) {
                     if (mTermuxTerminalSessionActivityClient != null)
                         mTermuxTerminalSessionActivityClient.renameSession(session);
