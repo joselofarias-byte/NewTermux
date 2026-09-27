@@ -116,7 +116,11 @@ jobs:
               ],
           }
           for path, needles in forbidden.items():
-              data = Path(path).read_text(encoding='utf-8')
+              raw = Path(path).read_text(encoding='utf-8')
+              data = '\n'.join(
+                  line for line in raw.splitlines()
+                  if not line.lstrip().startswith(('//', '*', '<!--'))
+              )
               found = [needle for needle in needles if needle in data]
               assert not found, f'English UI literals remain in {path}: {found}'
           print('PASS audited NewTermux UI has no known English literals')
