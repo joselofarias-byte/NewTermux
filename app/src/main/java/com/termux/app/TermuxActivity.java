@@ -915,58 +915,87 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
     private void showMoreActionsMenu(View anchor) {
-        boolean acEnabled = mTerminalView != null && mTerminalView.isKeyboardSuggestionsEnabled();
-        String[] items = new String[] {
-            getString(R.string.more_save_txt),
-            getString(R.string.more_paste),
-            getString(R.string.more_home),
-            getString(R.string.more_latest),
-            getString(R.string.more_keyboard),
-            getString(R.string.more_files),
-            getString(acEnabled ? R.string.more_autocorrect_on : R.string.more_autocorrect_off)
-        };
+        List<String> items = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
 
-        com.newtermux.features.NtPopupMenu.showAsDropDown(this, anchor, null, items, idx -> {
-            switch (idx) {
-                case 0:
-                    saveTerminalTextAsTxt(false, false);
-                    break;
-                case 1:
-                    if (mTermuxTerminalExtraKeys != null)
-                        mTermuxTerminalExtraKeys.onTerminalExtraKeyButtonClick(null, "PASTE", false, false, false, false);
-                    break;
-                case 2:
-                    if (mTermuxTerminalExtraKeys != null)
-                        mTermuxTerminalExtraKeys.onTerminalExtraKeyButtonClick(null, "HOME", false, false, false, false);
-                    break;
-                case 3:
-                    if (mTerminalView != null) mTerminalView.scrollToBottom();
-                    break;
-                case 4:
-                    if (mTermuxTerminalViewClient != null)
-                        mTermuxTerminalViewClient.onToggleSoftKeyboardRequest();
-                    break;
-                case 5:
-                    startActivity(new Intent(this, com.termux.app.activities.FileManagerActivity.class));
-                    break;
-                case 6:
-                    if (mTerminalView != null) {
-                        boolean enabled = !mTerminalView.isKeyboardSuggestionsEnabled();
-                        mTerminalView.setKeyboardSuggestionsEnabled(enabled);
-                        if (mAutoCorrectHandler != null) mAutoCorrectHandler.setEnabled(enabled);
-                        NewTermuxSettings.setKeyboardSuggestions(this, enabled);
-                        TextView ac = findViewById(R.id.btn_autocorrect_toggle);
-                        if (ac != null) {
-                            int color = getResources().getColor(
-                                enabled ? R.color.nt_primary : R.color.nt_on_surface, getTheme());
-                            ac.setTextColor(color);
-                        }
-                    }
-                    break;
-                default:
-                    break;
-            }
+        // Hidden toolbar favorites automatically move into More.
+        if (!NewTermuxSettings.isShowPackagesButton(this)) {
+            items.add(getString(R.string.newtermux_toolbar_packages));
+            actions.add(() -> {
+                if (mPackageManagerMenu != null) mPackageManagerMenu.show(anchor);
+            });
+        }
+        if (!NewTermuxSettings.isShowClearButton(this)) {
+            items.add(getString(R.string.newtermux_toolbar_clear));
+            actions.add(() -> {
+                TerminalSession session = getCurrentSession();
+                if (session != null) session.write("clear\n");
+            });
+        }
+        if (!NewTermuxSettings.isShowSttButton(this)) {
+            items.add(getString(R.string.newtermux_toolbar_speech));
+            actions.add(this::onSTTButtonClicked);
+        }
+        if (!NewTermuxSettings.isShowAcButton(this)) {
+            boolean acEnabled = mTerminalView != null && mTerminalView.isKeyboardSuggestionsEnabled();
+            items.add(getString(acEnabled ? R.string.more_autocorrect_on : R.string.more_autocorrect_off));
+            actions.add(this::toggleToolbarAutocorrect);
+        }
+
+        // Permanent secondary actions.
+        items.add(getString(R.string.more_save_txt));
+        actions.add(() -> saveTerminalTextAsTxt(false, false));
+
+        items.add(getString(R.string.more_paste));
+        actions.add(() -> {
+            if (mTermuxTerminalExtraKeys != null)
+                mTermuxTerminalExtraKeys.onTerminalExtraKeyButtonClick(null, "PASTE", false, false, false, false);
         });
+
+        items.add(getString(R.string.more_home));
+        actions.add(() -> {
+            if (mTermuxTerminalExtraKeys != null)
+                mTermuxTerminalExtraKeys.onTerminalExtraKeyButtonClick(null, "HOME", false, false, false, false);
+        });
+
+        items.add(getString(R.string.more_latest));
+        actions.add(() -> {
+            if (mTerminalView != null) mTerminalView.scrollToBottom();
+        });
+
+        items.add(getString(R.string.more_keyboard));
+        actions.add(() -> {
+            if (mTermuxTerminalViewClient != null)
+                mTermuxTerminalViewClient.onToggleSoftKeyboardRequest();
+        });
+
+        items.add(getString(R.string.more_files));
+        actions.add(() -> startActivity(new Intent(this, com.termux.app.activities.FileManagerActivity.class)));
+
+        com.newtermux.features.NtPopupMenu.showAsDropDown(
+            this,
+            anchor,
+            null,
+            items.toArray(new String[0]),
+            idx -> {
+                if (idx >= 0 && idx < actions.size()) actions.get(idx).run();
+            }
+        );
+    }
+
+    private void toggleToolbarAutocorrect() {
+        if (mTerminalView == null) return;
+        boolean enabled = !mTerminalView.isKeyboardSuggestionsEnabled();
+        mTerminalView.setKeyboardSuggestionsEnabled(enabled);
+        if (mAutoCorrectHandler != null) mAutoCorrectHandler.setEnabled(enabled);
+        NewTermuxSettings.setKeyboardSuggestions(this, enabled);
+
+        TextView ac = findViewById(R.id.btn_autocorrect_toggle);
+        if (ac != null) {
+            int color = getResources().getColor(
+                enabled ? R.color.nt_primary : R.color.nt_on_surface, getTheme());
+            ac.setTextColor(color);
+        }
     }
 
     /** Update the horizontal session pip row with live mini terminal previews. */
