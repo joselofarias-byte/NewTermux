@@ -59,6 +59,32 @@
 
 
 
+    <!-- NewTermux compact terminal actions -->
+    <string name="action_cursor_home">Line start</string>
+    <string name="action_clear_screen">Clear screen</string>
+    <string name="action_output_tools">Output and files</string>
+    <string name="action_save_transcript_txt">Save screen as TXT</string>
+    <string name="action_save_selected_txt">Save selection as TXT</string>
+    <string name="action_share_transcript_txt">Share as TXT</string>
+    <string name="action_copy_transcript">Copy terminal content</string>
+    <string name="action_scroll_bottom">Go to latest output</string>
+    <string name="msg_transcript_copied">Terminal content copied</string>
+    <string name="msg_txt_saved">Saved to Downloads: %1$s</string>
+    <string name="msg_txt_save_failed">Could not save TXT: %1$s</string>
+    <string name="msg_txt_open_failed">Could not open TXT: %1$s</string>
+    <string name="msg_txt_share_failed">Could not share TXT: %1$s</string>
+    <string name="action_open_saved_file">OPEN</string>
+    <string name="title_share_txt">Share terminal TXT</string>
+
+    <string name="action_rename">Rename</string>
+    <string name="action_close">Close</string>
+    <string name="newtermux_toolbar_packages">Packages</string>
+    <string name="newtermux_toolbar_clear">Clear</string>
+    <string name="newtermux_toolbar_speech">Speech to text</string>
+    <string name="newtermux_toolbar_root">Root access</string>
+    <string name="newtermux_toolbar_settings">Settings</string>
+    <string name="newtermux_toolbar_new_session">New session</string>
+
     <!-- Terminal Popup -->
     <string name="action_select_url">Select URL</string>
     <string name="title_select_url_dialog">Click URL to copy or long press to open</string>
@@ -79,8 +105,8 @@
     <string name="action_reset_terminal">Reset</string>
     <string name="msg_terminal_reset">Terminal reset</string>
 
-    <string name="action_kill_process">Kill process (%d)</string>
-    <string name="title_confirm_kill_process">Really kill this session?</string>
+    <string name="action_kill_process">End session/process (%d)</string>
+    <string name="title_confirm_kill_process">End this session/process?</string>
 
     <string name="action_style_terminal">Style</string>
     <string name="action_toggle_keep_screen_on">Keep screen on</string>
