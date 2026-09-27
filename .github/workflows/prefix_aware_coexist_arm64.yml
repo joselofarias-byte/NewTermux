@@ -7,6 +7,10 @@ on:
     paths:
       - 'app/build.gradle'
       - 'app/src/main/java/com/termux/app/TermuxInstaller.java'
+      - 'app/src/main/java/com/termux/app/TermuxActivity.java'
+      - 'app/src/main/java/com/termux/app/terminal/io/TermuxTerminalExtraKeys.java'
+      - 'termux-shared/src/main/java/com/termux/shared/termux/extrakeys/**'
+      - 'termux-shared/src/main/java/com/termux/shared/termux/settings/properties/TermuxPropertyConstants.java'
       - 'termux-shared/src/main/java/com/termux/shared/termux/shell/**'
       - 'scripts/fase8/**'
       - '.github/workflows/prefix_aware_coexist_arm64.yml'
