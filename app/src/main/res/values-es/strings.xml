@@ -36,6 +36,15 @@
     <string name="newtermux_toolbar_root">Acceso root</string>
     <string name="newtermux_toolbar_settings">Ajustes</string>
     <string name="newtermux_toolbar_new_session">Nueva sesión</string>
+    <string name="newtermux_toolbar_more">Más acciones</string>
+    <string name="more_save_txt">Guardar pantalla como TXT</string>
+    <string name="more_paste">Pegar</string>
+    <string name="more_home">Inicio de línea</string>
+    <string name="more_latest">Ir a la salida más reciente</string>
+    <string name="more_keyboard">Mostrar/ocultar teclado</string>
+    <string name="more_files">Archivos</string>
+    <string name="more_autocorrect_on">Autocorrección: activada</string>
+    <string name="more_autocorrect_off">Autocorrección: desactivada</string>
 
     <string name="action_select_url">Seleccionar URL</string>
     <string name="title_select_url_dialog">Tocá una URL para copiarla o mantenela pulsada para abrirla</string>
