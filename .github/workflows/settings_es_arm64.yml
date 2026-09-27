@@ -6,10 +6,8 @@ on:
       - fix/settings-es-complete-20260927
     paths:
       - '.github/workflows/settings_es_arm64.yml'
-      - 'scripts/i18n/localize-settings-es.py'
-      - 'app/src/main/java/com/termux/app/activities/**'
-      - 'app/src/main/java/com/newtermux/features/ColorPickerDialog.java'
-      - 'app/src/main/res/values*/newtermux_settings_strings.xml'
+      - 'scripts/i18n/**'
+      - 'app/src/main/**'
 
 permissions:
   contents: write
@@ -26,8 +24,8 @@ jobs:
       TERMUX_ABIS: arm64-v8a
       TERMUX_PACKAGE_VARIANT: apt-android-7
       TERMUX_SPLIT_APKS_FOR_DEBUG_BUILDS: '1'
-      TERMUX_APP_VERSION_NAME: 1.6.2-playcompat.es1
-      TERMUX_APK_VERSION_TAG: 1.6.2-playcompat-es-20260927
+      TERMUX_APP_VERSION_NAME: 1.6.2-playcompat.es2
+      TERMUX_APK_VERSION_TAG: 1.6.2-playcompat-es2-20260927
     steps:
       - uses: actions/checkout@v6
         with:
@@ -66,6 +64,63 @@ jobs:
           fi
           git diff --check
           git diff --stat
+
+      - name: Assert complete Spanish resource coverage
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+
+          pairs = [
+              ('app/src/main/res/values/strings.xml', 'app/src/main/res/values-es/strings.xml'),
+              ('app/src/main/res/values/newtermux_settings_strings.xml',
+               'app/src/main/res/values-es/newtermux_settings_strings.xml'),
+          ]
+
+          def names(path):
+              root = ET.parse(path).getroot()
+              return {node.attrib['name'] for node in root if node.tag == 'string' and 'name' in node.attrib}
+
+          for default_path, es_path in pairs:
+              default = names(default_path)
+              spanish = names(es_path)
+              missing = sorted(default - spanish)
+              assert not missing, f'{es_path} missing: {missing}'
+              print(f'PASS {es_path}: {len(default)} default strings covered')
+
+          forbidden = {
+              'app/src/main/java/com/termux/app/TermuxActivity.java': [
+                  'Screen exported', 'Export failed:', 'Script saved', 'Save failed:',
+                  'Did you mean:', 'Export Screen', 'Make Script', 'Pkg Update',
+                  'long press to set', 'Button label', 'Edit Button',
+                  'No history file found', 'Failed to read history',
+                  'No commands selected', 'Microphone permission required for speech input',
+              ],
+              'app/src/main/java/com/termux/app/terminal/TermuxTerminalViewClient.java': [
+                  'Open in browser', 'Copy to clipboard', ' Report Issue',
+              ],
+              'app/src/main/java/com/newtermux/features/SpeechInputManager.java': [
+                  'Speech recognition not available on this device.',
+                  'Speak a command...', 'Audio recording error', 'Microphone permission denied',
+                  'No speech recognized', 'Unknown error (',
+              ],
+              'app/src/main/res/layout/bottom_sheet_session_options.xml': [
+                  'android:text="Session"', 'android:text="Rename"', 'android:text="Close session"',
+              ],
+              'app/src/main/res/layout/newtermux_autocorrect_bar.xml': [
+                  'Did you mean: ls?', 'android:text="Apply"',
+              ],
+              'app/src/main/res/layout/newtermux_stt_overlay.xml': [
+                  'Listening...',
+              ],
+          }
+          for path, needles in forbidden.items():
+              data = Path(path).read_text(encoding='utf-8')
+              found = [needle for needle in needles if needle in data]
+              assert not found, f'English UI literals remain in {path}: {found}'
+          print('PASS audited NewTermux UI has no known English literals')
+          PY
 
       - name: Commit generated application source without starting another build
         env:
@@ -130,7 +185,7 @@ jobs:
           import sys
           from pathlib import Path
           data = Path(sys.argv[1]).read_text(encoding='utf-8')
-          for expected in ('Ajustes', 'Atajos de texto', 'Gestor de archivos', 'Agregar atajo', 'Brillo'):
+          for expected in ('Ajustes', 'Atajos de texto', 'Gestor de archivos', 'Agregar atajo', 'Brillo', 'Exportar pantalla', 'Crear script', 'Escuchando', 'Abrir en el navegador', 'Mantener NewTermux en ejecución'):
               assert expected in data, expected
           print('PASS Spanish labels found inside the compiled APK')
           PY
