@@ -82,7 +82,6 @@ import android.content.pm.PackageManager;
 import com.newtermux.features.AutoCorrectHandler;
 import com.newtermux.features.NewTermuxSettings;
 import com.newtermux.features.NewTermuxTheme;
-import com.newtermux.features.RootToggleManager;
 import com.newtermux.features.SpeechInputManager;
 import com.newtermux.features.TerminalTextExport;
 import com.termux.app.terminal.MiniTerminalPipView;
@@ -213,7 +212,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     // NewTermux features
     private SpeechInputManager mSpeechInputManager;
-    private RootToggleManager mRootToggleManager;
     private AutoCorrectHandler mAutoCorrectHandler;
     private com.newtermux.features.PackageManagerMenu mPackageManagerMenu;
     private View mAutocorrectBar;
@@ -221,7 +219,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private String mPendingCorrection;
     private String mPendingOriginal;
     private ImageButton mBtnSTT;
-    private ImageButton mBtnRootToggle;
     private LinearLayout mSessionPipContainer;
     private static final int REQUEST_RECORD_AUDIO = 201;
 
@@ -510,7 +507,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     private void applyFeatureSettings() {
         setVisible(R.id.btn_autocorrect_toggle, NewTermuxSettings.isShowAcButton(this));
-        setVisible(R.id.btn_root_toggle, NewTermuxSettings.isShowRootButton(this));
         setVisible(R.id.btn_stt, NewTermuxSettings.isShowSttButton(this));
         setVisible(R.id.btn_packages_menu, NewTermuxSettings.isShowPackagesButton(this));
         setVisible(R.id.btn_clear_terminal, NewTermuxSettings.isShowClearButton(this));
@@ -815,7 +811,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private void setupNewTermuxFeatures() {
         // Initialize managers
         mSpeechInputManager = new SpeechInputManager(this);
-        mRootToggleManager = RootToggleManager.getInstance();
         mAutoCorrectHandler = new AutoCorrectHandler(this);
         mPackageManagerMenu = new com.newtermux.features.PackageManagerMenu(this);
 
@@ -836,16 +831,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             }
         }
 
-        mBtnRootToggle = findViewById(R.id.btn_root_toggle);
-        if (mBtnRootToggle != null) {
-            if (RootToggleManager.isDeviceRooted()) {
-                mBtnRootToggle.setVisibility(View.VISIBLE);
-                mBtnRootToggle.setOnClickListener(v -> onRootToggleClicked());
-            } else {
-                mBtnRootToggle.setVisibility(View.GONE);
-            }
-        }
-
         View btnPackages = findViewById(R.id.btn_packages_menu);
         if (btnPackages != null) {
             btnPackages.setOnClickListener(v -> mPackageManagerMenu.show(v));
@@ -863,6 +848,11 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                     session.write("clear\n");
                 }
             });
+        }
+
+        View btnMore = findViewById(R.id.btn_more_actions);
+        if (btnMore != null) {
+            btnMore.setOnClickListener(this::showMoreActionsMenu);
         }
 
         ImageButton btnSettings = findViewById(R.id.btn_settings);
@@ -920,6 +910,61 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             @Override
             public void onListeningStopped() {
                 runOnUiThread(() -> updateSTTButtonState(false));
+            }
+        });
+    }
+
+    private void showMoreActionsMenu(View anchor) {
+        boolean acEnabled = mTerminalView != null && mTerminalView.isKeyboardSuggestionsEnabled();
+        String[] items = new String[] {
+            getString(R.string.more_save_txt),
+            getString(R.string.more_paste),
+            getString(R.string.more_home),
+            getString(R.string.more_latest),
+            getString(R.string.more_keyboard),
+            getString(R.string.more_files),
+            getString(acEnabled ? R.string.more_autocorrect_on : R.string.more_autocorrect_off)
+        };
+
+        com.newtermux.features.NtPopupMenu.showAsDropDown(this, anchor, null, items, idx -> {
+            switch (idx) {
+                case 0:
+                    saveTerminalTextAsTxt(false, false);
+                    break;
+                case 1:
+                    if (mTermuxTerminalExtraKeys != null)
+                        mTermuxTerminalExtraKeys.onTerminalExtraKeyButtonClick(null, "PASTE", false, false, false, false);
+                    break;
+                case 2:
+                    if (mTermuxTerminalExtraKeys != null)
+                        mTermuxTerminalExtraKeys.onTerminalExtraKeyButtonClick(null, "HOME", false, false, false, false);
+                    break;
+                case 3:
+                    if (mTerminalView != null) mTerminalView.scrollToBottom();
+                    break;
+                case 4:
+                    if (mTermuxTerminalViewClient != null)
+                        mTermuxTerminalViewClient.onToggleSoftKeyboardRequest();
+                    break;
+                case 5:
+                    startActivity(new Intent(this, com.termux.app.activities.FileManagerActivity.class));
+                    break;
+                case 6:
+                    if (mTerminalView != null) {
+                        boolean enabled = !mTerminalView.isKeyboardSuggestionsEnabled();
+                        mTerminalView.setKeyboardSuggestionsEnabled(enabled);
+                        if (mAutoCorrectHandler != null) mAutoCorrectHandler.setEnabled(enabled);
+                        NewTermuxSettings.setKeyboardSuggestions(this, enabled);
+                        TextView ac = findViewById(R.id.btn_autocorrect_toggle);
+                        if (ac != null) {
+                            int color = getResources().getColor(
+                                enabled ? R.color.nt_primary : R.color.nt_on_surface, getTheme());
+                            ac.setTextColor(color);
+                        }
+                    }
+                    break;
+                default:
+                    break;
             }
         });
     }
@@ -1093,44 +1138,12 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         });
     }
 
-    private void onRootToggleClicked() {
-        if (mRootToggleManager == null) return;
-        boolean enable = !mRootToggleManager.isRootEnabled();
-        mRootToggleManager.toggleRoot(enable, new RootToggleManager.RootCallback() {
-            @Override public void onRootGranted() {
-                runOnUiThread(() -> {
-                    updateRootButtonState(true);
-                    showToast("Root access enabled", false);
-                });
-            }
-            @Override public void onRootDenied(String reason) {
-                runOnUiThread(() -> {
-                    updateRootButtonState(false);
-                    showToast(reason, true);
-                });
-            }
-            @Override public void onRootStateChanged(boolean isRoot) {
-                runOnUiThread(() -> {
-                    updateRootButtonState(isRoot);
-                    showToast(isRoot ? "Root enabled" : "Root disabled", false);
-                });
-            }
-        });
-    }
-
     private void updateSTTButtonState(boolean isListening) {
         if (mBtnSTT == null) return;
         mBtnSTT.setImageResource(isListening ? R.drawable.ic_mic_off : R.drawable.ic_mic);
         int color = getResources().getColor(
             isListening ? R.color.nt_stt_listening : R.color.nt_stt_idle, getTheme());
         mBtnSTT.setColorFilter(color);
-    }
-
-    private void updateRootButtonState(boolean isRoot) {
-        if (mBtnRootToggle == null) return;
-        int color = getResources().getColor(
-            isRoot ? R.color.nt_root_active : R.color.nt_root_inactive, getTheme());
-        mBtnRootToggle.setColorFilter(color);
     }
 
     private void insertSpeechTextToTerminal(String text) {
