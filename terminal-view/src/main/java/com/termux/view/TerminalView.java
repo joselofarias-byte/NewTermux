@@ -1083,6 +1083,13 @@ public final class TerminalView extends View {
         return mTopRow;
     }
 
+    /** Return to the live bottom of the transcript and resume automatic scrolling. */
+    public void scrollToBottom() {
+        mUserScrolled = false;
+        setTopRow(0);
+        invalidate();
+    }
+
     public void setTopRow(int topRow) {
         setTopRow(topRow, true);
     }
