@@ -46,7 +46,7 @@ public class NewTermuxSettings {
         return prefs(ctx).getBoolean(KEY_SHOW_STT_BUTTON, true);
     }
     public static boolean isShowPackagesButton(Context ctx) {
-        return prefs(ctx).getBoolean(KEY_SHOW_PACKAGES_BUTTON, true);
+        return prefs(ctx).getBoolean(KEY_SHOW_PACKAGES_BUTTON, false);
     }
     public static boolean isShowClearButton(Context ctx) {
         return prefs(ctx).getBoolean(KEY_SHOW_CLEAR_BUTTON, true);
