@@ -344,7 +344,8 @@ def transform(path: str, text: str) -> str:
             text = inject_context(text, function)
         text = exact(text,
             "    val labels = remember { Logger.getLogLevelLabelsArray(context, Logger.getLogLevelsArray(), true).map { it.toString() } }",
-            """    val labels = Logger.getLogLevelsArray().map { level ->
+            """    val labels = values.map { rawLevel ->
+        val level = rawLevel.toInt()
         val label = when (level) {
             Logger.LOG_LEVEL_OFF -> R.string.nt_l10n_log_off
             Logger.LOG_LEVEL_NORMAL -> R.string.nt_l10n_log_normal

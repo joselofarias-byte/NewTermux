@@ -228,7 +228,8 @@ private fun KeepAliveSwitch(activity: Activity) {
 @Composable
 private fun LogLevelRow(context: Context, current: Int, onSelect: (Int) -> Unit) {
     val values = remember { Logger.getLogLevelsArray().map { it.toString() } }
-    val labels = Logger.getLogLevelsArray().map { level ->
+    val labels = values.map { rawLevel ->
+        val level = rawLevel.toInt()
         val label = when (level) {
             Logger.LOG_LEVEL_OFF -> R.string.nt_l10n_log_off
             Logger.LOG_LEVEL_NORMAL -> R.string.nt_l10n_log_normal
