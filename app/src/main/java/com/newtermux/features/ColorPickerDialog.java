@@ -50,14 +50,14 @@ public class ColorPickerDialog {
     public void show() {
         String lastStyle = mContext.getSharedPreferences("newtermux_theme", Context.MODE_PRIVATE)
             .getString(PREF_STYLE_KEY, STYLE_HSV);
-        String[] items = {"Color Wheel (HSV)", "RGB Sliders"};
+        String[] items = {mContext.getString(R.string.nt_l10n_color_wheel), mContext.getString(R.string.nt_l10n_rgb_sliders)};
         int defaultItem = STYLE_HSV.equals(lastStyle) ? 0 : 1;
 
         AlertDialog chooser = new AlertDialog.Builder(mContext)
-            .setTitle("Choose Picker Style")
+            .setTitle(mContext.getString(R.string.nt_l10n_picker_style))
             .setSingleChoiceItems(items, defaultItem, null)
-            .setPositiveButton("Next", null)
-            .setNegativeButton("Cancel", null)
+            .setPositiveButton(mContext.getString(R.string.nt_l10n_next), null)
+            .setNegativeButton(mContext.getString(R.string.nt_l10n_cancel), null)
             .create();
 
         chooser.setOnShowListener(d -> {
@@ -135,12 +135,12 @@ public class ColorPickerDialog {
         });
 
         new AlertDialog.Builder(mContext)
-            .setTitle("Custom Color (HSV)")
+            .setTitle(mContext.getString(R.string.nt_l10n_custom_hsv))
             .setView(view)
-            .setPositiveButton("OK", (d, w) -> {
+            .setPositiveButton(mContext.getString(R.string.nt_l10n_ok), (d, w) -> {
                 if (mListener != null) mListener.onColorSelected(wheel.getColor());
             })
-            .setNegativeButton("Cancel", null)
+            .setNegativeButton(mContext.getString(R.string.nt_l10n_cancel), null)
             .show();
     }
 
@@ -216,12 +216,12 @@ public class ColorPickerDialog {
         });
 
         new AlertDialog.Builder(mContext)
-            .setTitle("Custom Color (RGB)")
+            .setTitle(mContext.getString(R.string.nt_l10n_custom_rgb))
             .setView(view)
-            .setPositiveButton("OK", (d, w) -> {
+            .setPositiveButton(mContext.getString(R.string.nt_l10n_ok), (d, w) -> {
                 if (mListener != null) mListener.onColorSelected(Color.rgb(rgb[0], rgb[1], rgb[2]));
             })
-            .setNegativeButton("Cancel", null)
+            .setNegativeButton(mContext.getString(R.string.nt_l10n_cancel), null)
             .show();
     }
 

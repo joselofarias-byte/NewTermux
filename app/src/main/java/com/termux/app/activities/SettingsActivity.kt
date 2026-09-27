@@ -1,5 +1,7 @@
 package com.termux.app.activities
 
+import com.termux.R
+
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
@@ -136,13 +138,14 @@ private fun SettingsRoot(activity: Activity) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SettingsScaffold(title: String, onBack: () -> Unit, content: @Composable (Modifier) -> Unit) {
+    val context = LocalContext.current
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(title) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = context.getString(R.string.nt_l10n_back))
                     }
                 },
             )
@@ -208,8 +211,8 @@ private fun KeepAliveSwitch(activity: Activity) {
     val context = LocalContext.current
     var checked by remember { mutableStateOf(NewTermuxSettings.isKeepAliveInBackground(context)) }
     SwitchRow(
-        title = "Keep alive in background",
-        summary = "Hold a foreground wake lock while sessions run so the app survives when you launch a game. Turn off to save battery.",
+        title = context.getString(R.string.nt_l10n_keep_alive),
+        summary = context.getString(R.string.nt_l10n_keep_alive_summary),
         checked = checked,
     ) {
         checked = it
@@ -225,12 +228,21 @@ private fun KeepAliveSwitch(activity: Activity) {
 @Composable
 private fun LogLevelRow(context: Context, current: Int, onSelect: (Int) -> Unit) {
     val values = remember { Logger.getLogLevelsArray().map { it.toString() } }
-    val labels = remember { Logger.getLogLevelLabelsArray(context, Logger.getLogLevelsArray(), true).map { it.toString() } }
+    val labels = Logger.getLogLevelsArray().map { level ->
+        val label = when (level) {
+            Logger.LOG_LEVEL_OFF -> R.string.nt_l10n_log_off
+            Logger.LOG_LEVEL_NORMAL -> R.string.nt_l10n_log_normal
+            Logger.LOG_LEVEL_DEBUG -> R.string.nt_l10n_log_debug
+            Logger.LOG_LEVEL_VERBOSE -> R.string.nt_l10n_log_verbose
+            else -> null
+        }
+        if (label == null) level.toString() else context.getString(label, level)
+    }
     var expanded by remember { mutableStateOf(false) }
     var value by remember { mutableStateOf(current) }
     val idx = values.indexOf(value.toString()).coerceAtLeast(0)
     Box {
-        NavRow(title = "Log level", summary = labels.getOrNull(idx)) { expanded = true }
+        NavRow(title = context.getString(R.string.nt_l10n_log_level), summary = labels.getOrNull(idx)) { expanded = true }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, modifier = Modifier.outlinedMenuCard()) {
             values.forEachIndexed { i, v ->
                 if (i > 0) MenuItemDivider()
@@ -261,27 +273,27 @@ private fun RootScreen(activity: Activity, onBack: () -> Unit, onNav: (Route) ->
 
     fun launch(cls: Class<*>) = context.startActivity(Intent(context, cls))
 
-    SettingsScaffold("Settings", onBack) { mod ->
+    SettingsScaffold(context.getString(R.string.nt_l10n_settings), onBack) { mod ->
         Column(modifier = mod) {
-            NavRow("Appearance", "Accent color and UI theme") { launch(ThemePickerActivity::class.java) }
-            NavRow("Package Manager", "Browse, search and install packages") { launch(PackageManagerActivity::class.java) }
-            NavRow("SSH Manager", "Save and connect to multiple SSH servers") { launch(SshManagerActivity::class.java) }
-            NavRow("File Manager", "Browse, edit, and manage files in your Termux home") { launch(FileManagerActivity::class.java) }
+            NavRow(context.getString(R.string.nt_l10n_appearance), context.getString(R.string.nt_l10n_appearance_summary)) { launch(ThemePickerActivity::class.java) }
+            NavRow(context.getString(R.string.nt_l10n_packages), context.getString(R.string.nt_l10n_packages_summary)) { launch(PackageManagerActivity::class.java) }
+            NavRow(context.getString(R.string.nt_l10n_ssh), context.getString(R.string.nt_l10n_ssh_summary)) { launch(SshManagerActivity::class.java) }
+            NavRow(context.getString(R.string.nt_l10n_files), context.getString(R.string.nt_l10n_files_summary)) { launch(FileManagerActivity::class.java) }
             HorizontalDivider()
-            NavRow("Backup & Restore", "Back up or restore your Termux environment") { onNav(Route.BACKUP) }
-            NavRow("Features", "Toggle NewTermux features on or off") { onNav(Route.FEATURES) }
-            NavRow("Text Expansion", "Auto-expand short triggers to full commands") { onNav(Route.TEXT_EXPANSION) }
+            NavRow(context.getString(R.string.nt_l10n_backup_restore), context.getString(R.string.nt_l10n_backup_summary)) { onNav(Route.BACKUP) }
+            NavRow(context.getString(R.string.nt_l10n_features), context.getString(R.string.nt_l10n_features_summary)) { onNav(Route.FEATURES) }
+            NavRow(context.getString(R.string.nt_l10n_expansions), context.getString(R.string.nt_l10n_expansions_summary)) { onNav(Route.TEXT_EXPANSION) }
             HorizontalDivider()
-            NavRow("Termux", "Terminal, keyboard and debugging options") { onNav(Route.TERMUX) }
-            if (apiInstalled) NavRow("Termux:API", "API plugin settings") { onNav(Route.PLUGIN_API) }
-            if (floatInstalled) NavRow("Termux:Float", "Floating window plugin settings") { onNav(Route.PLUGIN_FLOAT) }
-            if (taskerInstalled) NavRow("Termux:Tasker", "Tasker plugin settings") { onNav(Route.PLUGIN_TASKER) }
-            if (widgetInstalled) NavRow("Termux:Widget", "Widget plugin settings") { onNav(Route.PLUGIN_WIDGET) }
+            NavRow("Termux", context.getString(R.string.nt_l10n_termux_summary)) { onNav(Route.TERMUX) }
+            if (apiInstalled) NavRow("Termux:API", context.getString(R.string.nt_l10n_api_summary)) { onNav(Route.PLUGIN_API) }
+            if (floatInstalled) NavRow("Termux:Float", context.getString(R.string.nt_l10n_float_summary)) { onNav(Route.PLUGIN_FLOAT) }
+            if (taskerInstalled) NavRow("Termux:Tasker", context.getString(R.string.nt_l10n_tasker_summary)) { onNav(Route.PLUGIN_TASKER) }
+            if (widgetInstalled) NavRow("Termux:Widget", context.getString(R.string.nt_l10n_widget_summary)) { onNav(Route.PLUGIN_WIDGET) }
             HorizontalDivider()
-            NavRow("About", "App, device and plugin info") {
+            NavRow(context.getString(R.string.nt_l10n_about), context.getString(R.string.nt_l10n_about_summary)) {
                 scope.launch { openAbout(context) }
             }
-            if (donateVisible) NavRow("Donate", "Support development") { ShareUtils.openUrl(context, TermuxConstants.TERMUX_DONATE_URL) }
+            if (donateVisible) NavRow(context.getString(R.string.nt_l10n_donate), context.getString(R.string.nt_l10n_donate_summary)) { ShareUtils.openUrl(context, TermuxConstants.TERMUX_DONATE_URL) }
         }
     }
 }
@@ -296,51 +308,51 @@ private fun FeaturesScreen(activity: Activity, onBack: () -> Unit) {
 
     val zshInstalled = remember { File(TermuxConstants.TERMUX_PREFIX_DIR_PATH, "bin/zsh").exists() }
 
-    SettingsScaffold("Features", onBack) { mod ->
+    SettingsScaffold(context.getString(R.string.nt_l10n_features), onBack) { mod ->
         Column(modifier = mod) {
-            CategoryHeader("Keyboard")
-            NtSwitch(context, NewTermuxSettings.KEY_KEYBOARD_SUGGESTIONS, "Keyboard Suggestions", "Show autocorrect and word suggestions bar")
-            NtSwitch(context, NewTermuxSettings.KEY_AUTOCORRECT, "Command Autocorrect", "Suggest corrections for mistyped commands (spacebar)")
-            NtSwitch(context, NewTermuxSettings.KEY_URL_DETECTION_ENABLED, "URL Detection", "Long-press a URL in the terminal to open or copy it")
-            NtSwitch(context, NewTermuxSettings.KEY_EXTRA_KEYS_VISIBLE, "Show Extra Keys Toolbar", "Show the ESC, TAB, arrow key row above the keyboard")
-            NtSwitch(context, NewTermuxSettings.KEY_EXTRA_KEYS_IN_DRAWER, "Extra Keys in Right Drawer", "Move extra keys to a swipeable right-side drawer — takes effect on restart")
+            CategoryHeader(context.getString(R.string.nt_l10n_keyboard))
+            NtSwitch(context, NewTermuxSettings.KEY_KEYBOARD_SUGGESTIONS, context.getString(R.string.nt_l10n_keyboard_suggestions), context.getString(R.string.nt_l10n_keyboard_suggestions_summary))
+            NtSwitch(context, NewTermuxSettings.KEY_AUTOCORRECT, context.getString(R.string.nt_l10n_autocorrect), context.getString(R.string.nt_l10n_autocorrect_summary))
+            NtSwitch(context, NewTermuxSettings.KEY_URL_DETECTION_ENABLED, context.getString(R.string.nt_l10n_url_detection), context.getString(R.string.nt_l10n_url_detection_summary))
+            NtSwitch(context, NewTermuxSettings.KEY_EXTRA_KEYS_VISIBLE, context.getString(R.string.nt_l10n_extra_keys), context.getString(R.string.nt_l10n_extra_keys_summary))
+            NtSwitch(context, NewTermuxSettings.KEY_EXTRA_KEYS_IN_DRAWER, context.getString(R.string.nt_l10n_extra_keys_drawer), context.getString(R.string.nt_l10n_extra_keys_drawer_summary))
 
-            CategoryHeader("Barra rápida")
-            NtSwitch(context, NewTermuxSettings.KEY_SHOW_AC_BUTTON, "Botón AC", "Mostrar el interruptor de autocorrección en la barra")
-            NtSwitch(context, NewTermuxSettings.KEY_SHOW_STT_BUTTON, "Micrófono", "Mostrar dictado por voz en la barra")
-            NtSwitch(context, NewTermuxSettings.KEY_SHOW_PACKAGES_BUTTON, "Paquetes", "Mostrar el acceso rápido al gestor de paquetes")
-            NtSwitch(context, NewTermuxSettings.KEY_SHOW_CLEAR_BUTTON, "Limpiar", "Mostrar el botón para limpiar la terminal")
-            NavRow("Más (⋮)", "Siempre visible: TXT, pegar, inicio, final, teclado, archivos y autocorrección", enabled = false) {}
+            CategoryHeader(context.getString(R.string.nt_l10n_quick_bar))
+            NtSwitch(context, NewTermuxSettings.KEY_SHOW_AC_BUTTON, context.getString(R.string.nt_l10n_ac_button), context.getString(R.string.nt_l10n_ac_button_summary))
+            NtSwitch(context, NewTermuxSettings.KEY_SHOW_STT_BUTTON, context.getString(R.string.nt_l10n_microphone), context.getString(R.string.nt_l10n_microphone_summary))
+            NtSwitch(context, NewTermuxSettings.KEY_SHOW_PACKAGES_BUTTON, context.getString(R.string.nt_l10n_quick_packages), context.getString(R.string.nt_l10n_quick_packages_summary))
+            NtSwitch(context, NewTermuxSettings.KEY_SHOW_CLEAR_BUTTON, context.getString(R.string.nt_l10n_clear), context.getString(R.string.nt_l10n_clear_summary))
+            NavRow(context.getString(R.string.nt_l10n_quick_more), context.getString(R.string.nt_l10n_quick_more_summary), enabled = false) {}
 
-            CategoryHeader("Session Tabs")
-            NtSwitch(context, NewTermuxSettings.KEY_SESSION_TABS, "Show Session Tabs", "Show session tab chips at the top")
-            NtSwitch(context, NewTermuxSettings.KEY_SESSION_RENAME_ENABLED, "Session Renaming", "Long-press a session tab to rename it")
+            CategoryHeader(context.getString(R.string.nt_l10n_session_tabs))
+            NtSwitch(context, NewTermuxSettings.KEY_SESSION_TABS, context.getString(R.string.nt_l10n_show_session_tabs), context.getString(R.string.nt_l10n_show_session_tabs_summary))
+            NtSwitch(context, NewTermuxSettings.KEY_SESSION_RENAME_ENABLED, context.getString(R.string.nt_l10n_session_rename), context.getString(R.string.nt_l10n_session_rename_summary))
 
-            CategoryHeader("Startup")
-            NtSwitch(context, NewTermuxSettings.KEY_STARTUP_SCRIPT_ENABLED, "Startup Script", "Run ~/.termux/startup-script.sh in each new session")
-            NavRow("Edit Startup Script", "Edit ~/.termux/startup-script.sh") { showScriptEditor = true }
+            CategoryHeader(context.getString(R.string.nt_l10n_startup))
+            NtSwitch(context, NewTermuxSettings.KEY_STARTUP_SCRIPT_ENABLED, context.getString(R.string.nt_l10n_startup_script), context.getString(R.string.nt_l10n_startup_script_summary))
+            NavRow(context.getString(R.string.nt_l10n_edit_startup), context.getString(R.string.nt_l10n_edit_startup_summary)) { showScriptEditor = true }
 
-            CategoryHeader("Shell")
+            CategoryHeader(context.getString(R.string.nt_l10n_shell))
             if (zshInstalled) {
-                NavRow("Zsh", "✓ Installed", enabled = false) {}
+                NavRow("Zsh", context.getString(R.string.nt_l10n_zsh_installed), enabled = false) {}
             } else {
-                NavRow("Install Zsh", "Required for syntax highlighting and autosuggestions") {
+                NavRow(context.getString(R.string.nt_l10n_install_zsh), context.getString(R.string.nt_l10n_install_zsh_summary)) {
                     NewTermuxSettings.setPendingCommand(context, "pkg install zsh\n")
                     activity.finish()
                 }
             }
             ZshPluginsSwitch(context, zshInstalled, onChanged = { showRestartWarning = true })
 
-            CategoryHeader("Drawer")
-            NtSwitch(context, NewTermuxSettings.KEY_SHOW_DRAWER_EXPORT_SCRIPT, "Export Screen & Make Script", "Show Export Screen and Make Script buttons in the drawer")
-            NtSwitch(context, NewTermuxSettings.KEY_SHOW_DRAWER_PKG_UPDATE, "Pkg Update Button", "Show a button that runs pkg update && pkg upgrade -y")
-            NtSwitch(context, NewTermuxSettings.KEY_SHOW_DRAWER_CMD_BUTTONS, "Drawer Command Buttons", "Show customisable command shortcut buttons")
+            CategoryHeader(context.getString(R.string.nt_l10n_drawer))
+            NtSwitch(context, NewTermuxSettings.KEY_SHOW_DRAWER_EXPORT_SCRIPT, context.getString(R.string.nt_l10n_export_screen_script), context.getString(R.string.nt_l10n_export_screen_script_summary))
+            NtSwitch(context, NewTermuxSettings.KEY_SHOW_DRAWER_PKG_UPDATE, context.getString(R.string.nt_l10n_pkg_update), context.getString(R.string.nt_l10n_pkg_update_summary))
+            NtSwitch(context, NewTermuxSettings.KEY_SHOW_DRAWER_CMD_BUTTONS, context.getString(R.string.nt_l10n_drawer_commands), context.getString(R.string.nt_l10n_drawer_commands_summary))
 
-            CategoryHeader("Background")
+            CategoryHeader(context.getString(R.string.nt_l10n_background))
             KeepAliveSwitch(activity)
 
-            CategoryHeader("Permissions")
-            NavRow("Grant Storage Permission", "Allow access to /sdcard and set up ~/storage symlinks") {
+            CategoryHeader(context.getString(R.string.nt_l10n_permissions))
+            NavRow(context.getString(R.string.nt_l10n_storage_permission), context.getString(R.string.nt_l10n_storage_permission_summary)) {
                 (activity as? TermuxActivity)?.requestStoragePermission(false)
             }
             Spacer(Modifier.size(16.dp))
@@ -353,9 +365,9 @@ private fun FeaturesScreen(activity: Activity, onBack: () -> Unit) {
     if (showRestartWarning) {
         AlertDialog(
             onDismissRequest = { showRestartWarning = false },
-            title = { Text("Restart Required") },
-            text = { Text("Start a new terminal session for this change to take effect.") },
-            confirmButton = { TextButton(onClick = { showRestartWarning = false }) { Text("OK") } },
+            title = { Text(context.getString(R.string.nt_l10n_restart_required)) },
+            text = { Text(context.getString(R.string.nt_l10n_restart_required_summary)) },
+            confirmButton = { TextButton(onClick = { showRestartWarning = false }) { Text(context.getString(R.string.nt_l10n_ok)) } },
         )
     }
 }
@@ -364,8 +376,8 @@ private fun FeaturesScreen(activity: Activity, onBack: () -> Unit) {
 private fun ZshPluginsSwitch(context: Context, zshInstalled: Boolean, onChanged: () -> Unit) {
     var checked by remember { mutableStateOf(NewTermuxSettings.isZshPluginsEnabled(context)) }
     SwitchRow(
-        title = "Shell Enhancements",
-        summary = if (zshInstalled) "Autosuggestions + syntax highlighting (requires Zsh)" else "Install Zsh first to enable this",
+        title = context.getString(R.string.nt_l10n_shell_enhancements),
+        summary = if (zshInstalled) context.getString(R.string.nt_l10n_shell_enhancements_summary) else context.getString(R.string.nt_l10n_shell_enhancements_unavailable),
         checked = checked,
         enabled = zshInstalled,
     ) {
@@ -382,7 +394,7 @@ private fun StartupScriptEditorDialog(context: Context, onDismiss: () -> Unit) {
     var text by remember { mutableStateOf(if (scriptFile.exists()) runCatching { scriptFile.readText() }.getOrDefault("") else "") }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Edit Startup Script") },
+        title = { Text(context.getString(R.string.nt_l10n_edit_startup)) },
         text = {
             OutlinedTextField(
                 value = text, onValueChange = { text = it },
@@ -394,14 +406,14 @@ private fun StartupScriptEditorDialog(context: Context, onDismiss: () -> Unit) {
                 try {
                     scriptFile.parentFile?.mkdirs()
                     scriptFile.writeText(text)
-                    Toast.makeText(context, "Startup script saved", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, context.getString(R.string.nt_l10n_startup_saved), Toast.LENGTH_SHORT).show()
                     onDismiss()
                 } catch (e: Exception) {
-                    Toast.makeText(context, "Failed to save: ${e.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, context.getString(R.string.nt_l10n_save_failed, e.message), Toast.LENGTH_LONG).show()
                 }
-            }) { Text("Save") }
+            }) { Text(context.getString(R.string.nt_l10n_save)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(context.getString(R.string.nt_l10n_cancel)) } },
     )
 }
 
@@ -417,17 +429,17 @@ private fun TextExpansionScreen(onBack: () -> Unit) {
 
     fun persist() = TextExpansionStore.save(context, items.toMutableList())
 
-    SettingsScaffold("Text Expansion", onBack) { mod ->
+    SettingsScaffold(context.getString(R.string.nt_l10n_expansions), onBack) { mod ->
         Column(modifier = mod) {
-            SwitchRow("Enable Text Expansion", "Auto-expand short triggers to full commands", enabled) {
+            SwitchRow(context.getString(R.string.nt_l10n_enable_expansions), context.getString(R.string.nt_l10n_expansions_summary), enabled) {
                 enabled = it
                 NewTermuxSettings.set(context, NewTermuxSettings.KEY_TEXT_EXPANSION_ENABLED, it)
             }
             HorizontalDivider()
-            NavRow("Add New", "Create a new expansion") { editIndex = null; showEditor = true }
+            NavRow(context.getString(R.string.nt_l10n_add_new), context.getString(R.string.nt_l10n_add_new_summary)) { editIndex = null; showEditor = true }
             if (items.isEmpty()) {
                 Text(
-                    "No expansions yet. Tap 'Add New' to create one.",
+                    context.getString(R.string.nt_l10n_no_expansions),
                     modifier = Modifier.padding(16.dp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -439,7 +451,7 @@ private fun TextExpansionScreen(onBack: () -> Unit) {
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text("${exp.trigger}  →  ${exp.expansion}", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                        TextButton(onClick = { items.removeAt(i); persist() }) { Text("Delete") }
+                        TextButton(onClick = { items.removeAt(i); persist() }) { Text(context.getString(R.string.nt_l10n_delete)) }
                     }
                 }
             }
@@ -482,23 +494,23 @@ private fun ExpansionEditorDialog(
     var expansion by remember { mutableStateOf(initExpansion) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (initTrigger.isNotEmpty() || initExpansion.isNotEmpty()) "Edit Expansion" else "Add Expansion") },
+        title = { Text(if (initTrigger.isNotEmpty() || initExpansion.isNotEmpty()) context.getString(R.string.nt_l10n_edit_expansion) else context.getString(R.string.nt_l10n_add_expansion)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(trigger, { trigger = it }, label = { Text("Trigger (e.g. ;ll)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(expansion, { expansion = it }, label = { Text("Expansion (e.g. ls -la)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(trigger, { trigger = it }, label = { Text(context.getString(R.string.nt_l10n_trigger)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(expansion, { expansion = it }, label = { Text(context.getString(R.string.nt_l10n_expansion)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
             }
         },
         confirmButton = {
             TextButton(onClick = {
                 if (trigger.trim().isEmpty()) {
-                    Toast.makeText(context, "Trigger cannot be empty", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, context.getString(R.string.nt_l10n_trigger_empty), Toast.LENGTH_SHORT).show()
                     return@TextButton
                 }
                 onSave(trigger.trim(), expansion)
-            }) { Text("Save") }
+            }) { Text(context.getString(R.string.nt_l10n_save)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(context.getString(R.string.nt_l10n_cancel)) } },
     )
 }
 
@@ -514,30 +526,30 @@ private fun BackupScreen(onBack: () -> Unit) {
 
     val basicSaver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/gzip")) { uri ->
         if (uri != null) scope.launch {
-            busy = "Backing up home…"
+            busy = context.getString(R.string.nt_l10n_backup_home_busy)
             val err = withContext(Dispatchers.IO) { runBackup(context, uri, false) }
             busy = null
-            toast(context, if (err == null) "Backup complete" else "Backup failed: $err")
+            toast(context, if (err == null) context.getString(R.string.nt_l10n_backup_complete) else context.getString(R.string.nt_l10n_backup_failed, err))
         }
     }
     val fullSaver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/gzip")) { uri ->
         if (uri != null) scope.launch {
-            busy = "Backing up home + usr…"
+            busy = context.getString(R.string.nt_l10n_backup_full_busy)
             val err = withContext(Dispatchers.IO) { runBackup(context, uri, true) }
             busy = null
-            toast(context, if (err == null) "Backup complete" else "Backup failed: $err")
+            toast(context, if (err == null) context.getString(R.string.nt_l10n_backup_complete) else context.getString(R.string.nt_l10n_backup_failed, err))
         }
     }
     val restorePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) { restoreUri = uri; restoreFull = null }
     }
 
-    SettingsScaffold("Backup & Restore", onBack) { mod ->
+    SettingsScaffold(context.getString(R.string.nt_l10n_backup_restore), onBack) { mod ->
         Column(modifier = mod) {
-            NavRow("Basic backup (home only)", "Save a .tar.gz of your home directory") { basicSaver.launch("termux-home-backup.tar.gz") }
-            NavRow("Full backup (home + usr)", "Save a .tar.gz of home and usr") { fullSaver.launch("termux-full-backup.tar.gz") }
+            NavRow(context.getString(R.string.nt_l10n_backup_home), context.getString(R.string.nt_l10n_backup_home_summary)) { basicSaver.launch("termux-home-backup.tar.gz") }
+            NavRow(context.getString(R.string.nt_l10n_backup_full), context.getString(R.string.nt_l10n_backup_full_summary)) { fullSaver.launch("termux-full-backup.tar.gz") }
             HorizontalDivider()
-            NavRow("Restore from backup", "Pick a .tar.gz to restore") { restorePicker.launch(arrayOf("*/*")) }
+            NavRow(context.getString(R.string.nt_l10n_restore_from), context.getString(R.string.nt_l10n_restore_from_summary)) { restorePicker.launch(arrayOf("*/*")) }
         }
     }
 
@@ -559,10 +571,10 @@ private fun BackupScreen(onBack: () -> Unit) {
     if (restoreUri != null && restoreFull == null) {
         AlertDialog(
             onDismissRequest = { restoreUri = null },
-            title = { Text("What type of backup is this?") },
-            text = { Text("Choose the correct type so the right restore method is used.") },
-            confirmButton = { TextButton(onClick = { restoreFull = true }) { Text("Full (home + usr)") } },
-            dismissButton = { TextButton(onClick = { restoreFull = false }) { Text("Basic (home only)") } },
+            title = { Text(context.getString(R.string.nt_l10n_backup_type)) },
+            text = { Text(context.getString(R.string.nt_l10n_backup_type_summary)) },
+            confirmButton = { TextButton(onClick = { restoreFull = true }) { Text(context.getString(R.string.nt_l10n_full)) } },
+            dismissButton = { TextButton(onClick = { restoreFull = false }) { Text(context.getString(R.string.nt_l10n_basic)) } },
         )
     }
     // Restore: confirm
@@ -571,20 +583,20 @@ private fun BackupScreen(onBack: () -> Unit) {
         val full = restoreFull!!
         AlertDialog(
             onDismissRequest = { restoreUri = null; restoreFull = null },
-            title = { Text("Restore Termux") },
-            text = { Text(if (full) "This will overwrite your home and usr directories. Continue?" else "This will overwrite your home directory. Continue?") },
+            title = { Text(context.getString(R.string.nt_l10n_restore_termux)) },
+            text = { Text(if (full) context.getString(R.string.nt_l10n_restore_confirm_full) else context.getString(R.string.nt_l10n_restore_confirm_home)) },
             confirmButton = {
                 TextButton(onClick = {
                     restoreUri = null; restoreFull = null
                     scope.launch {
-                        busy = "Restoring…"
+                        busy = context.getString(R.string.nt_l10n_restoring)
                         val err = withContext(Dispatchers.IO) { runRestore(context, uri, full) }
                         busy = null
-                        toast(context, if (err == null) "Restore complete" else "Restore failed: $err")
+                        toast(context, if (err == null) context.getString(R.string.nt_l10n_restore_complete) else context.getString(R.string.nt_l10n_restore_failed, err))
                     }
-                }) { Text("Restore") }
+                }) { Text(context.getString(R.string.nt_l10n_restore)) }
             },
-            dismissButton = { TextButton(onClick = { restoreUri = null; restoreFull = null }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { restoreUri = null; restoreFull = null }) { Text(context.getString(R.string.nt_l10n_cancel)) } },
         )
     }
 }
@@ -593,11 +605,12 @@ private fun BackupScreen(onBack: () -> Unit) {
 
 @Composable
 private fun TermuxScreen(onBack: () -> Unit, onNav: (Route) -> Unit) {
+    val context = LocalContext.current
     SettingsScaffold("Termux", onBack) { mod ->
         Column(modifier = mod) {
-            NavRow("Debugging", "Log level and debug options") { onNav(Route.DEBUGGING) }
-            NavRow("Terminal I/O", "Soft keyboard behavior") { onNav(Route.TERMINAL_IO) }
-            NavRow("Terminal View", "Terminal margin adjustment") { onNav(Route.TERMINAL_VIEW) }
+            NavRow(context.getString(R.string.nt_l10n_debugging), context.getString(R.string.nt_l10n_debugging_summary)) { onNav(Route.DEBUGGING) }
+            NavRow(context.getString(R.string.nt_l10n_terminal_io), context.getString(R.string.nt_l10n_terminal_io_summary)) { onNav(Route.TERMINAL_IO) }
+            NavRow(context.getString(R.string.nt_l10n_terminal_view), context.getString(R.string.nt_l10n_terminal_margins)) { onNav(Route.TERMINAL_VIEW) }
         }
     }
 }
@@ -606,14 +619,14 @@ private fun TermuxScreen(onBack: () -> Unit, onNav: (Route) -> Unit) {
 private fun TerminalIOScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val prefs = remember { TermuxAppSharedPreferences.build(context, true) }
-    SettingsScaffold("Terminal I/O", onBack) { mod ->
+    SettingsScaffold(context.getString(R.string.nt_l10n_terminal_io), onBack) { mod ->
         Column(modifier = mod) {
-            if (prefs == null) { Text("Unavailable", modifier = Modifier.padding(16.dp)); return@Column }
-            CategoryHeader("Keyboard")
+            if (prefs == null) { Text(context.getString(R.string.nt_l10n_unavailable), modifier = Modifier.padding(16.dp)); return@Column }
+            CategoryHeader(context.getString(R.string.nt_l10n_keyboard))
             var soft by remember { mutableStateOf(prefs.isSoftKeyboardEnabled) }
-            SwitchRow("Soft keyboard enabled", "Show the on-screen keyboard", soft) { soft = it; prefs.setSoftKeyboardEnabled(it) }
+            SwitchRow(context.getString(R.string.nt_l10n_soft_keyboard), context.getString(R.string.nt_l10n_soft_keyboard_summary), soft) { soft = it; prefs.setSoftKeyboardEnabled(it) }
             var softNoHw by remember { mutableStateOf(prefs.isSoftKeyboardEnabledOnlyIfNoHardware) }
-            SwitchRow("Only if no hardware keyboard", "Hide soft keyboard when a hardware keyboard is connected", softNoHw) { softNoHw = it; prefs.setSoftKeyboardEnabledOnlyIfNoHardware(it) }
+            SwitchRow(context.getString(R.string.nt_l10n_no_hardware_keyboard), context.getString(R.string.nt_l10n_no_hardware_keyboard_summary), softNoHw) { softNoHw = it; prefs.setSoftKeyboardEnabledOnlyIfNoHardware(it) }
         }
     }
 }
@@ -622,12 +635,12 @@ private fun TerminalIOScreen(onBack: () -> Unit) {
 private fun TerminalViewScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val prefs = remember { TermuxAppSharedPreferences.build(context, true) }
-    SettingsScaffold("Terminal View", onBack) { mod ->
+    SettingsScaffold(context.getString(R.string.nt_l10n_terminal_view), onBack) { mod ->
         Column(modifier = mod) {
-            if (prefs == null) { Text("Unavailable", modifier = Modifier.padding(16.dp)); return@Column }
-            CategoryHeader("View")
+            if (prefs == null) { Text(context.getString(R.string.nt_l10n_unavailable), modifier = Modifier.padding(16.dp)); return@Column }
+            CategoryHeader(context.getString(R.string.nt_l10n_view))
             var margin by remember { mutableStateOf(prefs.isTerminalMarginAdjustmentEnabled) }
-            SwitchRow("Terminal margin adjustment", "Auto-adjust margins to avoid rounded corners/cutouts", margin) { margin = it; prefs.setTerminalMarginAdjustment(it) }
+            SwitchRow(context.getString(R.string.nt_l10n_terminal_margins), context.getString(R.string.nt_l10n_terminal_margins_summary), margin) { margin = it; prefs.setTerminalMarginAdjustment(it) }
         }
     }
 }
@@ -636,17 +649,17 @@ private fun TerminalViewScreen(onBack: () -> Unit) {
 private fun DebuggingScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val prefs = remember { TermuxAppSharedPreferences.build(context, true) }
-    SettingsScaffold("Debugging", onBack) { mod ->
+    SettingsScaffold(context.getString(R.string.nt_l10n_debugging), onBack) { mod ->
         Column(modifier = mod) {
-            if (prefs == null) { Text("Unavailable", modifier = Modifier.padding(16.dp)); return@Column }
-            CategoryHeader("Logging")
+            if (prefs == null) { Text(context.getString(R.string.nt_l10n_unavailable), modifier = Modifier.padding(16.dp)); return@Column }
+            CategoryHeader(context.getString(R.string.nt_l10n_logging))
             LogLevelRow(context, prefs.logLevel) { prefs.setLogLevel(context, it) }
             var keyLog by remember { mutableStateOf(prefs.isTerminalViewKeyLoggingEnabled) }
-            SwitchRow("Terminal view key logging", "Log key events (verbose)", keyLog) { keyLog = it; prefs.setTerminalViewKeyLoggingEnabled(it) }
+            SwitchRow(context.getString(R.string.nt_l10n_key_logging), context.getString(R.string.nt_l10n_key_logging_summary), keyLog) { keyLog = it; prefs.setTerminalViewKeyLoggingEnabled(it) }
             var pluginErr by remember { mutableStateOf(prefs.arePluginErrorNotificationsEnabled(false)) }
-            SwitchRow("Plugin error notifications", null, pluginErr) { pluginErr = it; prefs.setPluginErrorNotificationsEnabled(it) }
+            SwitchRow(context.getString(R.string.nt_l10n_plugin_errors), null, pluginErr) { pluginErr = it; prefs.setPluginErrorNotificationsEnabled(it) }
             var crash by remember { mutableStateOf(prefs.areCrashReportNotificationsEnabled(false)) }
-            SwitchRow("Crash report notifications", null, crash) { crash = it; prefs.setCrashReportNotificationsEnabled(it) }
+            SwitchRow(context.getString(R.string.nt_l10n_crash_reports), null, crash) { crash = it; prefs.setCrashReportNotificationsEnabled(it) }
         }
     }
 }
@@ -660,7 +673,7 @@ private fun PluginScreen(title: String, plugin: Plugin, onBack: () -> Unit) {
     val context = LocalContext.current
     SettingsScaffold(title, onBack) { mod ->
         Column(modifier = mod) {
-            CategoryHeader("Logging")
+            CategoryHeader(context.getString(R.string.nt_l10n_logging))
             when (plugin) {
                 Plugin.API -> {
                     val p = remember { TermuxAPIAppSharedPreferences.build(context, true) }
@@ -671,7 +684,7 @@ private fun PluginScreen(title: String, plugin: Plugin, onBack: () -> Unit) {
                     if (p != null) {
                         LogLevelRow(context, p.getLogLevel(true)) { p.setLogLevel(context, it, true) }
                         var keyLog by remember { mutableStateOf(p.isTerminalViewKeyLoggingEnabled(true)) }
-                        SwitchRow("Terminal view key logging", null, keyLog) { keyLog = it; p.setTerminalViewKeyLoggingEnabled(it, true) }
+                        SwitchRow(context.getString(R.string.nt_l10n_key_logging), null, keyLog) { keyLog = it; p.setTerminalViewKeyLoggingEnabled(it, true) }
                     }
                 }
                 Plugin.TASKER -> {
@@ -704,7 +717,7 @@ private fun openAbout(context: Context) {
     about.append("\n\n").append(TermuxUtils.getImportantLinksMarkdownString(context))
 
     val userActionName = UserAction.ABOUT.getName()
-    val reportInfo = ReportInfo(userActionName, TermuxConstants.TERMUX_APP.TERMUX_SETTINGS_ACTIVITY_NAME, "About")
+    val reportInfo = ReportInfo(userActionName, TermuxConstants.TERMUX_APP.TERMUX_SETTINGS_ACTIVITY_NAME, context.getString(R.string.nt_l10n_about))
     reportInfo.setReportString(about.toString())
     reportInfo.setReportSaveFileLabelAndPath(
         userActionName,
@@ -726,15 +739,15 @@ private fun runBackup(context: Context, uri: Uri, full: Boolean): String? {
         val p = Runtime.getRuntime().exec(cmd)
         p.inputStream.use { input ->
             context.contentResolver.openOutputStream(uri).use { out ->
-                if (out == null) return "Could not open output"
+                if (out == null) return context.getString(R.string.nt_l10n_output_unavailable)
                 input.copyTo(out)
             }
         }
         val errText = readStream(p.errorStream)
         val exit = p.waitFor()
-        if (exit != 0) (errText.ifEmpty { "tar exited with code $exit" }) else null
+        if (exit != 0) (errText.ifEmpty { context.getString(R.string.nt_l10n_tar_exit, exit) }) else null
     } catch (e: Exception) {
-        e.message ?: "error"
+        e.message ?: context.getString(R.string.nt_l10n_generic_error)
     }
 }
 
@@ -743,12 +756,12 @@ private fun runRestore(context: Context, fileUri: Uri, full: Boolean): String? {
         val filePath: String = if (fileUri.scheme == "content") {
             val tmp = File(context.cacheDir, "restore_tmp.tar.gz")
             context.contentResolver.openInputStream(fileUri).use { input ->
-                if (input == null) return "Could not open input"
+                if (input == null) return context.getString(R.string.nt_l10n_input_unavailable)
                 FileOutputStream(tmp).use { out -> input.copyTo(out) }
             }
             tmp.absolutePath
         } else {
-            fileUri.path ?: return "Invalid path"
+            fileUri.path ?: return context.getString(R.string.nt_l10n_invalid_path)
         }
         val p = if (full) Runtime.getRuntime().exec(arrayOf(
             "/data/data/com.termux/files/usr/bin/tar", "-zxvf", filePath,
@@ -761,7 +774,7 @@ private fun runRestore(context: Context, fileUri: Uri, full: Boolean): String? {
         val exit = p.waitFor()
         if (exit != 0) errText else null
     } catch (e: Exception) {
-        e.message ?: "error"
+        e.message ?: context.getString(R.string.nt_l10n_generic_error)
     }
 }
 

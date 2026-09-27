@@ -1,5 +1,7 @@
 package com.termux.app.activities
 
+import com.termux.R
+
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
@@ -42,6 +44,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -80,6 +83,7 @@ private fun SshManagerScreen(
     onBack: () -> Unit,
     onConnect: (SshProfile) -> Unit,
 ) {
+    val context = LocalContext.current
     val profiles = remember { mutableStateListOf<SshProfile>().apply { addAll(SshProfileStore.load()) } }
 
     // Dialog state
@@ -93,15 +97,15 @@ private fun SshManagerScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("SSH Manager") },
+                title = { Text(context.getString(R.string.nt_l10n_ssh)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = context.getString(R.string.nt_l10n_back))
                     }
                 },
                 actions = {
                     IconButton(onClick = { editorProfile = null; showEditor = true }) {
-                        Icon(Icons.Filled.Add, contentDescription = "Add profile")
+                        Icon(Icons.Filled.Add, contentDescription = context.getString(R.string.nt_l10n_add_profile))
                     }
                 },
             )
@@ -114,7 +118,7 @@ private fun SshManagerScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Text(
-                    "No SSH profiles yet.\nTap + to add one.",
+                    context.getString(R.string.nt_l10n_no_ssh_profiles),
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -155,15 +159,15 @@ private fun SshManagerScreen(
         val tunnel = profile.tunnelLabel()
         AlertDialog(
             onDismissRequest = { connectTarget = null },
-            title = { Text("Connect to ${profile.nickname}") },
+            title = { Text(context.getString(R.string.nt_l10n_connect_named, profile.nickname)) },
             text = {
-                Text(profile.displayLabel() + (if (tunnel != null) "\nTunnel: $tunnel" else ""))
+                Text(profile.displayLabel() + (if (tunnel != null) context.getString(R.string.nt_l10n_tunnel_line, tunnel) else ""))
             },
             confirmButton = {
-                TextButton(onClick = { connectTarget = null; onConnect(profile) }) { Text("Connect") }
+                TextButton(onClick = { connectTarget = null; onConnect(profile) }) { Text(context.getString(R.string.nt_l10n_connect)) }
             },
             dismissButton = {
-                TextButton(onClick = { connectTarget = null }) { Text("Cancel") }
+                TextButton(onClick = { connectTarget = null }) { Text(context.getString(R.string.nt_l10n_cancel)) }
             },
         )
     }
@@ -172,17 +176,17 @@ private fun SshManagerScreen(
     deleteTarget?.let { profile ->
         AlertDialog(
             onDismissRequest = { deleteTarget = null },
-            title = { Text("Delete Profile") },
-            text = { Text("Delete \"${profile.nickname}\"?") },
+            title = { Text(context.getString(R.string.nt_l10n_delete_profile)) },
+            text = { Text(context.getString(R.string.nt_l10n_delete_named, profile.nickname)) },
             confirmButton = {
                 TextButton(onClick = {
                     profiles.remove(profile)
                     persist()
                     deleteTarget = null
-                }) { Text("Delete") }
+                }) { Text(context.getString(R.string.nt_l10n_delete)) }
             },
             dismissButton = {
-                TextButton(onClick = { deleteTarget = null }) { Text("Cancel") }
+                TextButton(onClick = { deleteTarget = null }) { Text(context.getString(R.string.nt_l10n_cancel)) }
             },
         )
     }
@@ -195,6 +199,7 @@ private fun ProfileCard(
     onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
+    val context = LocalContext.current
     var menuOpen by remember { mutableStateOf(false) }
     Card(
         modifier = Modifier
@@ -219,14 +224,14 @@ private fun ProfileCard(
                 )
                 profile.tunnelLabel()?.let {
                     Text(
-                        "Tunnel: $it",
+                        context.getString(R.string.nt_l10n_tunnel, it),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
-            TextButton(onClick = onEdit) { Text("Edit") }
-            TextButton(onClick = onDelete) { Text("Delete") }
+            TextButton(onClick = onEdit) { Text(context.getString(R.string.nt_l10n_edit)) }
+            TextButton(onClick = onDelete) { Text(context.getString(R.string.nt_l10n_delete)) }
         }
     }
 }
@@ -237,6 +242,7 @@ private fun SshEditorDialog(
     onDismiss: () -> Unit,
     onSave: (SshProfile) -> Unit,
 ) {
+    val context = LocalContext.current
     var nickname by remember { mutableStateOf(existing?.nickname ?: "") }
     var host by remember { mutableStateOf(existing?.host ?: "") }
     var port by remember { mutableStateOf((existing?.port ?: 22).toString()) }
@@ -253,36 +259,36 @@ private fun SshEditorDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (existing != null) "Edit Profile" else "Add SSH Profile") },
+        title = { Text(if (existing != null) context.getString(R.string.nt_l10n_edit_profile) else context.getString(R.string.nt_l10n_add_ssh_profile)) },
         text = {
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                OutlinedTextField(nickname, { nickname = it }, label = { Text("Nickname") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(host, { host = it }, label = { Text("Host") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(port, { port = it }, label = { Text("Port") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(username, { username = it }, label = { Text("Username") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(keyPath, { keyPath = it }, label = { Text("Private key path (blank = password)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(nickname, { nickname = it }, label = { Text(context.getString(R.string.nt_l10n_nickname)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(host, { host = it }, label = { Text(context.getString(R.string.nt_l10n_host)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(port, { port = it }, label = { Text(context.getString(R.string.nt_l10n_port)) }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(username, { username = it }, label = { Text(context.getString(R.string.nt_l10n_username)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(keyPath, { keyPath = it }, label = { Text(context.getString(R.string.nt_l10n_private_key)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
 
                 Spacer(Modifier.height(4.dp))
                 HorizontalDivider()
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Text("Port forwarding", modifier = Modifier.weight(1f))
+                    Text(context.getString(R.string.nt_l10n_port_forwarding), modifier = Modifier.weight(1f))
                     Switch(checked = tunnelEnabled, onCheckedChange = { tunnelEnabled = it })
                 }
 
                 if (tunnelEnabled) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         RadioButton(selected = !tunnelRemote, onClick = { tunnelRemote = false })
-                        Text("Local (-L)", modifier = Modifier.clickable { tunnelRemote = false })
+                        Text(context.getString(R.string.nt_l10n_local_tunnel), modifier = Modifier.clickable { tunnelRemote = false })
                         Spacer(Modifier.height(0.dp))
                         RadioButton(selected = tunnelRemote, onClick = { tunnelRemote = true })
-                        Text("Remote (-R)", modifier = Modifier.clickable { tunnelRemote = true })
+                        Text(context.getString(R.string.nt_l10n_remote_tunnel), modifier = Modifier.clickable { tunnelRemote = true })
                     }
-                    OutlinedTextField(localPort, { localPort = it }, label = { Text("Local port") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(remoteHost, { remoteHost = it }, label = { Text("Remote host") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(remotePort, { remotePort = it }, label = { Text("Remote port") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(localPort, { localPort = it }, label = { Text(context.getString(R.string.nt_l10n_local_port)) }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(remoteHost, { remoteHost = it }, label = { Text(context.getString(R.string.nt_l10n_remote_host)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(remotePort, { remotePort = it }, label = { Text(context.getString(R.string.nt_l10n_remote_port)) }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
                 }
 
                 error?.let {
@@ -293,7 +299,7 @@ private fun SshEditorDialog(
         confirmButton = {
             TextButton(onClick = {
                 if (nickname.isBlank() || host.isBlank() || username.isBlank()) {
-                    error = "Nickname, host, and username are required"
+                    error = context.getString(R.string.nt_l10n_ssh_required)
                     return@TextButton
                 }
                 val profile = existing ?: SshProfile()
@@ -308,10 +314,10 @@ private fun SshEditorDialog(
                 profile.tunnelRemoteHost = remoteHost.trim()
                 profile.tunnelRemotePort = remotePort.trim().toIntOrNull() ?: 8080
                 onSave(profile)
-            }) { Text("Save") }
+            }) { Text(context.getString(R.string.nt_l10n_save)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text(context.getString(R.string.nt_l10n_cancel)) }
         },
     )
 }
