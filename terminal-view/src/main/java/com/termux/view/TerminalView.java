@@ -1057,7 +1057,15 @@ public final class TerminalView extends View {
     }
 
     private CharSequence getText() {
-        return mEmulator.getScreen().getSelectedText(0, mTopRow, mEmulator.mColumns, mTopRow + mEmulator.mRows);
+        return getVisibleText();
+    }
+
+    /** Return exactly the terminal rows currently visible in this view. */
+    public String getVisibleText() {
+        if (mEmulator == null) return "";
+        return mEmulator.getScreen()
+            .getSelectedText(0, mTopRow, mEmulator.mColumns, mTopRow + mEmulator.mRows)
+            .trim();
     }
 
     public int getCursorX(float x) {
