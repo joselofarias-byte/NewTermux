@@ -246,6 +246,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private static final int CONTEXT_MENU_SAVE_SELECTED_TXT_ID = 16;
     private static final int CONTEXT_MENU_COPY_TRANSCRIPT_ID = 17;
     private static final int CONTEXT_MENU_SHARE_TRANSCRIPT_TXT_ID = 18;
+    // Parent-only submenu id. Must never collide with actionable menu ids.
+    private static final int CONTEXT_MENU_OUTPUT_TOOLS_ID = 19;
 
     private static final String ARG_TERMINAL_TOOLBAR_TEXT_INPUT = "terminal_toolbar_text_input";
     private static final String ARG_ACTIVITY_RECREATED = "activity_recreated";
@@ -1518,7 +1520,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         boolean hasSelection = !DataUtils.isNullOrEmpty(mTerminalView.getStoredSelectedText());
 
-        SubMenu outputMenu = menu.addSubMenu(Menu.NONE, Menu.NONE, Menu.NONE, R.string.action_output_tools);
+        SubMenu outputMenu = menu.addSubMenu(Menu.NONE, CONTEXT_MENU_OUTPUT_TOOLS_ID, Menu.NONE, R.string.action_output_tools);
         outputMenu.add(Menu.NONE, CONTEXT_MENU_SAVE_TRANSCRIPT_TXT_ID, Menu.NONE, R.string.action_save_transcript_txt);
         if (hasSelection)
             outputMenu.add(Menu.NONE, CONTEXT_MENU_SAVE_SELECTED_TXT_ID, Menu.NONE, R.string.action_save_selected_txt);
@@ -1553,6 +1555,10 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         TerminalSession session = getCurrentSession();
 
         switch (item.getItemId()) {
+            case CONTEXT_MENU_OUTPUT_TOOLS_ID:
+                // The parent exists only to open the submenu. Do not route it
+                // through any terminal action if Android reports it selected.
+                return true;
             case CONTEXT_MENU_SAVE_TRANSCRIPT_TXT_ID:
                 saveTerminalTextAsTxt(false, false);
                 return true;
