@@ -1,0 +1,138 @@
+name: Spanish settings - direct ARM64
+
+on:
+  push:
+    branches:
+      - fix/settings-es-complete-20260927
+    paths:
+      - '.github/workflows/settings_es_arm64.yml'
+      - 'scripts/i18n/localize-settings-es.py'
+      - 'app/src/main/java/com/termux/app/activities/**'
+      - 'app/src/main/java/com/newtermux/features/ColorPickerDialog.java'
+      - 'app/src/main/res/values*/newtermux_settings_strings.xml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: settings-es-arm64-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      TERMUX_ABIS: arm64-v8a
+      TERMUX_PACKAGE_VARIANT: apt-android-7
+      TERMUX_SPLIT_APKS_FOR_DEBUG_BUILDS: '1'
+      TERMUX_APP_VERSION_NAME: 1.6.2-playcompat.es1
+      TERMUX_APK_VERSION_TAG: 1.6.2-playcompat-es-20260927
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Generate and validate reviewed resources
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/i18n/localize-settings-es.py
+          if test -f app/src/main/res/values-es/newtermux_settings_strings.xml; then
+            python3 scripts/i18n/localize-settings-es.py --check
+          else
+            python3 scripts/i18n/localize-settings-es.py
+          fi
+          git diff --check
+          git diff --stat
+
+      - name: Commit generated application source without starting another build
+        env:
+          TARGET_BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/java/com/termux/app/activities/SettingsActivity.kt \
+            app/src/main/java/com/termux/app/activities/FileManagerActivity.kt \
+            app/src/main/java/com/termux/app/activities/SshManagerActivity.kt \
+            app/src/main/java/com/termux/app/activities/ThemePickerActivity.kt \
+            app/src/main/java/com/newtermux/features/ColorPickerDialog.java \
+            app/src/main/res/layout/dialog_color_picker_hsv.xml \
+            app/src/main/res/values/newtermux_settings_strings.xml \
+            app/src/main/res/values-es/newtermux_settings_strings.xml
+          if ! git diff --cached --quiet; then
+            git commit -m 'feat(i18n): localize settings, files, SSH and colors in Spanish [skip ci]'
+            git push origin "HEAD:refs/heads/$TARGET_BRANCH"
+          fi
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Assert unchanged direct playcompat identity
+        run: bash scripts/fase8/assert-playcompat-stock-bootstrap.sh
+
+      - name: Unit tests and direct ARM64 build
+        run: ./gradlew :app:testPlaycompatDebugUnitTest :app:assemblePlaycompatDebug --no-daemon
+
+      - name: Verify packaged Spanish resources, bootstrap and signature
+        run: |
+          set -euo pipefail
+          python3 scripts/i18n/localize-settings-es.py --check
+          DIR=app/build/outputs/apk/playcompat/debug
+          META="$DIR/output-metadata.json"
+          APK="$(find "$DIR" -maxdepth 1 -type f -name '*arm64-v8a.apk' -print -quit)"
+          test -n "$APK"
+          python3 - "$META" "$APK" <<'PY'
+          import io, json, sys, zipfile
+          from pathlib import Path
+          metadata = json.loads(Path(sys.argv[1]).read_text())
+          assert metadata['applicationId'] == 'com.termux', metadata
+          assert metadata['variantName'] == 'playcompatDebug', metadata
+          with zipfile.ZipFile(sys.argv[2]) as apk:
+              bootstrap = apk.read('lib/arm64-v8a/libtermux-bootstrap.so')
+              assert not any(n.startswith(('lib/x86/', 'lib/x86_64/', 'lib/armeabi-v7a/')) for n in apk.namelist())
+          with zipfile.ZipFile(io.BytesIO(bootstrap)) as archive:
+              login = archive.read('bin/login').decode('utf-8')
+          assert login.splitlines()[0] == '#!/data/data/com.termux/files/usr/bin/sh'
+          print('PASS com.termux direct ARM64 with original bootstrap prefix')
+          PY
+          AAPT="$(find "$ANDROID_HOME/build-tools" -name aapt2 -type f | sort -V | tail -n 1)"
+          SIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
+          test -n "$AAPT" && test -n "$SIGNER"
+          "$AAPT" dump resources "$APK" > "$RUNNER_TEMP/resources-dump.txt"
+          python3 - "$RUNNER_TEMP/resources-dump.txt" <<'PY'
+          import sys
+          from pathlib import Path
+          data = Path(sys.argv[1]).read_text(encoding='utf-8')
+          for expected in ('Ajustes', 'Atajos de texto', 'Gestor de archivos', 'Agregar atajo', 'Brillo'):
+              assert expected in data, expected
+          print('PASS Spanish labels found inside the compiled APK')
+          PY
+          "$SIGNER" verify --verbose --print-certs "$APK" | tee "$RUNNER_TEMP/signature.txt"
+          mkdir -p "$RUNNER_TEMP/es-delivery"
+          cp "$APK" "$RUNNER_TEMP/es-delivery/NewTermux-AJUSTES-ES-HONOR200-arm64.apk"
+          cp "$META" "$RUNNER_TEMP/es-delivery/output-metadata.json"
+          cp "$RUNNER_TEMP/signature.txt" "$RUNNER_TEMP/es-delivery/signature.txt"
+          (
+            cd "$RUNNER_TEMP/es-delivery"
+            sha256sum NewTermux-AJUSTES-ES-HONOR200-arm64.apk > SHA256SUMS.txt
+          )
+          printf 'SOURCE_SHA=%s\nBASE_SHA=%s\nRUN_ID=%s\nPHYSICAL_VALIDATION=PENDING\n' \
+            "$SOURCE_SHA" '343069e32d055101d006c501db5f7e4fa6db2a66' "$GITHUB_RUN_ID" \
+            > "$RUNNER_TEMP/es-delivery/VALIDATION.txt"
+          git diff 343069e32d055101d006c501db5f7e4fa6db2a66 "$SOURCE_SHA" -- app/src/main \
+            > "$RUNNER_TEMP/es-delivery/settings-spanish.patch"
+          python3 scripts/i18n/localize-settings-es.py --check | tee "$RUNNER_TEMP/es-delivery/resource-checks.txt"
+
+      - name: Upload the single ARM64 delivery
+        uses: actions/upload-artifact@v6
+        with:
+          name: NewTermux-AJUSTES-ES-HONOR200-arm64
+          retention-days: 2
+          compression-level: 0
+          if-no-files-found: error
+          path: ${{ runner.temp }}/es-delivery/
