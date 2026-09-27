@@ -15,7 +15,7 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
-        android:text="Did you mean: ls?"
+        android:text="@string/autocorrect_preview"
         android:textColor="@color/nt_on_surface"
         android:textSize="14sp"
         android:textStyle="italic" />
@@ -25,7 +25,7 @@
         style="@style/Widget.MaterialComponents.Button.TextButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Apply"
+        android:text="@string/action_apply"
         android:textColor="@color/nt_primary"
         app:rippleColor="@color/nt_primary_variant" />
 
