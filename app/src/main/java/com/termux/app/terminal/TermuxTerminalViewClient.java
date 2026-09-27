@@ -380,7 +380,7 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
                     String url = (String) urlSet.iterator().next();
                     com.newtermux.features.NtPopupMenu.showAtLocation(mActivity,
                         mActivity.getTerminalView(), (int) event.getRawX(), (int) event.getRawY(), url,
-                        new String[]{"Open in browser", "Copy to clipboard"}, idx -> {
+                        new String[]{mActivity.getString(R.string.action_open_in_browser), mActivity.getString(R.string.action_copy_to_clipboard)}, idx -> {
                             if (idx == 0) {
                                 ShareUtils.openUrl(mActivity, url);
                             } else {
@@ -804,7 +804,7 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
         final String transcriptText = ShellUtils.getTerminalSessionTranscriptText(session, false, true);
         if (transcriptText == null) return;
 
-        MessageDialogUtils.showMessage(mActivity, TermuxConstants.TERMUX_APP_NAME + " Report Issue",
+        MessageDialogUtils.showMessage(mActivity, TermuxConstants.TERMUX_APP_NAME + " — " + mActivity.getString(R.string.action_report_issue),
             mActivity.getString(R.string.msg_add_termux_debug_info),
             mActivity.getString(com.termux.shared.R.string.action_yes), (dialog, which) -> reportIssueFromTranscript(transcriptText, true),
             mActivity.getString(com.termux.shared.R.string.action_no), (dialog, which) -> reportIssueFromTranscript(transcriptText, false),
@@ -819,7 +819,7 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
             public void run() {
                 StringBuilder reportString = new StringBuilder();
 
-                String title = TermuxConstants.TERMUX_APP_NAME + " Report Issue";
+                String title = TermuxConstants.TERMUX_APP_NAME + " — " + mActivity.getString(R.string.action_report_issue);
 
                 reportString.append("## Transcript\n");
                 reportString.append("\n").append(MarkdownUtils.getMarkdownCodeForString(transcriptText, true));
