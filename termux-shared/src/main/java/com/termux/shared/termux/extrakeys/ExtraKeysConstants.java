@@ -167,8 +167,8 @@ public class ExtraKeysConstants {
 
             // NewTermux Spanish-first labels. These are display names only:
             // the underlying key values remain HOME, END, PGUP and PGDN.
-            put("HOME", "INI");
-            put("END", "FIN");
+            put("HOME", "HOME");
+            put("END", "END");
             put("PGUP", "P↑");
             put("PGDN", "P↓");
             // all other characters are displayed as themselves
