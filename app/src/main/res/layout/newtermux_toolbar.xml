@@ -28,6 +28,23 @@
             android:textStyle="bold"
             android:fontFamily="monospace" />
 
+        <!-- Primary quick action: copy visible terminal output -->
+        <TextView
+            android:id="@+id/btn_copy_visible"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:layout_marginEnd="4dp"
+            android:background="@drawable/bg_package_button"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:paddingStart="9dp"
+            android:paddingEnd="9dp"
+            android:text="@string/newtermux_toolbar_copy"
+            android:textColor="@color/nt_on_surface"
+            android:textSize="11sp"
+            android:textStyle="bold" />
+
         <!-- Autocorrect Toggle Button -->
         <TextView
             android:id="@+id/btn_autocorrect_toggle"
