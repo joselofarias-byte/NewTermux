@@ -305,12 +305,12 @@ private fun FeaturesScreen(activity: Activity, onBack: () -> Unit) {
             NtSwitch(context, NewTermuxSettings.KEY_EXTRA_KEYS_VISIBLE, "Show Extra Keys Toolbar", "Show the ESC, TAB, arrow key row above the keyboard")
             NtSwitch(context, NewTermuxSettings.KEY_EXTRA_KEYS_IN_DRAWER, "Extra Keys in Right Drawer", "Move extra keys to a swipeable right-side drawer — takes effect on restart")
 
-            CategoryHeader("Toolbar Buttons")
-            NtSwitch(context, NewTermuxSettings.KEY_SHOW_AC_BUTTON, "AC Toggle Button", "Show autocorrect on/off button in toolbar")
-            NtSwitch(context, NewTermuxSettings.KEY_SHOW_ROOT_BUTTON, "Root Toggle Button", null)
-            NtSwitch(context, NewTermuxSettings.KEY_SHOW_STT_BUTTON, "Speech-to-Text Button", null)
-            NtSwitch(context, NewTermuxSettings.KEY_SHOW_PACKAGES_BUTTON, "Package Manager Button", null)
-            NtSwitch(context, NewTermuxSettings.KEY_SHOW_CLEAR_BUTTON, "Clear Terminal Button", null)
+            CategoryHeader("Barra rápida")
+            NtSwitch(context, NewTermuxSettings.KEY_SHOW_AC_BUTTON, "Botón AC", "Mostrar el interruptor de autocorrección en la barra")
+            NtSwitch(context, NewTermuxSettings.KEY_SHOW_STT_BUTTON, "Micrófono", "Mostrar dictado por voz en la barra")
+            NtSwitch(context, NewTermuxSettings.KEY_SHOW_PACKAGES_BUTTON, "Paquetes", "Mostrar el acceso rápido al gestor de paquetes")
+            NtSwitch(context, NewTermuxSettings.KEY_SHOW_CLEAR_BUTTON, "Limpiar", "Mostrar el botón para limpiar la terminal")
+            NavRow("Más (⋮)", "Siempre visible: TXT, pegar, inicio, final, teclado, archivos y autocorrección", enabled = false) {}
 
             CategoryHeader("Session Tabs")
             NtSwitch(context, NewTermuxSettings.KEY_SESSION_TABS, "Show Session Tabs", "Show session tab chips at the top")
