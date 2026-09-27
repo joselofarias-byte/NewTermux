@@ -1057,7 +1057,15 @@ public final class TerminalView extends View {
     }
 
     private CharSequence getText() {
-        return mEmulator.getScreen().getSelectedText(0, mTopRow, mEmulator.mColumns, mTopRow + mEmulator.mRows);
+        return getVisibleText();
+    }
+
+    /** Return exactly the terminal rows currently visible in this view. */
+    public String getVisibleText() {
+        if (mEmulator == null) return "";
+        return mEmulator.getScreen()
+            .getSelectedText(0, mTopRow, mEmulator.mColumns, mTopRow + mEmulator.mRows)
+            .trim();
     }
 
     public int getCursorX(float x) {
@@ -1081,6 +1089,13 @@ public final class TerminalView extends View {
 
     public int getTopRow() {
         return mTopRow;
+    }
+
+    /** Return to the live bottom of the transcript and resume automatic scrolling. */
+    public void scrollToBottom() {
+        mUserScrolled = false;
+        setTopRow(0);
+        invalidate();
     }
 
     public void setTopRow(int topRow) {

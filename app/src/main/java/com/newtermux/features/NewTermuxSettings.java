@@ -9,7 +9,6 @@ public class NewTermuxSettings {
     // Keys
     public static final String KEY_KEYBOARD_SUGGESTIONS = "keyboard_suggestions";
     public static final String KEY_SHOW_AC_BUTTON       = "show_ac_button";
-    public static final String KEY_SHOW_ROOT_BUTTON     = "show_root_button";
     public static final String KEY_SHOW_STT_BUTTON      = "show_stt_button";
     public static final String KEY_SHOW_PACKAGES_BUTTON = "show_packages_button";
     public static final String KEY_SHOW_CLEAR_BUTTON        = "show_clear_button";
@@ -41,16 +40,13 @@ public class NewTermuxSettings {
     }
 
     public static boolean isShowAcButton(Context ctx) {
-        return prefs(ctx).getBoolean(KEY_SHOW_AC_BUTTON, true);
-    }
-    public static boolean isShowRootButton(Context ctx) {
-        return prefs(ctx).getBoolean(KEY_SHOW_ROOT_BUTTON, true);
+        return prefs(ctx).getBoolean(KEY_SHOW_AC_BUTTON, false);
     }
     public static boolean isShowSttButton(Context ctx) {
         return prefs(ctx).getBoolean(KEY_SHOW_STT_BUTTON, true);
     }
     public static boolean isShowPackagesButton(Context ctx) {
-        return prefs(ctx).getBoolean(KEY_SHOW_PACKAGES_BUTTON, true);
+        return prefs(ctx).getBoolean(KEY_SHOW_PACKAGES_BUTTON, false);
     }
     public static boolean isShowClearButton(Context ctx) {
         return prefs(ctx).getBoolean(KEY_SHOW_CLEAR_BUTTON, true);
@@ -126,7 +122,6 @@ public class NewTermuxSettings {
         switch (key) {
             case KEY_KEYBOARD_SUGGESTIONS: return isKeyboardSuggestionsEnabled(ctx);
             case KEY_SHOW_AC_BUTTON:       return isShowAcButton(ctx);
-            case KEY_SHOW_ROOT_BUTTON:     return isShowRootButton(ctx);
             case KEY_SHOW_STT_BUTTON:      return isShowSttButton(ctx);
             case KEY_SHOW_PACKAGES_BUTTON: return isShowPackagesButton(ctx);
             case KEY_SHOW_CLEAR_BUTTON:    return isShowClearButton(ctx);
