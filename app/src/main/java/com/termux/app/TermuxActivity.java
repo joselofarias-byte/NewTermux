@@ -998,6 +998,15 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         items.add(getString(R.string.more_files));
         actions.add(() -> startActivity(new Intent(this, com.termux.app.activities.FileManagerActivity.class)));
 
+        items.add("Mis scripts");
+        actions.add(() -> com.newtermux.features.ScriptLibrary.show(this, getCurrentSession()));
+
+        items.add("Instalar componentes y PRoot");
+        actions.add(this::showComponentInstaller);
+
+        items.add("Guardado automático de salidas");
+        actions.add(this::configureAutoOutput);
+
         com.newtermux.features.NtPopupMenu.showAsDropDown(
             this,
             anchor,
@@ -1007,6 +1016,46 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 if (idx >= 0 && idx < actions.size()) actions.get(idx).run();
             }
         );
+    }
+
+    private void showComponentInstaller() {
+        String[] labels = {"PRoot y distribuciones", "Debian en PRoot", "Git y SSH", "Python", "Node.js", "Go", "Herramientas de compilación"};
+        String[] commands = {"pkg install proot-distro", "proot-distro install debian", "pkg install git openssh", "pkg install python", "pkg install nodejs", "pkg install golang", "pkg install clang make cmake"};
+        new AlertDialog.Builder(this).setTitle("Instalar componentes")
+            .setItems(labels, (dialog, index) -> new AlertDialog.Builder(this)
+                .setTitle(labels[index]).setMessage("Ejecutar en la sesión actual:\n" + commands[index])
+                .setPositiveButton("Ejecutar", (d, w) -> {
+                    TerminalSession session = getCurrentSession();
+                    if (session != null) session.write(commands[index] + "\n");
+                    else showToast("Abrí una sesión primero", false);
+                }).setNegativeButton("Cancelar", null).show())
+            .setNegativeButton("Cerrar", null).show();
+    }
+
+    private void configureAutoOutput() {
+        EditText input = new EditText(this);
+        input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+        input.setSingleLine(true);
+        int current = NewTermuxSettings.getAutoSaveLines(this);
+        input.setText(String.valueOf(current));
+        input.setSelectAllOnFocus(true);
+        int pad = (int) (24 * getResources().getDisplayMetrics().density);
+        LinearLayout box = new LinearLayout(this);
+        box.setPadding(pad, 0, pad, 0);
+        box.addView(input);
+        AlertDialog dialog = new AlertDialog.Builder(this).setTitle("Guardar salidas largas")
+            .setMessage("Cantidad de líneas: 0 desactiva. Cuando una sesión supera el umbral, guarda su salida en Descargas/NewTermux como .log.gz. Puede incluir información privada. Máximo 32 MiB de salida por sesión.")
+            .setView(box).setPositiveButton("Guardar", null)
+            .setNegativeButton("Cancelar", null).create();
+        dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            try {
+                int value = Integer.parseInt(input.getText().toString());
+                if (value < 0 || value > 1000000) throw new NumberFormatException();
+                NewTermuxSettings.setAutoSaveLines(this, value);
+                dialog.dismiss();
+            } catch (NumberFormatException e) { input.setError("Ingresá entre 0 y 1.000.000"); }
+        }));
+        dialog.show();
     }
 
     private void toggleToolbarAutocorrect() {

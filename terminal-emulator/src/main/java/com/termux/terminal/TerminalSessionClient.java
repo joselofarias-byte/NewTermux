@@ -12,6 +12,9 @@ public interface TerminalSessionClient {
 
     void onTextChanged(@NonNull TerminalSession changedSession);
 
+    /** Raw PTY output, delivered before the terminal scrollback discards old rows. */
+    default void onOutputReceived(@NonNull TerminalSession session, byte[] data, int length) {}
+
     void onTitleChanged(@NonNull TerminalSession changedSession);
 
     void onSessionFinished(@NonNull TerminalSession finishedSession);

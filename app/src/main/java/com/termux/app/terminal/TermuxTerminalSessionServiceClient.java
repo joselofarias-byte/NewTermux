@@ -5,6 +5,7 @@ import android.app.Service;
 import androidx.annotation.NonNull;
 
 import com.termux.app.TermuxService;
+import com.newtermux.features.AutoOutputCapture;
 import com.termux.shared.termux.shell.command.runner.terminal.TermuxSession;
 import com.termux.shared.termux.terminal.TermuxTerminalSessionClientBase;
 import com.termux.terminal.TerminalSession;
@@ -19,6 +20,17 @@ public class TermuxTerminalSessionServiceClient extends TermuxTerminalSessionCli
 
     public TermuxTerminalSessionServiceClient(TermuxService service) {
         this.mService = service;
+    }
+
+    @Override
+    public void onOutputReceived(@NonNull TerminalSession session, byte[] data, int length) {
+        AutoOutputCapture.accept(mService, session, data, length);
+    }
+
+    @Override
+    public void onSessionFinished(@NonNull TerminalSession session) {
+        AutoOutputCapture.finish(session);
+        super.onSessionFinished(session);
     }
 
     @Override

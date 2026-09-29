@@ -112,6 +112,14 @@ public class NewTermuxSettings {
         prefs(ctx).edit().remove("pending_command").apply();
     }
 
+    /** Zero disables automatic capture; other values are output newline thresholds. */
+    public static int getAutoSaveLines(Context ctx) {
+        return Math.max(0, prefs(ctx).getInt("auto_save_output_lines", 0));
+    }
+    public static void setAutoSaveLines(Context ctx, int lines) {
+        prefs(ctx).edit().putInt("auto_save_output_lines", Math.max(0, lines)).apply();
+    }
+
     // Generic setter for all boolean keys (used by preference listener)
     public static void set(Context ctx, String key, boolean value) {
         prefs(ctx).edit().putBoolean(key, value).apply();
