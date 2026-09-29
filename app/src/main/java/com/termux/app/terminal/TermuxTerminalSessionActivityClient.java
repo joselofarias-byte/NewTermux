@@ -19,6 +19,7 @@ import androidx.annotation.Nullable;
 import com.termux.BuildConfig;
 import com.termux.R;
 import com.newtermux.features.NewTermuxSettings;
+import com.newtermux.features.AutoOutputCapture;
 import com.termux.shared.interact.ShareUtils;
 import com.termux.shared.termux.shell.command.runner.terminal.TermuxSession;
 import com.termux.shared.termux.interact.TextInputDialogUtils;
@@ -125,6 +126,11 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
     }
 
     @Override
+    public void onOutputReceived(@NonNull TerminalSession session, byte[] data, int length) {
+        AutoOutputCapture.accept(mActivity, session, data, length);
+    }
+
+    @Override
     public void onTitleChanged(@NonNull TerminalSession updatedSession) {
         if (!mActivity.isVisible()) return;
 
@@ -140,6 +146,7 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
 
     @Override
     public void onSessionFinished(@NonNull TerminalSession finishedSession) {
+        AutoOutputCapture.finish(finishedSession);
         TermuxService service = mActivity.getTermuxService();
 
         if (service == null || service.wantsToStop()) {

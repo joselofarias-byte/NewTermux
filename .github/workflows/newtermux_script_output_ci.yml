@@ -1,0 +1,33 @@
+name: NewTermux scripts and output CI
+
+on:
+  pull_request:
+    branches:
+      - agent/newtermux-extra-key-colors-20260928
+    paths:
+      - 'app/src/main/java/**'
+      - 'terminal-emulator/src/main/java/**'
+      - '.github/workflows/newtermux_script_output_ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      TERMUX_ABIS: arm64-v8a
+      TERMUX_PACKAGE_VARIANT: apt-android-7
+      TERMUX_SPLIT_APKS_FOR_DEBUG_BUILDS: '1'
+      TERMUX_APP_VERSION_NAME: 1.6.2-playcompat.scripts
+      TERMUX_APK_VERSION_TAG: 1.6.2-playcompat-scripts-debug
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - run: git diff --check
+      - run: ./gradlew :app:testPlaycompatDebugUnitTest :app:assemblePlaycompatDebug --no-daemon
