@@ -3,6 +3,7 @@ package com.termux.app;
 import android.app.Application;
 import android.content.Context;
 
+import com.newtermux.features.ClipboardAccessNoticeManager;
 import com.termux.BuildConfig;
 import com.termux.shared.errors.Error;
 import com.termux.shared.logger.Logger;
@@ -33,6 +34,10 @@ public class TermuxApplication extends Application {
         setLogConfig(context);
 
         Logger.logDebug("Starting Application");
+
+        // Hide Android's transient clipboard-access overlay so it cannot cover compact extra keys.
+        // Best-effort: requires WRITE_SECURE_SETTINGS to have been granted to this APK.
+        ClipboardAccessNoticeManager.apply(context);
 
         // Set TermuxBootstrap.TERMUX_APP_PACKAGE_MANAGER and TermuxBootstrap.TERMUX_APP_PACKAGE_VARIANT
         TermuxBootstrap.setTermuxPackageManagerAndVariant(BuildConfig.TERMUX_PACKAGE_VARIANT);
