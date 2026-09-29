@@ -399,6 +399,8 @@ public final class ExtraKeysView extends GridLayout {
         switch (key) {
             case "ESC":
                 return pressed ? 0xFF7A2B38 : 0xFF5A2028;
+            case "TAB":
+                return pressed ? 0xFF51467A : 0xFF372F59;
             case "HOME":
             case "END":
                 return pressed ? 0xFF235887 : 0xFF173B5E;
@@ -415,6 +417,8 @@ public final class ExtraKeysView extends GridLayout {
         switch (key) {
             case "ESC":
                 return 0xFFFFE3E8;
+            case "TAB":
+                return 0xFFEDE7FF;
             case "HOME":
             case "END":
                 return 0xFFDCEFFF;
@@ -447,6 +451,9 @@ public final class ExtraKeysView extends GridLayout {
 
         ExtraKeyButton[][] buttons = extraKeysInfo.getMatrix();
         final boolean useTbmCompactPalette = isTbmCompactLayout(buttons);
+        final int tbmHorizontalGapPx = useTbmCompactPalette
+            ? Math.max(1, Math.round(getResources().getDisplayMetrics().density))
+            : 0;
 
         setRowCount(buttons.length);
         setColumnCount(maximumLength(buttons));
@@ -538,7 +545,7 @@ public final class ExtraKeysView extends GridLayout {
                 } else {
                     param.height = 0;
                 }
-                param.setMargins(0, 0, 0, 0);
+                param.setMargins(tbmHorizontalGapPx, 0, tbmHorizontalGapPx, 0);
                 param.columnSpec = GridLayout.spec(col, GridLayout.FILL, 1.f);
                 param.rowSpec = GridLayout.spec(row, GridLayout.FILL, 1.f);
                 button.setLayoutParams(param);
