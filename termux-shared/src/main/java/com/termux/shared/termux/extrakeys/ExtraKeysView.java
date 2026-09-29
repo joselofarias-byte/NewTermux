@@ -376,8 +376,8 @@ public final class ExtraKeysView extends GridLayout {
 
 
     private static final String[][] TBM_COMPACT_LAYOUT = new String[][] {
-        {"LEFT", "DOWN", "UP", "RIGHT", "PASTE"},
-        {"ESC", "TAB", "HOME", "END", "ENTER"}
+        {"UP", "DOWN", "LEFT", "RIGHT", "ENTER"},
+        {"ESC", "TAB", "HOME", "END", "PASTE"}
     };
 
     /**
