@@ -375,6 +375,73 @@ public final class ExtraKeysView extends GridLayout {
 
 
 
+    private static final String[][] TBM_COMPACT_LAYOUT = new String[][] {
+        {"ESC", "TAB", "UP", "DOWN", "ENTER"},
+        {"HOME", "END", "LEFT", "RIGHT", "PASTE"}
+    };
+
+    /**
+     * Keep NewTermux's semantic colors scoped to TBM's exact 5x2 toolbar.
+     * Custom user extra-key layouts continue to use the selected theme unchanged.
+     */
+    private boolean isTbmCompactLayout(ExtraKeyButton[][] buttons) {
+        if (buttons.length != TBM_COMPACT_LAYOUT.length) return false;
+        for (int row = 0; row < TBM_COMPACT_LAYOUT.length; row++) {
+            if (buttons[row].length != TBM_COMPACT_LAYOUT[row].length) return false;
+            for (int col = 0; col < TBM_COMPACT_LAYOUT[row].length; col++) {
+                if (!TBM_COMPACT_LAYOUT[row][col].equals(buttons[row][col].getKey())) return false;
+            }
+        }
+        return true;
+    }
+
+    private int tbmButtonBackgroundColor(String key, boolean pressed) {
+        switch (key) {
+            case "ESC":
+                return pressed ? 0xFF7A2B38 : 0xFF5A2028;
+            case "TAB":
+                return pressed ? 0xFF51467A : 0xFF372F59;
+            case "HOME":
+            case "END":
+                return pressed ? 0xFF235887 : 0xFF173B5E;
+            case "ENTER":
+                return pressed ? 0xFF216A4B : 0xFF174A34;
+            case "PASTE":
+                return pressed ? 0xFF80601C : 0xFF5C4515;
+            case "UP":
+            case "DOWN":
+            case "LEFT":
+            case "RIGHT":
+                return pressed ? 0xFF625A53 : 0xFF4B4540;
+            default:
+                return pressed ? mButtonActiveBackgroundColor : mButtonBackgroundColor;
+        }
+    }
+
+    private int tbmButtonTextColor(String key) {
+        switch (key) {
+            case "ESC":
+                return 0xFFFFE3E8;
+            case "TAB":
+                return 0xFFEDE7FF;
+            case "HOME":
+            case "END":
+                return 0xFFDCEFFF;
+            case "ENTER":
+                return 0xFFDEFFEA;
+            case "PASTE":
+                return 0xFFFFF0C7;
+            case "UP":
+            case "DOWN":
+            case "LEFT":
+            case "RIGHT":
+                return 0xFFF2ECE6;
+            default:
+                return mButtonTextColor;
+        }
+    }
+
+
     /**
      * Reload this instance of {@link ExtraKeysView} with the info passed in {@code extraKeysInfo}.
      *
@@ -393,6 +460,10 @@ public final class ExtraKeysView extends GridLayout {
         removeAllViews();
 
         ExtraKeyButton[][] buttons = extraKeysInfo.getMatrix();
+        final boolean useTbmCompactPalette = isTbmCompactLayout(buttons);
+        final int tbmHorizontalGapPx = useTbmCompactPalette
+            ? Math.max(1, Math.round(getResources().getDisplayMetrics().density))
+            : 0;
 
         setRowCount(buttons.length);
         setColumnCount(maximumLength(buttons));
@@ -409,8 +480,16 @@ public final class ExtraKeysView extends GridLayout {
                     button = new MaterialButton(getContext(), null, android.R.attr.buttonBarButtonStyle);
                 }
 
+                final int buttonBackgroundColor = useTbmCompactPalette
+                    ? tbmButtonBackgroundColor(buttonInfo.getKey(), false) : mButtonBackgroundColor;
+                final int buttonActiveBackgroundColor = useTbmCompactPalette
+                    ? tbmButtonBackgroundColor(buttonInfo.getKey(), true) : mButtonActiveBackgroundColor;
+                final int buttonTextColor = useTbmCompactPalette
+                    ? tbmButtonTextColor(buttonInfo.getKey()) : mButtonTextColor;
+
                 button.setText(buttonInfo.getDisplay());
-                button.setTextColor(mButtonTextColor);
+                button.setTextColor(buttonTextColor);
+                if (useTbmCompactPalette) button.setBackgroundColor(buttonBackgroundColor);
                 button.setAllCaps(mButtonTextAllCaps);
                 button.setPadding(0, 0, 0, 0);
 
@@ -422,7 +501,7 @@ public final class ExtraKeysView extends GridLayout {
                 button.setOnTouchListener((view, event) -> {
                     switch (event.getAction()) {
                         case MotionEvent.ACTION_DOWN:
-                            view.setBackgroundColor(mButtonActiveBackgroundColor);
+                            view.setBackgroundColor(buttonActiveBackgroundColor);
                             // Start long press scheduled executors which will be stopped in next MotionEvent
                             startScheduledExecutors(view, buttonInfo, button);
                             return true;
@@ -432,23 +511,23 @@ public final class ExtraKeysView extends GridLayout {
                                 // Show popup on swipe up
                                 if (mPopupWindow == null && event.getY() < 0) {
                                     stopScheduledExecutors();
-                                    view.setBackgroundColor(mButtonBackgroundColor);
+                                    view.setBackgroundColor(buttonBackgroundColor);
                                     showPopup(view, buttonInfo.getPopup());
                                 }
                                 if (mPopupWindow != null && event.getY() > 0) {
-                                    view.setBackgroundColor(mButtonActiveBackgroundColor);
+                                    view.setBackgroundColor(buttonActiveBackgroundColor);
                                     dismissPopup();
                                 }
                             }
                             return true;
 
                         case MotionEvent.ACTION_CANCEL:
-                            view.setBackgroundColor(mButtonBackgroundColor);
+                            view.setBackgroundColor(buttonBackgroundColor);
                             stopScheduledExecutors();
                             return true;
 
                         case MotionEvent.ACTION_UP:
-                            view.setBackgroundColor(mButtonBackgroundColor);
+                            view.setBackgroundColor(buttonBackgroundColor);
                             stopScheduledExecutors();
                             // If ACTION_UP up was not from a repetitive key or was with a key with a popup button
                             if (mLongPressCount == 0 || mPopupWindow != null) {
@@ -476,7 +555,7 @@ public final class ExtraKeysView extends GridLayout {
                 } else {
                     param.height = 0;
                 }
-                param.setMargins(0, 0, 0, 0);
+                param.setMargins(tbmHorizontalGapPx, 0, tbmHorizontalGapPx, 0);
                 param.columnSpec = GridLayout.spec(col, GridLayout.FILL, 1.f);
                 param.rowSpec = GridLayout.spec(row, GridLayout.FILL, 1.f);
                 button.setLayoutParams(param);
