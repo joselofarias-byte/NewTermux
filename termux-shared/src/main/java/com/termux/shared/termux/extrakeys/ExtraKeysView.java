@@ -408,6 +408,11 @@ public final class ExtraKeysView extends GridLayout {
                 return pressed ? 0xFF216A4B : 0xFF174A34;
             case "PASTE":
                 return pressed ? 0xFF80601C : 0xFF5C4515;
+            case "UP":
+            case "DOWN":
+            case "LEFT":
+            case "RIGHT":
+                return pressed ? 0xFF625A53 : 0xFF4B4540;
             default:
                 return pressed ? mButtonActiveBackgroundColor : mButtonBackgroundColor;
         }
@@ -426,6 +431,11 @@ public final class ExtraKeysView extends GridLayout {
                 return 0xFFDEFFEA;
             case "PASTE":
                 return 0xFFFFF0C7;
+            case "UP":
+            case "DOWN":
+            case "LEFT":
+            case "RIGHT":
+                return 0xFFF2ECE6;
             default:
                 return mButtonTextColor;
         }
