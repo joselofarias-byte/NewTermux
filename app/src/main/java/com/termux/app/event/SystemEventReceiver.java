@@ -9,6 +9,7 @@ import android.net.Uri;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import com.newtermux.features.ClipboardAccessNoticeManager;
 import com.termux.shared.data.IntentUtils;
 import com.termux.shared.logger.Logger;
 import com.termux.shared.termux.TermuxUtils;
@@ -52,6 +53,8 @@ public class SystemEventReceiver extends BroadcastReceiver {
     }
 
     public synchronized void onActionBootCompleted(@NonNull Context context, @NonNull Intent intent) {
+        // Some OEM builds may restore privacy UI defaults after reboot.
+        ClipboardAccessNoticeManager.apply(context);
         TermuxShellManager.onActionBootCompleted(context, intent);
     }
 
