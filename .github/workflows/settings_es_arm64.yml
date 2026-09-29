@@ -4,10 +4,12 @@ on:
   push:
     branches:
       - fix/settings-es-complete-20260927
+      - agent/newtermux-extra-key-colors-20260928
     paths:
       - '.github/workflows/settings_es_arm64.yml'
       - 'scripts/i18n/**'
       - 'app/src/main/**'
+      - 'termux-shared/src/main/**'
 
 permissions:
   contents: write
@@ -24,8 +26,8 @@ jobs:
       TERMUX_ABIS: arm64-v8a
       TERMUX_PACKAGE_VARIANT: apt-android-7
       TERMUX_SPLIT_APKS_FOR_DEBUG_BUILDS: '1'
-      TERMUX_APP_VERSION_NAME: 1.6.2-playcompat.es2
-      TERMUX_APK_VERSION_TAG: 1.6.2-playcompat-es2-20260927
+      TERMUX_APP_VERSION_NAME: 1.6.2-playcompat.es4
+      TERMUX_APK_VERSION_TAG: 1.6.2-playcompat-es4-20260928
     steps:
       - uses: actions/checkout@v6
         with:
@@ -195,12 +197,12 @@ jobs:
           PY
           "$SIGNER" verify --verbose --print-certs "$APK" | tee "$RUNNER_TEMP/signature.txt"
           mkdir -p "$RUNNER_TEMP/es-delivery"
-          cp "$APK" "$RUNNER_TEMP/es-delivery/NewTermux-AJUSTES-ES-HONOR200-arm64.apk"
+          cp "$APK" "$RUNNER_TEMP/es-delivery/NewTermux-TBM-COLORES-INVERTIDO-HONOR200-arm64.apk"
           cp "$META" "$RUNNER_TEMP/es-delivery/output-metadata.json"
           cp "$RUNNER_TEMP/signature.txt" "$RUNNER_TEMP/es-delivery/signature.txt"
           (
             cd "$RUNNER_TEMP/es-delivery"
-            sha256sum NewTermux-AJUSTES-ES-HONOR200-arm64.apk > SHA256SUMS.txt
+            sha256sum NewTermux-TBM-COLORES-INVERTIDO-HONOR200-arm64.apk > SHA256SUMS.txt
           )
           printf 'SOURCE_SHA=%s\nBASE_SHA=%s\nRUN_ID=%s\nPHYSICAL_VALIDATION=PENDING\n' \
             "$SOURCE_SHA" '343069e32d055101d006c501db5f7e4fa6db2a66' "$GITHUB_RUN_ID" \
@@ -227,7 +229,7 @@ jobs:
       - name: Upload the single ARM64 delivery
         uses: actions/upload-artifact@v6
         with:
-          name: NewTermux-AJUSTES-ES-HONOR200-arm64
+          name: NewTermux-TBM-COLORES-INVERTIDO-HONOR200-arm64
           retention-days: 2
           compression-level: 0
           if-no-files-found: error
