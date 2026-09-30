@@ -21,6 +21,45 @@ public final class BundledInstallerLibrary {
         "newtermux/installers/ai-harnesses.sh";
     private static final String AI_HARNESS_FILENAME =
         "ai-harnesses.sh";
+    private static final String NINE_ROUTER_ASSET =
+        "newtermux/installers/9router-go.sh";
+    private static final String NINE_ROUTER_FILENAME =
+        "9router-go.sh";
+
+    public static void runNineRouterInstaller(Context context, TerminalSession session, String action) {
+        if (session == null) {
+            Toast.makeText(context, "Abrí una sesión primero", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (action == null || !action.matches("install|start|status|stop")) {
+            Toast.makeText(context, "Acción de 9router-go no válida", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        File dir = new File(TermuxConstants.TERMUX_HOME_DIR, ".newtermux/installers");
+        if (!dir.isDirectory() && !dir.mkdirs()) {
+            Toast.makeText(context, "No se pudo crear ~/.newtermux/installers", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        File target = new File(dir, NINE_ROUTER_FILENAME);
+        try (InputStream in = context.getAssets().open(NINE_ROUTER_ASSET);
+             FileOutputStream out = new FileOutputStream(target, false)) {
+            byte[] buffer = new byte[16 * 1024];
+            int read;
+            while ((read = in.read(buffer)) >= 0) {
+                if (read > 0) out.write(buffer, 0, read);
+            }
+            out.flush();
+            target.setReadable(true, true);
+            target.setExecutable(true, true);
+        } catch (Exception e) {
+            Toast.makeText(context, "No se pudo preparar 9router-go: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        session.write("bash \"$HOME/.newtermux/installers/" + NINE_ROUTER_FILENAME + "\" " + action + "\n");
+    }
 
     public static void runAiHarnessInstaller(Context context, TerminalSession session, String action) {
         if (session == null) {

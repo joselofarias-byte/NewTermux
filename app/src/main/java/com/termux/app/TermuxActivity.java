@@ -1087,6 +1087,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     private void showHarnessInstaller() {
         String[] labels = {
+            "9router-go · router local  ›",
             "Preparar Debian",
             "Antigravity CLI",
             "Codex CLI",
@@ -1095,6 +1096,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             "Verificar instalados"
         };
         String[] actions = {
+            null,
             "prepare",
             "antigravity",
             "codex",
@@ -1105,7 +1107,12 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         new AlertDialog.Builder(this)
             .setTitle("Harness IA")
-            .setItems(labels, (dialog, index) ->
+            .setItems(labels, (dialog, index) -> {
+                if (index == 0) {
+                    showRouterInstaller();
+                    return;
+                }
+
                 new AlertDialog.Builder(this)
                     .setTitle(labels[index])
                     .setMessage(
@@ -1122,9 +1129,49 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                             this, session, actions[index]);
                     })
                     .setNegativeButton("Cancelar", null)
+                    .show();
+            })
+            .setNegativeButton("Volver", (d, w) -> showComponentInstaller())
+            .show();
+    }
+
+    private void showRouterInstaller() {
+        String[] labels = {
+            "Instalar / actualizar 9router-go",
+            "Iniciar 9router-go",
+            "Estado de 9router-go",
+            "Detener 9router-go"
+        };
+        String[] actions = {
+            "install",
+            "start",
+            "status",
+            "stop"
+        };
+
+        new AlertDialog.Builder(this)
+            .setTitle("9router-go · router local")
+            .setItems(labels, (dialog, index) ->
+                new AlertDialog.Builder(this)
+                    .setTitle(labels[index])
+                    .setMessage(
+                        "Nuestro fork joselofarias-byte/9router-go se administra en una copia separada de NewTermux.\n"
+                        + "Puerto local predeterminado: 20128\n"
+                        + "Rutas gratuitas: free-best / free\n\n"
+                        + "Acción: " + actions[index])
+                    .setPositiveButton("Ejecutar", (d, w) -> {
+                        TerminalSession session = getCurrentSession();
+                        if (session == null) {
+                            showToast("Abrí una sesión primero", false);
+                            return;
+                        }
+                        com.newtermux.features.BundledInstallerLibrary.runNineRouterInstaller(
+                            this, session, actions[index]);
+                    })
+                    .setNegativeButton("Cancelar", null)
                     .show()
             )
-            .setNegativeButton("Volver", (d, w) -> showComponentInstaller())
+            .setNegativeButton("Volver", (d, w) -> showHarnessInstaller())
             .show();
     }
 
