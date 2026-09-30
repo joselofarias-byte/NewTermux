@@ -1028,7 +1028,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         items.add("Instalar componentes y PRoot");
         actions.add(this::showComponentInstaller);
 
-        items.add("Guardado automático de salidas");
+        items.add("Guardar salidas largas · "
+            + (NewTermuxSettings.isAutoSaveOutputEnabled(this) ? "Sí" : "No"));
         actions.add(this::configureAutoOutput);
 
         com.newtermux.features.NtPopupMenu.showAsDropDown(
@@ -1244,29 +1245,23 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
     private void configureAutoOutput() {
-        EditText input = new EditText(this);
-        input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
-        input.setSingleLine(true);
-        int current = NewTermuxSettings.getAutoSaveLines(this);
-        input.setText(String.valueOf(current));
-        input.setSelectAllOnFocus(true);
-        int pad = (int) (24 * getResources().getDisplayMetrics().density);
-        LinearLayout box = new LinearLayout(this);
-        box.setPadding(pad, 0, pad, 0);
-        box.addView(input);
-        AlertDialog dialog = new AlertDialog.Builder(this).setTitle("Guardar salidas largas")
-            .setMessage("Cantidad de líneas: 0 desactiva. Cuando una sesión supera el umbral, guarda su salida en Descargas/NewTermux como .log.gz. Puede incluir información privada. Máximo 32 MiB de salida por sesión.")
-            .setView(box).setPositiveButton("Guardar", null)
-            .setNegativeButton("Cancelar", null).create();
-        dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-            try {
-                int value = Integer.parseInt(input.getText().toString());
-                if (value < 0 || value > 1000000) throw new NumberFormatException();
-                NewTermuxSettings.setAutoSaveLines(this, value);
-                dialog.dismiss();
-            } catch (NumberFormatException e) { input.setError("Ingresá entre 0 y 1.000.000"); }
-        }));
-        dialog.show();
+        boolean enabled = NewTermuxSettings.isAutoSaveOutputEnabled(this);
+        String message = enabled
+            ? "Ahora está activado. Las salidas largas se guardan comprimidas en Descargas/NewTermux como .log.gz."
+            : "Las salidas largas pueden guardarse automáticamente, comprimidas, en Descargas/NewTermux como .log.gz.";
+
+        new AlertDialog.Builder(this)
+            .setTitle("Guardar salidas largas")
+            .setMessage(message)
+            .setItems(new String[]{"Guardar", "No guardar"}, (dialog, which) -> {
+                boolean save = which == 0;
+                NewTermuxSettings.setAutoSaveOutputEnabled(this, save);
+                showToast(save
+                    ? "Guardado automático activado"
+                    : "Guardado automático desactivado", false);
+            })
+            .setNegativeButton("Cancelar", null)
+            .show();
     }
 
     private void toggleToolbarAutocorrect() {
