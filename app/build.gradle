@@ -4,17 +4,6 @@ plugins {
     id "org.jetbrains.kotlin.plugin.compose"
 }
 
-def standaloneSigningStoreFile = System.getenv("NEWTERMUX_SIGNING_STORE_FILE")
-def standaloneSigningStorePassword = System.getenv("NEWTERMUX_SIGNING_STORE_PASSWORD")
-def standaloneSigningKeyAlias = System.getenv("NEWTERMUX_SIGNING_KEY_ALIAS")
-def standaloneSigningKeyPassword = System.getenv("NEWTERMUX_SIGNING_KEY_PASSWORD")
-def standaloneSigningReady = [
-    standaloneSigningStoreFile,
-    standaloneSigningStorePassword,
-    standaloneSigningKeyAlias,
-    standaloneSigningKeyPassword
-].every { value -> value != null && !value.trim().isEmpty() }
-
 ext {
     // The packageVariant defines the bootstrap variant that will be included in the app APK.
     // This must be supported by com.termux.shared.termux.TermuxBootstrap.PackageVariant or app will
@@ -104,14 +93,6 @@ android {
             storePassword 'xrj45yWGLbsO7W0v'
             keyPassword 'xrj45yWGLbsO7W0v'
         }
-        if (standaloneSigningReady) {
-            standaloneRelease {
-                storeFile file(standaloneSigningStoreFile)
-                storePassword standaloneSigningStorePassword
-                keyAlias standaloneSigningKeyAlias
-                keyPassword standaloneSigningKeyPassword
-            }
-        }
     }
 
     // Identity is separate from the distribution channel.
@@ -126,9 +107,6 @@ android {
             applicationId "com.termux"
             manifestPlaceholders.TERMUX_PACKAGE_NAME = "com.termux"
             manifestPlaceholders.TERMUX_APP_NAME = "NewTermux"
-            if (standaloneSigningReady) {
-                signingConfig signingConfigs.standaloneRelease
-            }
         }
         playcompat {
             dimension "identity"
@@ -234,17 +212,17 @@ android {
     }
 }
 
-tasks.register("ensureDirectReleaseSigning") {
+def allowUnsignedDirectReleaseForPostSigning =
+    System.getenv("NEWTERMUX_ALLOW_UNSIGNED_DIRECT_RELEASE") == "1"
+
+tasks.register("ensureDirectReleasePostSigningPipeline") {
     doLast {
-        if (!standaloneSigningReady) {
+        if (!allowUnsignedDirectReleaseForPostSigning) {
             throw new GradleException(
-                "directRelease requires NEWTERMUX_SIGNING_STORE_FILE, " +
-                "NEWTERMUX_SIGNING_STORE_PASSWORD, NEWTERMUX_SIGNING_KEY_ALIAS and " +
-                "NEWTERMUX_SIGNING_KEY_PASSWORD. Refusing an unsigned standalone release."
+                "directRelease must be produced by the NewTermux post-signing pipeline. " +
+                "Set NEWTERMUX_ALLOW_UNSIGNED_DIRECT_RELEASE=1 only when the APK will be " +
+                "immediately signed with the approved certificate lineage."
             )
-        }
-        if (!file(standaloneSigningStoreFile).isFile()) {
-            throw new GradleException("NewTermux release keystore does not exist at NEWTERMUX_SIGNING_STORE_FILE.")
         }
     }
 }
@@ -432,7 +410,7 @@ afterEvaluate {
         it.name == "bundleDirectRelease" ||
         it.name == "packageDirectRelease"
     }.configureEach {
-        dependsOn tasks.named("ensureDirectReleaseSigning")
+        dependsOn tasks.named("ensureDirectReleasePostSigningPipeline")
     }
 }
 

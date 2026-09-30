@@ -33,7 +33,7 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Require standalone signing secrets
+      - name: Require new private signing-key secrets
         env:
           KEYSTORE_B64: ${{ secrets.NEWTERMUX_RELEASE_KEYSTORE_B64 }}
           STORE_PASSWORD: ${{ secrets.NEWTERMUX_RELEASE_STORE_PASSWORD }}
@@ -46,16 +46,51 @@ jobs:
             test -n "${!name}" || { echo "::error::Missing required NewTermux release signing secret: $name"; exit 2; }
           done
 
-      - name: Materialize release keystore
+      - name: Materialize new private release keystore
         env:
           KEYSTORE_B64: ${{ secrets.NEWTERMUX_RELEASE_KEYSTORE_B64 }}
         run: |
           set -euo pipefail
-          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/newtermux-release.jks"
-          chmod 600 "$RUNNER_TEMP/newtermux-release.jks"
-          test -s "$RUNNER_TEMP/newtermux-release.jks"
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/newtermux-release.p12"
+          chmod 600 "$RUNNER_TEMP/newtermux-release.p12"
+          test -s "$RUNNER_TEMP/newtermux-release.p12"
 
-      - name: Build signed directRelease ARM64
+      - name: Verify old and new signing certificates
+        env:
+          NEW_STORE_PASSWORD: ${{ secrets.NEWTERMUX_RELEASE_STORE_PASSWORD }}
+          NEW_KEY_ALIAS: ${{ secrets.NEWTERMUX_RELEASE_KEY_ALIAS }}
+          EXPECTED_NEW_CERT: ${{ secrets.NEWTERMUX_RELEASE_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          normalize() { tr '[:upper:]' '[:lower:]' | tr -d ':[:space:]'; }
+
+          OLD_CERT="$(
+            keytool -J-Duser.language=en -list -v               -keystore app/testkey_untrusted.jks               -storepass xrj45yWGLbsO7W0v               -alias alias |
+              sed -n 's/^[[:space:]]*SHA256: //p' |
+              head -1 | normalize
+          )"
+          EXPECTED_OLD="b6da01480eefd5fbf2cd3771b8d1021ec791304bdd6c4bf41d3faabad48ee5e1"
+          test "$OLD_CERT" = "$EXPECTED_OLD" || {
+            echo "::error::Unexpected predecessor signing certificate"
+            exit 3
+          }
+
+          NEW_CERT="$(
+            keytool -J-Duser.language=en -list -v               -keystore "$RUNNER_TEMP/newtermux-release.p12"               -storepass "$NEW_STORE_PASSWORD"               -alias "$NEW_KEY_ALIAS" |
+              sed -n 's/^[[:space:]]*SHA256: //p' |
+              head -1 | normalize
+          )"
+          EXPECTED_NEW="$(printf '%s' "$EXPECTED_NEW_CERT" | normalize)"
+          test -n "$NEW_CERT"
+          test "$NEW_CERT" = "$EXPECTED_NEW" || {
+            echo "::error::New release certificate does not match NEWTERMUX_RELEASE_CERT_SHA256"
+            exit 4
+          }
+
+          echo "OLD_CERT_SHA256=$OLD_CERT"
+          echo "NEW_CERT_SHA256=$NEW_CERT"
+
+      - name: Build unsigned directRelease ARM64 for controlled post-signing
         env:
           TERMUX_ABIS: arm64-v8a
           TERMUX_PACKAGE_VARIANT: apt-android-7
@@ -63,25 +98,55 @@ jobs:
           TERMUX_APP_VERSION_NAME: ${{ inputs.version_name }}
           NEWTERMUX_VERSION_CODE: ${{ inputs.version_code }}
           TERMUX_APK_VERSION_TAG: newtermux-${{ inputs.version_name }}-direct
-          NEWTERMUX_SIGNING_STORE_FILE: ${{ runner.temp }}/newtermux-release.jks
-          NEWTERMUX_SIGNING_STORE_PASSWORD: ${{ secrets.NEWTERMUX_RELEASE_STORE_PASSWORD }}
-          NEWTERMUX_SIGNING_KEY_ALIAS: ${{ secrets.NEWTERMUX_RELEASE_KEY_ALIAS }}
-          NEWTERMUX_SIGNING_KEY_PASSWORD: ${{ secrets.NEWTERMUX_RELEASE_KEY_PASSWORD }}
+          NEWTERMUX_ALLOW_UNSIGNED_DIRECT_RELEASE: '1'
         run: |
           set -euo pipefail
           ./gradlew :app:assembleDirectRelease --no-daemon
 
-      - name: Verify signed APK, identity and PREFIX
-        id: verify
+      - name: Create signing lineage and sign rotated APK
+        id: sign
         env:
-          EXPECTED_CERT_SHA256: ${{ secrets.NEWTERMUX_RELEASE_CERT_SHA256 }}
+          NEW_STORE_PASSWORD: ${{ secrets.NEWTERMUX_RELEASE_STORE_PASSWORD }}
+          NEW_KEY_ALIAS: ${{ secrets.NEWTERMUX_RELEASE_KEY_ALIAS }}
+          NEW_KEY_PASSWORD: ${{ secrets.NEWTERMUX_RELEASE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
+          BUILD_TOOLS="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
+          APKSIGNER="$BUILD_TOOLS/apksigner"
+          ZIPALIGN="$BUILD_TOOLS/zipalign"
           DIR=app/build/outputs/apk/direct/release
           META="$DIR/output-metadata.json"
-          APK="$(find "$DIR" -maxdepth 1 -type f -name '*arm64-v8a.apk' -print -quit)"
-          test -n "$APK"
+          UNSIGNED="$(find "$DIR" -maxdepth 1 -type f -name '*arm64-v8a*.apk' -print -quit)"
+          test -n "$UNSIGNED"
           test -f "$META"
+
+          ALIGNED="$RUNNER_TEMP/NewTermux-directRelease-arm64-aligned.apk"
+          FINAL="$RUNNER_TEMP/NewTermux-${{ inputs.version_name }}-direct-arm64-v8a.apk"
+          LINEAGE="$RUNNER_TEMP/newtermux-signing-lineage"
+
+          "$ZIPALIGN" -p -f 4 "$UNSIGNED" "$ALIGNED"
+
+          "$APKSIGNER" rotate             --out "$LINEAGE"             --old-signer             --ks app/testkey_untrusted.jks             --ks-key-alias alias             --ks-pass pass:xrj45yWGLbsO7W0v             --key-pass pass:xrj45yWGLbsO7W0v             --new-signer             --ks "$RUNNER_TEMP/newtermux-release.p12"             --ks-key-alias "$NEW_KEY_ALIAS"             --ks-pass "pass:$NEW_STORE_PASSWORD"             --key-pass "pass:$NEW_KEY_PASSWORD"
+
+          cp "$ALIGNED" "$FINAL"
+
+          "$APKSIGNER" sign             --ks app/testkey_untrusted.jks             --ks-key-alias alias             --ks-pass pass:xrj45yWGLbsO7W0v             --key-pass pass:xrj45yWGLbsO7W0v             --next-signer             --ks "$RUNNER_TEMP/newtermux-release.p12"             --ks-key-alias "$NEW_KEY_ALIAS"             --ks-pass "pass:$NEW_STORE_PASSWORD"             --key-pass "pass:$NEW_KEY_PASSWORD"             --lineage "$LINEAGE"             --rotation-min-sdk-version 33             "$FINAL"
+
+          printf 'apk=%s\n' "$FINAL" >> "$GITHUB_OUTPUT"
+          printf 'lineage=%s\n' "$LINEAGE" >> "$GITHUB_OUTPUT"
+          printf 'meta=%s\n' "$META" >> "$GITHUB_OUTPUT"
+
+      - name: Verify rotated signature, identity and PREFIX
+        id: verify
+        env:
+          EXPECTED_NEW_CERT_SHA256: ${{ secrets.NEWTERMUX_RELEASE_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          APK='${{ steps.sign.outputs.apk }}'
+          LINEAGE='${{ steps.sign.outputs.lineage }}'
+          META='${{ steps.sign.outputs.meta }}'
+          APKSIGNER="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner"
+          normalize() { tr '[:upper:]' '[:lower:]' | tr -d ':[:space:]'; }
 
           python3 - "$META" "$APK" <<'PY'
           import io
@@ -107,19 +172,39 @@ jobs:
           assert "lib/libandroid-support.so" in names
           PY
 
-          APKSIGNER="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner"
           "$APKSIGNER" verify --verbose --print-certs "$APK" | tee "$APK.cert.txt"
-          ACTUAL="$("$APKSIGNER" verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1 | tr '[:upper:]' '[:lower:]' | tr -d ':[:space:]')"
-          EXPECTED="$(printf '%s' "$EXPECTED_CERT_SHA256" | tr '[:upper:]' '[:lower:]' | tr -d ':[:space:]')"
-          test -n "$ACTUAL"
-          test "$ACTUAL" = "$EXPECTED" || { echo "::error::Unexpected signing certificate"; exit 3; }
+
+          NEW_ACTUAL="$(
+            "$APKSIGNER" verify --min-sdk-version 36 --print-certs "$APK" |
+              sed -n 's/^Signer #1 certificate SHA-256 digest: //p' |
+              head -1 | normalize
+          )"
+          EXPECTED_NEW="$(printf '%s' "$EXPECTED_NEW_CERT_SHA256" | normalize)"
+          test "$NEW_ACTUAL" = "$EXPECTED_NEW" || {
+            echo "::error::Android 16 signer is not the rotated private certificate"
+            exit 5
+          }
+
+          OLD_ACTUAL="$(
+            "$APKSIGNER" verify --min-sdk-version 28 --max-sdk-version 32 --print-certs "$APK" |
+              sed -n 's/^Signer #1 certificate SHA-256 digest: //p' |
+              head -1 | normalize
+          )"
+          EXPECTED_OLD="b6da01480eefd5fbf2cd3771b8d1021ec791304bdd6c4bf41d3faabad48ee5e1"
+          test "$OLD_ACTUAL" = "$EXPECTED_OLD" || {
+            echo "::error::Pre-Android-13 predecessor signer is not preserved"
+            exit 6
+          }
 
           sha256sum "$APK" | tee "$APK.sha256"
+          sha256sum "$LINEAGE" | tee "$LINEAGE.sha256"
           printf 'apk=%s\n' "$APK" >> "$GITHUB_OUTPUT"
           printf 'sha=%s\n' "$APK.sha256" >> "$GITHUB_OUTPUT"
           printf 'cert=%s\n' "$APK.cert.txt" >> "$GITHUB_OUTPUT"
+          printf 'lineage=%s\n' "$LINEAGE" >> "$GITHUB_OUTPUT"
+          printf 'lineage_sha=%s\n' "$LINEAGE.sha256" >> "$GITHUB_OUTPUT"
 
-      - name: Upload signed standalone candidate
+      - name: Upload rotated standalone candidate
         uses: actions/upload-artifact@v6
         with:
           name: NewTermux-directRelease-ARM64-${{ inputs.version_name }}
@@ -129,4 +214,6 @@ jobs:
             ${{ steps.verify.outputs.apk }}
             ${{ steps.verify.outputs.sha }}
             ${{ steps.verify.outputs.cert }}
-            app/build/outputs/apk/direct/release/output-metadata.json
+            ${{ steps.verify.outputs.lineage }}
+            ${{ steps.verify.outputs.lineage_sha }}
+            ${{ steps.sign.outputs.meta }}

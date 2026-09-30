@@ -90,8 +90,13 @@ No fusionar esta rama a la cadena principal hasta completar CI y prueba física.
 ## Release firmado: secretos requeridos
 
 El workflow manual `direct_release.yml` queda preparado, pero no publica
-nada automáticamente. Para producir un `directRelease` instalable deben
-existir estos secretos del repositorio:
+nada automáticamente. La primera release estable NO puede firmarse simplemente
+con una clave nueva: la NewTermux actual usa el certificado debug histórico.
+El pipeline crea una signing lineage `debug actual -> clave privada NewTermux`
+y firma el APK con proof-of-rotation para conservar una actualización in-place
+en Android moderno.
+
+Para producir el candidato rotado deben existir estos secretos del repositorio:
 
 - `NEWTERMUX_RELEASE_KEYSTORE_B64`: keystore estable codificado en base64.
 - `NEWTERMUX_RELEASE_STORE_PASSWORD`: contraseña del keystore.
@@ -103,8 +108,10 @@ El keystore privado no debe entrar al repositorio, a artefactos ni a logs.
 El workflow lo reconstruye temporalmente dentro del runner, compila
 `directRelease`, verifica el certificado y elimina el runner al terminar.
 
-`directRelease` falla explícitamente si las credenciales no están presentes;
-no se permite generar silenciosamente una release sin firma.
+`directRelease` sólo puede compilarse unsigned cuando
+`NEWTERMUX_ALLOW_UNSIGNED_DIRECT_RELEASE=1`, usado exclusivamente por el
+workflow que inmediatamente hace `zipalign` y post-firma mediante `apksigner`.
+El APK unsigned nunca se publica como artifact.
 
 El `versionCode` independiente se inyecta con `NEWTERMUX_VERSION_CODE`.
 El `versionName` sigue llegando por `TERMUX_APP_VERSION_NAME`.
