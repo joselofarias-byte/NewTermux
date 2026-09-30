@@ -1,0 +1,108 @@
+name: Build standalone direct APK
+
+on:
+  pull_request:
+    branches:
+      - fix/clipboard-access-notice-20260929
+    paths:
+      - '.github/workflows/direct_distribution_build.yml'
+      - 'app/build.gradle'
+      - 'app/src/main/java/com/termux/app/TermuxInstaller.java'
+      - 'termux-shared/src/main/java/com/termux/shared/termux/shell/**'
+      - 'docs/NEWTERMUX_STANDALONE_DISTRIBUTION_2026-09-29.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  direct-arm64:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Assert standalone source invariants
+        run: |
+          set -euo pipefail
+          grep -q 'direct {' app/build.gradle
+          grep -A8 'direct {' app/build.gradle | grep -q 'applicationId "com.termux"'
+          ! grep -R --line-number --fixed-strings 'com.android.vending' app termux-shared
+
+      - name: Test and build directDebug ARM64
+        env:
+          TERMUX_ABIS: arm64-v8a
+          TERMUX_PACKAGE_VARIANT: apt-android-7
+          TERMUX_SPLIT_APKS_FOR_DEBUG_BUILDS: '1'
+          TERMUX_APP_VERSION_NAME: 1.6.2-direct.es1
+          TERMUX_APK_VERSION_TAG: 1.6.2-direct-apt-android-7-debug
+        run: |
+          set -euo pipefail
+          ./gradlew :app:testDirectDebugUnitTest :app:assembleDirectDebug --no-daemon
+
+      - name: Verify identity, PREFIX and architecture
+        id: verify
+        run: |
+          set -euo pipefail
+          DIR=app/build/outputs/apk/direct/debug
+          META="$DIR/output-metadata.json"
+          APK="$(find "$DIR" -maxdepth 1 -type f -name '*arm64-v8a.apk' -print -quit)"
+          test -n "$APK"
+          test -f "$META"
+
+          python3 - "$META" "$APK" <<'PY'
+          import io
+          import json
+          import sys
+          import zipfile
+
+          metadata_path, apk_path = sys.argv[1:]
+          with open(metadata_path, encoding="utf-8") as stream:
+              metadata = json.load(stream)
+
+          assert metadata.get("applicationId") == "com.termux", metadata
+          assert metadata.get("variantName") == "directDebug", metadata
+
+          with zipfile.ZipFile(apk_path) as apk:
+              bootstrap = apk.read("lib/arm64-v8a/libtermux-bootstrap.so")
+
+          with zipfile.ZipFile(io.BytesIO(bootstrap)) as archive:
+              names = set(archive.namelist())
+              login = archive.read("bin/login").decode("utf-8")
+
+          assert login.splitlines()[0] == "#!/data/data/com.termux/files/usr/bin/sh"
+          assert "lib/libandroid-support.so" in names
+
+          print("PASS: directDebug / com.termux compatibility identity")
+          print("PASS: stock PREFIX /data/data/com.termux/files/usr")
+          print("PASS: ARM64 bootstrap includes libandroid-support.so")
+          PY
+
+          sha256sum "$APK" | tee "$APK.sha256"
+          printf 'apk=%s\n' "$APK" >> "$GITHUB_OUTPUT"
+          printf 'sha=%s\n' "$APK.sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Verify APK signature
+        run: |
+          set -euo pipefail
+          APK='${{ steps.verify.outputs.apk }}'
+          "$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner" verify --verbose --print-certs "$APK" | tee "$APK.cert.txt"
+
+      - name: Upload standalone test artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: NewTermux-direct-ARM64-test
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            ${{ steps.verify.outputs.apk }}
+            ${{ steps.verify.outputs.sha }}
+            ${{ steps.verify.outputs.apk }}.cert.txt
+            app/build/outputs/apk/direct/debug/output-metadata.json
