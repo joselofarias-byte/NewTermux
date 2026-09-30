@@ -255,7 +255,10 @@ public final class NativeBackupManager {
                         header = new JSONObject(readSmallText(zip, 1024 * 1024));
                         validateHeaderForRestore(context, header, selected);
                         selectedBytes = selectedBytes(header, selected);
+                        ensureRestoreSpace(context, selectedBytes);
                     } else if (name.startsWith("data/")) {
+                        if (header == null)
+                            throw new IllegalArgumentException("header.json debe ser la primera entrada del respaldo");
                         String component = componentFromDataEntry(name);
                         if (selected.contains(component)) {
                             File target = safeStagePath(pending, name);
@@ -284,6 +287,8 @@ public final class NativeBackupManager {
                             drain(zip);
                         }
                     } else if (METADATA_ENTRY.equals(name)) {
+                        if (header == null)
+                            throw new IllegalArgumentException("header.json debe preceder la metadata");
                         BufferedReader reader = new BufferedReader(
                             new InputStreamReader(zip, StandardCharsets.UTF_8), 256 * 1024);
                         String line;
@@ -359,6 +364,7 @@ public final class NativeBackupManager {
         File ready = new File(pending, "READY");
         if (!ready.isFile()) return;
 
+        Map<File, File> rollbacks = new LinkedHashMap<>();
         try {
             JSONObject plan = new JSONObject(readUtf8(new File(pending, "plan.json")));
             JSONObject header = plan.getJSONObject("header");
@@ -367,7 +373,8 @@ public final class NativeBackupManager {
             Map<String, List<File>> targets = resolveSelectedTargets(header, selected);
             File metadataFile = new File(pending, "metadata-selected.jsonl");
 
-            // Replace isolated roots first. HOME is intentionally merge-only.
+            // Isolated roots are swapped transactionally: keep the previous root beside
+            // the destination until the whole restore succeeds. HOME remains merge-only.
             for (String id : selected) {
                 if ("prefix".equals(id)) {
                     throw new IllegalStateException("Restauración automática de PREFIX no habilitada");
@@ -376,7 +383,19 @@ public final class NativeBackupManager {
                     List<File> roots = targets.get(id);
                     if (roots != null) {
                         for (File root : roots) {
-                            deleteTree(root);
+                            File parent = root.getParentFile();
+                            if (parent == null)
+                                throw new IllegalStateException("Destino sin carpeta padre: " + root);
+                            if (!parent.isDirectory() && !parent.mkdirs())
+                                throw new IllegalStateException("No se pudo preparar " + parent);
+
+                            File rollback = new File(parent, "." + root.getName() + ".newtermux-before-restore");
+                            deleteTree(rollback);
+                            if (existsNoFollow(root)) {
+                                if (!root.renameTo(rollback))
+                                    throw new IllegalStateException("No se pudo preservar " + root);
+                                rollbacks.put(root, rollback);
+                            }
                             if (!root.isDirectory() && !root.mkdirs())
                                 throw new IllegalStateException("No se pudo preparar " + root);
                         }
@@ -419,15 +438,34 @@ public final class NativeBackupManager {
                         copyFile(staged, target);
                         applyModeAndTime(target, meta, false);
                     } else if ("symlink".equals(type)) {
-                        deleteTree(target);
-                        Os.symlink(meta.getString("linkTarget"), target.getAbsolutePath());
+                        File tmp = new File(parent, target.getName() + ".newtermux-restore-link");
+                        deleteTree(tmp);
+                        Os.symlink(meta.getString("linkTarget"), tmp.getAbsolutePath());
+                        try {
+                            if (isDirectoryNoFollow(target)) deleteTree(target);
+                            Os.rename(tmp.getAbsolutePath(), target.getAbsolutePath());
+                        } catch (Exception e) {
+                            deleteTree(tmp);
+                            throw e;
+                        }
                     }
                 }
             }
 
+            for (File rollback : rollbacks.values()) deleteTree(rollback);
             deleteTree(pending);
         } catch (Exception e) {
-            // Leave READY/staging intact: the operation is idempotent and can retry next launch.
+            // Put isolated roots back if publishing failed. HOME writes use atomic file
+            // replacement and may already contain safe merged entries; staging stays intact.
+            List<Map.Entry<File, File>> entries = new ArrayList<>(rollbacks.entrySet());
+            Collections.reverse(entries);
+            for (Map.Entry<File, File> entry : entries) {
+                try {
+                    deleteTree(entry.getKey());
+                    if (existsNoFollow(entry.getValue()) && !entry.getValue().renameTo(entry.getKey()))
+                        throw new IllegalStateException("No se pudo revertir " + entry.getKey());
+                } catch (Exception ignored) {}
+            }
             try {
                 writeUtf8(new File(pending, "LAST_ERROR.txt"),
                     new Date().toString() + "\n" + e.toString() + "\n");
@@ -620,11 +658,9 @@ public final class NativeBackupManager {
             long[] done,
             long total,
             Progress progress) throws Exception {
-        String canonical = file.getCanonicalPath();
-        if (isExcluded(canonical, excludes)) return;
-
-        StructStat st = Os.lstat(file.getAbsolutePath());
-        String rel = relativeTo(root.getCanonicalPath(), canonical).replace(File.separatorChar, '/');
+        String filePath = file.getAbsolutePath();
+        StructStat st = Os.lstat(filePath);
+        String rel = relativeTo(root.getAbsolutePath(), filePath).replace(File.separatorChar, '/');
 
         if (OsConstants.S_ISLNK(st.st_mode)) {
             JSONObject meta = baseMeta(component, rootIndex, rel, "symlink", st);
@@ -632,6 +668,9 @@ public final class NativeBackupManager {
             writeMetadata(metadata, treeDigest, meta);
             return;
         }
+
+        String canonical = file.getCanonicalPath();
+        if (isExcluded(canonical, excludes)) return;
 
         if (OsConstants.S_ISDIR(st.st_mode)) {
             JSONObject meta = baseMeta(component, rootIndex, rel, "dir", st);
@@ -853,6 +892,33 @@ public final class NativeBackupManager {
         return new File(context.getNoBackupFilesDir(), "native-restore-pending");
     }
 
+    private static void ensureRestoreSpace(Context context, long selectedBytes) {
+        StatFs stat = new StatFs(context.getNoBackupFilesDir().getAbsolutePath());
+        long needed = Math.max(0, selectedBytes) + MIN_HEADROOM;
+        if (stat.getAvailableBytes() < needed)
+            throw new IllegalStateException(
+                "No hay espacio interno suficiente para preparar la restauración");
+    }
+
+    private static boolean existsNoFollow(File file) {
+        if (file == null) return false;
+        try {
+            Os.lstat(file.getAbsolutePath());
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static boolean isDirectoryNoFollow(File file) {
+        if (file == null) return false;
+        try {
+            return OsConstants.S_ISDIR(Os.lstat(file.getAbsolutePath()).st_mode);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     private static void copyFile(File source, File target) throws Exception {
         File tmp = new File(target.getParentFile(), target.getName() + ".newtermux-restore-tmp");
         try (FileInputStream in = new FileInputStream(source);
@@ -862,21 +928,23 @@ public final class NativeBackupManager {
             while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
             out.getFD().sync();
         }
-        if (target.exists() && !target.delete())
-            throw new IllegalStateException("No se pudo reemplazar " + target);
-        if (!tmp.renameTo(target))
-            throw new IllegalStateException("No se pudo publicar " + target);
+        try {
+            Os.rename(tmp.getAbsolutePath(), target.getAbsolutePath());
+        } catch (Exception e) {
+            tmp.delete();
+            throw new IllegalStateException("No se pudo publicar " + target, e);
+        }
     }
 
     private static void deleteTree(File file) {
-        if (file == null || !file.exists()) return;
+        if (file == null) return;
+        StructStat st;
         try {
-            StructStat st = Os.lstat(file.getAbsolutePath());
-            if (OsConstants.S_ISLNK(st.st_mode) || !OsConstants.S_ISDIR(st.st_mode)) {
-                file.delete();
-                return;
-            }
+            st = Os.lstat(file.getAbsolutePath());
         } catch (Exception e) {
+            return;
+        }
+        if (OsConstants.S_ISLNK(st.st_mode) || !OsConstants.S_ISDIR(st.st_mode)) {
             file.delete();
             return;
         }
