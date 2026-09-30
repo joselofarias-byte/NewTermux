@@ -1034,17 +1034,70 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
     private void showComponentInstaller() {
-        String[] labels = {"PRoot y distribuciones", "Debian en PRoot", "Git y SSH", "Python", "Node.js", "Go", "Herramientas de compilación"};
-        String[] commands = {"pkg install proot-distro", "proot-distro install debian", "pkg install git openssh", "pkg install python", "pkg install nodejs", "pkg install golang", "pkg install clang make cmake"};
+        String[] labels = {
+            "PRoot y distribuciones",
+            "Debian en PRoot",
+            "Git y SSH",
+            "Python",
+            "Node.js",
+            "Go",
+            "Herramientas de compilación",
+            "Harness IA · preparar Debian",
+            "Harness IA · Antigravity CLI",
+            "Harness IA · Codex CLI",
+            "Harness IA · OpenCode",
+            "Harness IA · instalar los tres",
+            "Harness IA · verificar instalados"
+        };
+        String[] commands = {
+            "pkg install proot-distro",
+            "proot-distro install debian",
+            "pkg install git openssh",
+            "pkg install python",
+            "pkg install nodejs",
+            "pkg install golang",
+            "pkg install clang make cmake",
+            null, null, null, null, null, null
+        };
+        String[] harnessActions = {
+            null, null, null, null, null, null, null,
+            "prepare", "antigravity", "codex", "opencode", "all", "status"
+        };
+
         new AlertDialog.Builder(this).setTitle("Instalar componentes")
-            .setItems(labels, (dialog, index) -> new AlertDialog.Builder(this)
-                .setTitle(labels[index]).setMessage("Ejecutar en la sesión actual:\n" + commands[index])
-                .setPositiveButton("Ejecutar", (d, w) -> {
-                    TerminalSession session = getCurrentSession();
-                    if (session != null) session.write(commands[index] + "\n");
-                    else showToast("Abrí una sesión primero", false);
-                }).setNegativeButton("Cancelar", null).show())
-            .setNegativeButton("Cerrar", null).show();
+            .setItems(labels, (dialog, index) -> {
+                String harnessAction = harnessActions[index];
+                String command = commands[index];
+                String message;
+                if (harnessAction != null) {
+                    message = "Se ejecutará el instalador incluido con NewTermux dentro de Debian PRoot. "
+                        + "Las credenciales no se incluyen ni se guardan por NewTermux.\n\n"
+                        + "Acción: " + harnessAction;
+                } else {
+                    message = "Ejecutar en la sesión actual:\n" + command;
+                }
+
+                new AlertDialog.Builder(this)
+                    .setTitle(labels[index])
+                    .setMessage(message)
+                    .setPositiveButton("Ejecutar", (d, w) -> {
+                        TerminalSession session = getCurrentSession();
+                        if (session == null) {
+                            showToast("Abrí una sesión primero", false);
+                            return;
+                        }
+                        if (harnessAction != null) {
+                            com.newtermux.features.BundledInstallerLibrary.runAiHarnessInstaller(
+                                this, session, harnessAction);
+                        } else {
+                            session.write(command + "\n");
+                        }
+                    })
+                    .setNegativeButton("Cancelar", null)
+                    .show();
+            })
+            .setNegativeButton("Cerrar", null)
+            .show();
     }
 
     private void configureAutoOutput() {
