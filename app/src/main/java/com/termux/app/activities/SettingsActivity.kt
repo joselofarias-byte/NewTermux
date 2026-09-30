@@ -29,6 +29,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -36,6 +38,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -44,6 +47,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -58,6 +62,7 @@ import com.newtermux.compose.MenuItemDivider
 import com.newtermux.compose.NewTermuxComposeTheme
 import com.newtermux.compose.outlinedMenuCard
 import com.newtermux.features.NewTermuxSettings
+import com.newtermux.features.NativeStorageManager
 import com.newtermux.features.TextExpansionStore
 import com.termux.app.TermuxActivity
 import com.termux.shared.android.PermissionUtils
@@ -104,7 +109,7 @@ class SettingsActivity : AppCompatActivity() {
 }
 
 private enum class Route {
-    ROOT, BACKUP, FEATURES, TEXT_EXPANSION,
+    ROOT, BACKUP, STORAGE, FEATURES, TEXT_EXPANSION,
     TERMUX, TERMINAL_IO, TERMINAL_VIEW, DEBUGGING,
     PLUGIN_API, PLUGIN_FLOAT, PLUGIN_TASKER, PLUGIN_WIDGET,
 }
@@ -120,6 +125,7 @@ private fun SettingsRoot(activity: Activity) {
     when (stack.last()) {
         Route.ROOT -> RootScreen(activity, onBack = { pop() }, onNav = { push(it) })
         Route.BACKUP -> BackupScreen(onBack = { pop() })
+        Route.STORAGE -> StorageScreen(onBack = { pop() })
         Route.FEATURES -> FeaturesScreen(activity, onBack = { pop() })
         Route.TEXT_EXPANSION -> TextExpansionScreen(onBack = { pop() })
         Route.TERMUX -> TermuxScreen(onBack = { pop() }, onNav = { push(it) })
@@ -280,6 +286,7 @@ private fun RootScreen(activity: Activity, onBack: () -> Unit, onNav: (Route) ->
             NavRow(context.getString(R.string.nt_l10n_packages), context.getString(R.string.nt_l10n_packages_summary)) { launch(PackageManagerActivity::class.java) }
             NavRow(context.getString(R.string.nt_l10n_ssh), context.getString(R.string.nt_l10n_ssh_summary)) { launch(SshManagerActivity::class.java) }
             NavRow(context.getString(R.string.nt_l10n_files), context.getString(R.string.nt_l10n_files_summary)) { launch(FileManagerActivity::class.java) }
+            NavRow("Uso de almacenamiento", "Espacio por HOME, paquetes, PRoot, modelos, cachés y respaldos") { onNav(Route.STORAGE) }
             HorizontalDivider()
             NavRow(context.getString(R.string.nt_l10n_backup_restore), context.getString(R.string.nt_l10n_backup_summary)) { onNav(Route.BACKUP) }
             NavRow(context.getString(R.string.nt_l10n_features), context.getString(R.string.nt_l10n_features_summary)) { onNav(Route.FEATURES) }
@@ -295,6 +302,163 @@ private fun RootScreen(activity: Activity, onBack: () -> Unit, onNav: (Route) ->
                 scope.launch { openAbout(context) }
             }
             if (donateVisible) NavRow(context.getString(R.string.nt_l10n_donate), context.getString(R.string.nt_l10n_donate_summary)) { ShareUtils.openUrl(context, TermuxConstants.TERMUX_DONATE_URL) }
+        }
+    }
+}
+
+// ---------------------------------------------------------------- Native storage
+
+@Composable
+private fun StorageScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var snapshot by remember { mutableStateOf<NativeStorageManager.Snapshot?>(null) }
+    var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var selected by remember { mutableStateOf<Set<String>>(emptySet()) }
+
+    fun refresh() {
+        loading = true
+        error = null
+        scope.launch {
+            val result = runCatching {
+                withContext(Dispatchers.IO) {
+                    NativeStorageManager.scan(context.applicationContext)
+                }
+            }
+            result.onSuccess { snap ->
+                snapshot = snap
+                selected = selected.intersect(
+                    snap.items.filter { it.selectable }.map { it.id }.toSet()
+                )
+            }.onFailure { t ->
+                error = t.message ?: t.javaClass.simpleName
+            }
+            loading = false
+        }
+    }
+
+    LaunchedEffect(Unit) { refresh() }
+
+    SettingsScaffold("Uso de almacenamiento", onBack) { mod ->
+        Column(modifier = mod) {
+            val snap = snapshot
+            if (snap != null) {
+                val used = (snap.totalBytes - snap.freeBytes).coerceAtLeast(0L)
+                val usedFraction = if (snap.totalBytes > 0)
+                    (used.toFloat() / snap.totalBytes.toFloat()).coerceIn(0f, 1f)
+                else 0f
+
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
+                    Text(
+                        "Dispositivo: ${NativeStorageManager.formatBytes(used)} usados · " +
+                            "${NativeStorageManager.formatBytes(snap.freeBytes)} libres",
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                    LinearProgressIndicator(
+                        progress = { usedFraction },
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    )
+                    Text(
+                        "NewTermux mide cada área sin seguir enlaces simbólicos y evita contar dos veces " +
+                            "PRoot, modelos, cachés o respaldos.",
+                        modifier = Modifier.padding(top = 8.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
+                HorizontalDivider()
+
+                val maxItem = snap.items.maxOfOrNull { it.bytes }?.coerceAtLeast(1L) ?: 1L
+                snap.items.forEach { item ->
+                    val checked = item.id in selected
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (item.selectable) {
+                            Checkbox(
+                                checked = checked,
+                                onCheckedChange = { value ->
+                                    selected = if (value) selected + item.id else selected - item.id
+                                },
+                            )
+                        } else {
+                            Spacer(Modifier.size(48.dp))
+                        }
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(item.label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                                Text(
+                                    NativeStorageManager.formatBytes(item.bytes),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            LinearProgressIndicator(
+                                progress = {
+                                    (item.bytes.toFloat() / maxItem.toFloat()).coerceIn(0f, 1f)
+                                },
+                                modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                            )
+                            if (item.detail.isNotBlank()) {
+                                Text(
+                                    item.detail,
+                                    modifier = Modifier.padding(top = 4.dp),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                    HorizontalDivider()
+                }
+
+                val selectedBytes = snap.items
+                    .filter { it.id in selected }
+                    .sumOf { it.bytes }
+
+                Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                    Text(
+                        "Seleccionado: ${NativeStorageManager.formatBytes(selectedBytes)}",
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        "Las casillas serán las mismas que utilizará el respaldo nativo de NewTermux.",
+                        modifier = Modifier.padding(top = 4.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Button(
+                        onClick = { refresh() },
+                        modifier = Modifier.padding(top = 12.dp),
+                    ) {
+                        Text("Actualizar")
+                    }
+                }
+            }
+
+            if (loading) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(20.dp),
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    CircularProgressIndicator()
+                }
+            }
+
+            error?.let {
+                Text(
+                    "No se pudo medir el almacenamiento: $it",
+                    modifier = Modifier.padding(16.dp),
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
         }
     }
 }
