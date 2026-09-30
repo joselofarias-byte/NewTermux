@@ -31,6 +31,7 @@
     <string name="action_rename">Renombrar</string>
     <string name="action_close">Cerrar</string>
     <string name="newtermux_toolbar_copy">Copiar</string>
+    <string name="newtermux_toolbar_paste_enter">Pegar+↵</string>
     <string name="msg_visible_screen_copied">Salida visible copiada</string>
     <string name="msg_full_transcript_copied">Transcripción completa copiada</string>
     <string name="newtermux_toolbar_packages">Paquetes</string>

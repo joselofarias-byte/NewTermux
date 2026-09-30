@@ -79,6 +79,7 @@
     <string name="action_rename">Rename</string>
     <string name="action_close">Close</string>
     <string name="newtermux_toolbar_copy">Copy</string>
+    <string name="newtermux_toolbar_paste_enter">Paste+↵</string>
     <string name="msg_visible_screen_copied">Visible terminal output copied</string>
     <string name="msg_full_transcript_copied">Full terminal transcript copied</string>
     <string name="newtermux_toolbar_packages">Packages</string>

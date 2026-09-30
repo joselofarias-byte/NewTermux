@@ -398,21 +398,17 @@ public final class ExtraKeysView extends GridLayout {
     private int tbmButtonBackgroundColor(String key, boolean pressed) {
         switch (key) {
             case "ESC":
-                return pressed ? 0xFF7A2B38 : 0xFF5A2028;
+                return pressed ? 0xFF8A3444 : 0xFF6B2631;
             case "TAB":
+                return pressed ? 0xFF35628F : 0xFF284A70;
             case "CTRL":
-                return pressed ? 0xFF51467A : 0xFF372F59;
-            case "HOME":
-            case "END":
-                return pressed ? 0xFF235887 : 0xFF173B5E;
+                return pressed ? 0xFF635296 : 0xFF4B3C73;
             case "ENTER":
+                return pressed ? 0xFF18876C : 0xFF126B55;
             case "y":
-                return pressed ? 0xFF216A4B : 0xFF174A34;
+                return pressed ? 0xFF21795A : 0xFF175C43;
             case "n":
                 return pressed ? 0xFF7A2B38 : 0xFF5A2028;
-            case "PASTE":
-            case "PASTE_ENTER":
-                return pressed ? 0xFF80601C : 0xFF5C4515;
             case "UP":
             case "DOWN":
             case "LEFT":
@@ -428,19 +424,15 @@ public final class ExtraKeysView extends GridLayout {
             case "ESC":
                 return 0xFFFFE3E8;
             case "TAB":
+                return 0xFFE1EEFF;
             case "CTRL":
-                return 0xFFEDE7FF;
-            case "HOME":
-            case "END":
-                return 0xFFDCEFFF;
+                return 0xFFEEE8FF;
             case "ENTER":
+                return 0xFFD8FFF2;
             case "y":
-                return 0xFFDEFFEA;
+                return 0xFFDFFFEA;
             case "n":
                 return 0xFFFFE3E8;
-            case "PASTE":
-            case "PASTE_ENTER":
-                return 0xFFFFF0C7;
             case "UP":
             case "DOWN":
             case "LEFT":
