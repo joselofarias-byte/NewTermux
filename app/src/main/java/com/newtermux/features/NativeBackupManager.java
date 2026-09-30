@@ -398,11 +398,16 @@ public final class NativeBackupManager {
                                 throw new IllegalStateException("No se pudo preparar " + parent);
 
                             File rollback = new File(parent, "." + root.getName() + ".newtermux-before-restore");
-                            deleteTree(rollback);
-                            if (existsNoFollow(root)) {
+
+                            // A rollback left by a hard process death is authoritative: keep it.
+                            // Remove only the partial destination and reuse the preserved original.
+                            if (existsNoFollow(rollback)) {
+                                deleteTree(root);
+                            } else if (existsNoFollow(root)) {
                                 if (!root.renameTo(rollback))
                                     throw new IllegalStateException("No se pudo preservar " + root);
                             }
+
                             // Track even a newly-created destination: on failure it must be
                             // removed instead of leaving a partial PRoot/model tree behind.
                             rollbacks.put(root, rollback);
