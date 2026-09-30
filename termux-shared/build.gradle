@@ -47,6 +47,10 @@ android {
 
     flavorDimensions "identity"
     productFlavors {
+        direct {
+            dimension "identity"
+            buildConfigField "String", "TERMUX_APP_PACKAGE", "\"com.termux\""
+        }
         playcompat {
             dimension "identity"
             buildConfigField "String", "TERMUX_APP_PACKAGE", "\"com.termux\""
@@ -71,7 +75,8 @@ android {
     }
 
     variantFilter { variant ->
-        if (variant.flavors.any { it.name == "coexist" } && variant.buildType.name == "demo") {
+        if (variant.buildType.name == "demo" &&
+            variant.flavors.any { it.name == "coexist" || it.name == "direct" }) {
             setIgnore(true)
         }
     }
