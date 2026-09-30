@@ -38,7 +38,7 @@ prepare_guest() {
   guest 'set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y ca-certificates curl git nodejs npm
+apt-get install -y ca-certificates curl git jq nodejs npm
 mkdir -p "$HOME/.local/bin" "$HOME/.opencode/bin"
 touch "$HOME/.profile"
 PATH_LINE='''export PATH="$HOME/.local/bin:$HOME/.opencode/bin:$PATH"'''
@@ -96,6 +96,55 @@ fi
 '
 }
 
+configure_opencode_router() {
+  ensure_host
+  if ! proot-distro login debian -- /bin/true >/dev/null 2>&1; then
+    die "Debian PRoot no está instalado. Ejecutá primero Preparar Debian."
+  fi
+
+  say "Configurando OpenCode para 9router-go / free-best"
+  guest 'set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+if ! command -v jq >/dev/null 2>&1; then
+  apt-get update
+  apt-get install -y jq
+fi
+cfg="$HOME/.config/opencode/opencode.json"
+mkdir -p "$(dirname "$cfg")"
+
+if [ -s "$cfg" ] && ! jq -e . "$cfg" >/dev/null 2>&1; then
+  backup="$cfg.bak-$(date +%Y%m%d-%H%M%S)"
+  cp "$cfg" "$backup"
+  echo "Configuración previa inválida preservada en: $backup"
+  printf "{}\n" > "$cfg"
+fi
+
+[ -s "$cfg" ] || printf "{}\n" > "$cfg"
+tmp="$(mktemp)"
+jq '''
+  .["$schema"] = (.["$schema"] // "https://opencode.ai/config.json")
+  | .provider = (.provider // {})
+  | (.provider["9router"] // {}) as $old
+  | .provider["9router"] = ($old * {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "9router-go Fabric",
+      "options": (($old.options // {}) * {
+        "baseURL": "http://127.0.0.1:20128/v1"
+      }),
+      "models": (($old.models // {}) * {
+        "free-best": {"name":"Best currently discovered free model"},
+        "free": {"name":"Discovered free and free-tier pool"}
+      })
+    })
+  | .model = "9router/free-best"
+''' "$cfg" > "$tmp"
+chmod 600 "$tmp"
+mv "$tmp" "$cfg"
+echo "OpenCode configurado: $cfg"
+echo "Modelo predeterminado: 9router/free-best"
+'
+}
+
 show_status() {
   ensure_host
   say "Estado de coding harnesses en Debian"
@@ -125,6 +174,9 @@ case "$ACTION" in
   opencode)
     install_opencode
     ;;
+  opencode-router)
+    configure_opencode_router
+    ;;
   all)
     install_antigravity
     install_codex
@@ -141,6 +193,7 @@ Uso:
   ai-harnesses.sh antigravity
   ai-harnesses.sh codex
   ai-harnesses.sh opencode
+  ai-harnesses.sh opencode-router
   ai-harnesses.sh all
   ai-harnesses.sh status
 EOF

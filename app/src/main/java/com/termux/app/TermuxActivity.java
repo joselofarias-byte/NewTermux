@@ -1087,6 +1087,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     private void showHarnessInstaller() {
         String[] labels = {
+            "Un toque · dejar todo listo",
             "9router-go · router local  ›",
             "Preparar Debian",
             "Antigravity CLI",
@@ -1096,6 +1097,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             "Verificar instalados"
         };
         String[] actions = {
+            "one-touch",
             null,
             "prepare",
             "antigravity",
@@ -1109,6 +1111,28 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             .setTitle("Harness IA")
             .setItems(labels, (dialog, index) -> {
                 if (index == 0) {
+                    new AlertDialog.Builder(this)
+                        .setTitle("Un toque · dejar todo listo")
+                        .setMessage(
+                            "Instala/actualiza 9router-go, lo inicia, prepara Debian PRoot, "
+                            + "instala/actualiza Antigravity, Codex y OpenCode, configura OpenCode "
+                            + "para usar 9router/free-best y verifica el stack.\n\n"
+                            + "No inicia sesión ni importa credenciales. Se puede ejecutar nuevamente "
+                            + "para reparar o actualizar.")
+                        .setPositiveButton("Ejecutar", (d, w) -> {
+                            TerminalSession session = getCurrentSession();
+                            if (session == null) {
+                                showToast("Abrí una sesión primero", false);
+                                return;
+                            }
+                            com.newtermux.features.BundledInstallerLibrary.runOneTouchAiStack(
+                                this, session);
+                        })
+                        .setNegativeButton("Cancelar", null)
+                        .show();
+                    return;
+                }
+                if (index == 1) {
                     showRouterInstaller();
                     return;
                 }

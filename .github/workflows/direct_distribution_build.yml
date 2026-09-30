@@ -57,6 +57,11 @@ jobs:
           grep -A4 'direct {' termux-shared/build.gradle | grep -q 'TERMUX_APP_PACKAGE.*com.termux'
           ! grep -R --line-number --fixed-strings 'com.android.vending' app terminal-emulator terminal-view termux-shared
 
+      - name: Validate bundled installer scripts
+        run: |
+          set -euo pipefail
+          bash -n app/src/main/assets/newtermux/installers/*.sh
+
       - name: Test and build directDebug ARM64
         env:
           TERMUX_ABIS: arm64-v8a
