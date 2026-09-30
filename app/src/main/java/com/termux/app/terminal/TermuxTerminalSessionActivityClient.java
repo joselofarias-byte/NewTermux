@@ -20,6 +20,7 @@ import com.termux.BuildConfig;
 import com.termux.R;
 import com.newtermux.features.NewTermuxSettings;
 import com.newtermux.features.AutoOutputCapture;
+import com.newtermux.features.TerminalTaskMonitor;
 import com.termux.shared.interact.ShareUtils;
 import com.termux.shared.termux.shell.command.runner.terminal.TermuxSession;
 import com.termux.shared.termux.interact.TextInputDialogUtils;
@@ -128,6 +129,8 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
     @Override
     public void onOutputReceived(@NonNull TerminalSession session, byte[] data, int length) {
         AutoOutputCapture.accept(mActivity, session, data, length);
+        if (TerminalTaskMonitor.accept(session, data, length))
+            mActivity.scheduleTaskMonitorRefresh(session);
     }
 
     @Override
@@ -147,6 +150,8 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
     @Override
     public void onSessionFinished(@NonNull TerminalSession finishedSession) {
         AutoOutputCapture.finish(finishedSession);
+        TerminalTaskMonitor.finish(finishedSession, finishedSession.getExitStatus());
+        mActivity.scheduleTaskMonitorRefresh(finishedSession);
         TermuxService service = mActivity.getTermuxService();
 
         if (service == null || service.wantsToStop()) {
@@ -317,6 +322,7 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
         checkAndScrollToSession(session);
         updateBackgroundColor();
         mActivity.updateSessionTabs();
+        mActivity.refreshTaskMonitor();
     }
 
     void notifyOfSessionChange() {
