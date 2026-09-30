@@ -115,6 +115,14 @@ public final class NativeBackupManager {
 
     private NativeBackupManager() {}
 
+    public static boolean hasPendingRestore(Context context) {
+        return new File(pendingDir(context), "READY").isFile();
+    }
+
+    public static void discardPendingRestore(Context context) {
+        deleteTree(pendingDir(context));
+    }
+
     public static BackupResult createBackup(
             Context context,
             List<NativeStorageManager.Item> selectedItems,
