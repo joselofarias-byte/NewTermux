@@ -326,7 +326,7 @@ public final class TermuxPropertyConstants {
     /** Defines the key for extra keys */
     public static final String KEY_EXTRA_KEYS =  "extra-keys"; // Default: "extra-keys"
     //public static final String DEFAULT_IVALUE_EXTRA_KEYS = "[[ESC, TAB, CTRL, ALT, {key: '-', popup: '|'}, DOWN, UP]]"; // Single row
-    public static final String DEFAULT_IVALUE_EXTRA_KEYS = "[['ESC','/',{key: '-', popup: '|'},'HOME','UP','END','PGUP'], [{key: 'TAB', display: 'TAB'},'CTRL',{key: 'PASTE', display: 'PEG'},'LEFT','DOWN','RIGHT','PGDN',{key: 'ENTER', display: 'ENT'}]]"; // Double row: paste and Enter prioritized for touch/TUI use
+    public static final String DEFAULT_IVALUE_EXTRA_KEYS = "[[{key: 'ESC', display: 'ESC'},{key: 'TAB', display: 'TAB'},{key: 'y', display: 'Y'},{key: 'n', display: 'N'},{key: 'PASTE', display: 'PEGAR'},{key: 'ENTER', display: 'ENTER'}],[{key: 'HOME', display: 'HOME'},{key: 'END', display: 'END'},'LEFT','RIGHT','UP','DOWN']]"; // NewTermux compact 6x2: Y/N answers plus Paste and Enter together on the top row
 
     /** Defines the key for extra keys style */
     public static final String KEY_EXTRA_KEYS_STYLE =  "extra-keys-style"; // Default: "extra-keys-style"

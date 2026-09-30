@@ -376,12 +376,12 @@ public final class ExtraKeysView extends GridLayout {
 
 
     private static final String[][] TBM_COMPACT_LAYOUT = new String[][] {
-        {"ESC", "TAB", "UP", "DOWN", "ENTER"},
-        {"HOME", "END", "LEFT", "RIGHT", "PASTE"}
+        {"ESC", "TAB", "y", "n", "PASTE", "ENTER"},
+        {"HOME", "END", "LEFT", "RIGHT", "UP", "DOWN"}
     };
 
     /**
-     * Keep NewTermux's semantic colors scoped to TBM's exact 5x2 toolbar.
+     * Keep NewTermux's semantic colors scoped to TBM's exact 6x2 toolbar.
      * Custom user extra-key layouts continue to use the selected theme unchanged.
      */
     private boolean isTbmCompactLayout(ExtraKeyButton[][] buttons) {
@@ -405,7 +405,10 @@ public final class ExtraKeysView extends GridLayout {
             case "END":
                 return pressed ? 0xFF235887 : 0xFF173B5E;
             case "ENTER":
+            case "y":
                 return pressed ? 0xFF216A4B : 0xFF174A34;
+            case "n":
+                return pressed ? 0xFF7A2B38 : 0xFF5A2028;
             case "PASTE":
                 return pressed ? 0xFF80601C : 0xFF5C4515;
             case "UP":
@@ -428,7 +431,10 @@ public final class ExtraKeysView extends GridLayout {
             case "END":
                 return 0xFFDCEFFF;
             case "ENTER":
+            case "y":
                 return 0xFFDEFFEA;
+            case "n":
+                return 0xFFFFE3E8;
             case "PASTE":
                 return 0xFFFFF0C7;
             case "UP":

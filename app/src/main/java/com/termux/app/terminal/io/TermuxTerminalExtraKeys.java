@@ -11,6 +11,7 @@ import com.termux.app.TermuxActivity;
 import com.termux.app.terminal.TermuxTerminalSessionActivityClient;
 import com.termux.app.terminal.TermuxTerminalViewClient;
 import com.termux.shared.logger.Logger;
+import com.termux.shared.termux.extrakeys.ExtraKeyButton;
 import com.termux.shared.termux.extrakeys.ExtraKeysConstants;
 import com.termux.shared.termux.extrakeys.ExtraKeysInfo;
 import com.termux.shared.termux.settings.properties.TermuxPropertyConstants;
@@ -29,6 +30,11 @@ public class TermuxTerminalExtraKeys extends TerminalExtraKeys {
     final TermuxTerminalSessionActivityClient mTermuxTerminalSessionActivityClient;
 
     private static final String LOG_TAG = "TermuxTerminalExtraKeys";
+
+    private static final String[][] LEGACY_TBM_COMPACT_LAYOUT = new String[][] {
+        {"ESC", "TAB", "UP", "DOWN", "ENTER"},
+        {"HOME", "END", "LEFT", "RIGHT", "PASTE"}
+    };
 
     public TermuxTerminalExtraKeys(TermuxActivity activity, @NonNull TerminalView terminalView,
                                    TermuxTerminalViewClient termuxTerminalViewClient,
@@ -63,6 +69,17 @@ public class TermuxTerminalExtraKeys extends TerminalExtraKeys {
             }
 
             mExtraKeysInfo = new ExtraKeysInfo(extrakeys, extraKeysStyle, ExtraKeysConstants.CONTROL_CHARS_ALIASES);
+
+            // Existing HONOR 200 installs can already have the previous 5x2 toolbar persisted
+            // in termux.properties. Upgrade only that exact NewTermux layout at runtime so
+            // unrelated custom extra-key layouts remain untouched.
+            if (isLegacyTbmCompactLayout(mExtraKeysInfo)) {
+                mExtraKeysInfo = new ExtraKeysInfo(
+                    TermuxPropertyConstants.DEFAULT_IVALUE_EXTRA_KEYS,
+                    extraKeysStyle,
+                    ExtraKeysConstants.CONTROL_CHARS_ALIASES
+                );
+            }
         } catch (JSONException e) {
             Logger.showToast(mActivity, "Could not load and set the \"" + TermuxPropertyConstants.KEY_EXTRA_KEYS + "\" property from the properties file: " + e.toString(), true);
             Logger.logStackTraceWithMessage(LOG_TAG, "Could not load and set the \"" + TermuxPropertyConstants.KEY_EXTRA_KEYS + "\" property from the properties file: ", e);
@@ -75,6 +92,23 @@ public class TermuxTerminalExtraKeys extends TerminalExtraKeys {
                 mExtraKeysInfo = null;
             }
         }
+    }
+
+    private static boolean isLegacyTbmCompactLayout(ExtraKeysInfo extraKeysInfo) {
+        if (extraKeysInfo == null) return false;
+
+        ExtraKeyButton[][] buttons = extraKeysInfo.getMatrix();
+        if (buttons.length != LEGACY_TBM_COMPACT_LAYOUT.length) return false;
+
+        for (int row = 0; row < LEGACY_TBM_COMPACT_LAYOUT.length; row++) {
+            if (buttons[row].length != LEGACY_TBM_COMPACT_LAYOUT[row].length) return false;
+            for (int col = 0; col < LEGACY_TBM_COMPACT_LAYOUT[row].length; col++) {
+                if (!LEGACY_TBM_COMPACT_LAYOUT[row][col].equals(buttons[row][col].getKey()))
+                    return false;
+            }
+        }
+
+        return true;
     }
 
     public ExtraKeysInfo getExtraKeysInfo() {
