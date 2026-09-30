@@ -94,10 +94,19 @@ android {
         }
     }
 
-    // Fase 3: applicationId belongs on productFlavors, not buildTypes (AGP 8+).
-    // coexist = Play-safe debug identity. playcompat = com.termux (CI must not publish it).
+    // Identity is separate from the distribution channel.
+    // direct = standalone NewTermux delivery while retaining com.termux only
+    //          as a PREFIX/runtime compatibility exception.
+    // playcompat = legacy migration flavor kept temporarily for rollback/testing.
+    // coexist = independent debug identity for PREFIX-aware experiments.
     flavorDimensions "identity"
     productFlavors {
+        direct {
+            dimension "identity"
+            applicationId "com.termux"
+            manifestPlaceholders.TERMUX_PACKAGE_NAME = "com.termux"
+            manifestPlaceholders.TERMUX_APP_NAME = "NewTermux"
+        }
         playcompat {
             dimension "identity"
             applicationId "com.termux"
@@ -139,7 +148,10 @@ android {
     }
 
     variantFilter { variant ->
-        if (variant.flavors.any { it.name == "coexist" } && variant.buildType.name == "demo") {
+        // Keep only the legacy playcompat demo. direct is a real-shell delivery
+        // identity, so a duplicate com.termux.demo variant would add no value.
+        if (variant.buildType.name == "demo" &&
+            variant.flavors.any { it.name == "coexist" || it.name == "direct" }) {
             setIgnore(true)
         }
     }
