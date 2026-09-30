@@ -8,6 +8,9 @@ on:
       - '.github/workflows/direct_distribution_build.yml'
       - 'app/build.gradle'
       - 'app/src/main/java/com/termux/app/TermuxInstaller.java'
+      - 'terminal-emulator/build.gradle'
+      - 'terminal-view/build.gradle'
+      - 'termux-shared/build.gradle'
       - 'termux-shared/src/main/java/com/termux/shared/termux/shell/**'
       - 'docs/NEWTERMUX_STANDALONE_DISTRIBUTION_2026-09-29.md'
   workflow_dispatch:
@@ -34,7 +37,11 @@ jobs:
           set -euo pipefail
           grep -q 'direct {' app/build.gradle
           grep -A8 'direct {' app/build.gradle | grep -q 'applicationId "com.termux"'
-          ! grep -R --line-number --fixed-strings 'com.android.vending' app termux-shared
+          grep -q 'direct {' terminal-emulator/build.gradle
+          grep -q 'direct {' terminal-view/build.gradle
+          grep -q 'direct {' termux-shared/build.gradle
+          grep -A4 'direct {' termux-shared/build.gradle | grep -q 'TERMUX_APP_PACKAGE.*com.termux'
+          ! grep -R --line-number --fixed-strings 'com.android.vending' app terminal-emulator terminal-view termux-shared
 
       - name: Test and build directDebug ARM64
         env:
