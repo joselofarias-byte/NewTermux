@@ -402,8 +402,10 @@ public final class NativeBackupManager {
                             if (existsNoFollow(root)) {
                                 if (!root.renameTo(rollback))
                                     throw new IllegalStateException("No se pudo preservar " + root);
-                                rollbacks.put(root, rollback);
                             }
+                            // Track even a newly-created destination: on failure it must be
+                            // removed instead of leaving a partial PRoot/model tree behind.
+                            rollbacks.put(root, rollback);
                             if (!root.isDirectory() && !root.mkdirs())
                                 throw new IllegalStateException("No se pudo preparar " + root);
                         }
