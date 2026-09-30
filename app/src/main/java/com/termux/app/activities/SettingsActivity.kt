@@ -8,6 +8,9 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
+import android.os.Process
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -62,9 +65,11 @@ import com.newtermux.compose.MenuItemDivider
 import com.newtermux.compose.NewTermuxComposeTheme
 import com.newtermux.compose.outlinedMenuCard
 import com.newtermux.features.NewTermuxSettings
+import com.newtermux.features.NativeBackupManager
 import com.newtermux.features.NativeStorageManager
 import com.newtermux.features.TextExpansionStore
 import com.termux.app.TermuxActivity
+import com.termux.app.TermuxService
 import com.termux.shared.android.PermissionUtils
 import com.termux.app.TermuxInstaller
 import com.termux.app.models.UserAction
@@ -75,6 +80,7 @@ import com.termux.shared.interact.ShareUtils
 import com.termux.shared.logger.Logger
 import com.termux.shared.models.ReportInfo
 import com.termux.shared.termux.TermuxConstants
+import com.termux.shared.termux.TermuxConstants.TERMUX_APP.TERMUX_SERVICE
 import com.termux.shared.termux.TermuxUtils
 import com.termux.shared.termux.settings.preferences.TermuxAPIAppSharedPreferences
 import com.termux.shared.termux.settings.preferences.TermuxAppSharedPreferences
@@ -286,7 +292,7 @@ private fun RootScreen(activity: Activity, onBack: () -> Unit, onNav: (Route) ->
             NavRow(context.getString(R.string.nt_l10n_packages), context.getString(R.string.nt_l10n_packages_summary)) { launch(PackageManagerActivity::class.java) }
             NavRow(context.getString(R.string.nt_l10n_ssh), context.getString(R.string.nt_l10n_ssh_summary)) { launch(SshManagerActivity::class.java) }
             NavRow(context.getString(R.string.nt_l10n_files), context.getString(R.string.nt_l10n_files_summary)) { launch(FileManagerActivity::class.java) }
-            NavRow("Uso de almacenamiento", "Espacio por HOME, paquetes, PRoot, modelos, cachés y respaldos") { onNav(Route.STORAGE) }
+            NavRow("Almacenamiento y respaldo", "Espacio por componente, respaldo y restauración nativos de NewTermux") { onNav(Route.STORAGE) }
             HorizontalDivider()
             NavRow(context.getString(R.string.nt_l10n_backup_restore), context.getString(R.string.nt_l10n_backup_summary)) { onNav(Route.BACKUP) }
             NavRow(context.getString(R.string.nt_l10n_features), context.getString(R.string.nt_l10n_features_summary)) { onNav(Route.FEATURES) }
@@ -311,11 +317,37 @@ private fun RootScreen(activity: Activity, onBack: () -> Unit, onNav: (Route) ->
 @Composable
 private fun StorageScreen(onBack: () -> Unit) {
     val context = LocalContext.current
+    val activity = context as? Activity
     val scope = rememberCoroutineScope()
+
     var snapshot by remember { mutableStateOf<NativeStorageManager.Snapshot?>(null) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var selected by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var initializedSelection by remember { mutableStateOf(false) }
+
+    var busy by remember { mutableStateOf(false) }
+    var operationPhase by remember { mutableStateOf("") }
+    var operationDone by remember { mutableStateOf(0L) }
+    var operationTotal by remember { mutableStateOf(0L) }
+    var resultMessage by remember { mutableStateOf<String?>(null) }
+
+    var restoreUri by remember { mutableStateOf<Uri?>(null) }
+    var restoreInfo by remember { mutableStateOf<NativeBackupManager.BackupInfo?>(null) }
+    var restoreSelected by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var showRestoreDialog by remember { mutableStateOf(false) }
+    var showExitConfirm by remember { mutableStateOf(false) }
+    var pendingRestore by remember {
+        mutableStateOf(NativeBackupManager.hasPendingRestore(context.applicationContext))
+    }
+
+    fun postProgress(phase: String, done: Long, total: Long) {
+        activity?.runOnUiThread {
+            operationPhase = phase
+            operationDone = done.coerceAtLeast(0L)
+            operationTotal = total.coerceAtLeast(0L)
+        }
+    }
 
     fun refresh() {
         loading = true
@@ -328,9 +360,16 @@ private fun StorageScreen(onBack: () -> Unit) {
             }
             result.onSuccess { snap ->
                 snapshot = snap
-                selected = selected.intersect(
-                    snap.items.filter { it.selectable }.map { it.id }.toSet()
-                )
+                val available = snap.items.filter { it.selectable }.map { it.id }.toSet()
+                selected = if (!initializedSelection) {
+                    initializedSelection = true
+                    snap.items
+                        .filter { it.selectable && (it.id == "home" || it.id.startsWith("proot:")) }
+                        .map { it.id }
+                        .toSet()
+                } else {
+                    selected.intersect(available)
+                }
             }.onFailure { t ->
                 error = t.message ?: t.javaClass.simpleName
             }
@@ -338,10 +377,174 @@ private fun StorageScreen(onBack: () -> Unit) {
         }
     }
 
+    fun startBackup() {
+        val snap = snapshot ?: return
+        val chosen = snap.items.filter { it.selectable && it.id in selected }
+        if (chosen.isEmpty()) {
+            error = "Seleccioná al menos un componente para respaldar"
+            return
+        }
+
+        busy = true
+        error = null
+        resultMessage = null
+        operationPhase = "Preparando respaldo"
+        operationDone = 0L
+        operationTotal = chosen.sumOf { it.bytes }
+
+        scope.launch {
+            val result = runCatching {
+                withContext(Dispatchers.IO) {
+                    NativeBackupManager.createBackup(
+                        context.applicationContext,
+                        chosen,
+                        NativeBackupManager.Progress { phase, done, total ->
+                            postProgress(phase, done, total)
+                        },
+                    )
+                }
+            }
+
+            result.onSuccess { backup ->
+                resultMessage =
+                    "Respaldo creado: ${backup.file.name} · " +
+                    NativeStorageManager.formatBytes(backup.archiveBytes) +
+                    "\nDescargas/NewTermux/Backups"
+                Toast.makeText(context, "Respaldo terminado", Toast.LENGTH_SHORT).show()
+                refresh()
+            }.onFailure { t ->
+                error = "No se pudo crear el respaldo: ${t.message ?: t.javaClass.simpleName}"
+            }
+            busy = false
+        }
+    }
+
+    fun inspectRestore(uri: Uri) {
+        busy = true
+        error = null
+        resultMessage = null
+        operationPhase = "Leyendo respaldo"
+        operationDone = 0L
+        operationTotal = 0L
+
+        runCatching {
+            context.contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION,
+            )
+        }
+
+        scope.launch {
+            val result = runCatching {
+                withContext(Dispatchers.IO) {
+                    NativeBackupManager.inspect(context.applicationContext, uri)
+                }
+            }
+            result.onSuccess { info ->
+                restoreUri = uri
+                restoreInfo = info
+                restoreSelected = info.components
+                    .filter { it.restorable }
+                    .map { it.id }
+                    .toSet()
+                showRestoreDialog = true
+            }.onFailure { t ->
+                error = "No se pudo abrir el respaldo: ${t.message ?: t.javaClass.simpleName}"
+            }
+            busy = false
+        }
+    }
+
+    fun prepareRestore() {
+        val uri = restoreUri ?: return
+        val chosen = restoreSelected
+        if (chosen.isEmpty()) return
+
+        showRestoreDialog = false
+        busy = true
+        error = null
+        resultMessage = null
+        operationPhase = "Verificando respaldo"
+        operationDone = 0L
+        operationTotal = restoreInfo?.components
+            ?.filter { it.id in chosen }
+            ?.sumOf { it.bytes } ?: 0L
+
+        scope.launch {
+            val result = runCatching {
+                withContext(Dispatchers.IO) {
+                    NativeBackupManager.prepareRestore(
+                        context.applicationContext,
+                        uri,
+                        chosen,
+                        NativeBackupManager.Progress { phase, done, total ->
+                            postProgress(phase, done, total)
+                        },
+                    )
+                }
+            }
+            result.onSuccess {
+                pendingRestore = true
+                resultMessage =
+                    "Restauración verificada y preparada. No se modificó la sesión actual. " +
+                    "Se aplicará en el próximo arranque completo de NewTermux."
+                Toast.makeText(context, "Restauración preparada", Toast.LENGTH_SHORT).show()
+            }.onFailure { t ->
+                error = "No se pudo preparar la restauración: ${t.message ?: t.javaClass.simpleName}"
+            }
+            busy = false
+        }
+    }
+
+    val restorePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) inspectRestore(uri)
+    }
+
     LaunchedEffect(Unit) { refresh() }
 
-    SettingsScaffold("Uso de almacenamiento", onBack) { mod ->
+    SettingsScaffold("Almacenamiento y respaldo", onBack) { mod ->
         Column(modifier = mod) {
+            if (pendingRestore) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                ) {
+                    Text(
+                        "Restauración preparada",
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        "Está verificada y esperando un arranque limpio. Nada se aplicará sobre una sesión en ejecución.",
+                        modifier = Modifier.padding(top = 4.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Button(
+                            onClick = { showExitConfirm = true },
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Text("Cerrar y aplicar")
+                        }
+                        TextButton(
+                            onClick = {
+                                NativeBackupManager.discardPendingRestore(context.applicationContext)
+                                pendingRestore = false
+                                resultMessage = "Restauración preparada descartada."
+                            },
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Text("Descartar")
+                        }
+                    }
+                }
+                HorizontalDivider()
+            }
+
             val snap = snapshot
             if (snap != null) {
                 val used = (snap.totalBytes - snap.freeBytes).coerceAtLeast(0L)
@@ -360,8 +563,8 @@ private fun StorageScreen(onBack: () -> Unit) {
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                     )
                     Text(
-                        "NewTermux mide cada área sin seguir enlaces simbólicos y evita contar dos veces " +
-                            "PRoot, modelos, cachés o respaldos.",
+                        "Las barras muestran qué ocupa espacio. PRoot, modelos, cachés y respaldos " +
+                            "se separan para no contarlos dos veces.",
                         modifier = Modifier.padding(top = 8.dp),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -380,6 +583,7 @@ private fun StorageScreen(onBack: () -> Unit) {
                         if (item.selectable) {
                             Checkbox(
                                 checked = checked,
+                                enabled = !busy,
                                 onCheckedChange = { value ->
                                     selected = if (value) selected + item.id else selected - item.id
                                 },
@@ -393,7 +597,11 @@ private fun StorageScreen(onBack: () -> Unit) {
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Text(item.label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                                Text(
+                                    item.label,
+                                    modifier = Modifier.weight(1f),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                )
                                 Text(
                                     NativeStorageManager.formatBytes(item.bytes),
                                     style = MaterialTheme.typography.bodyMedium,
@@ -428,22 +636,95 @@ private fun StorageScreen(onBack: () -> Unit) {
                         "Seleccionado: ${NativeStorageManager.formatBytes(selectedBytes)}",
                         style = MaterialTheme.typography.titleMedium,
                     )
-                    Text(
-                        "Las casillas serán las mismas que utilizará el respaldo nativo de NewTermux.",
-                        modifier = Modifier.padding(top = 4.dp),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Button(
-                        onClick = { refresh() },
-                        modifier = Modifier.padding(top = 12.dp),
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Text("Actualizar")
+                        TextButton(
+                            onClick = {
+                                selected = snap.items.filter { it.selectable }.map { it.id }.toSet()
+                            },
+                            enabled = !busy,
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Text("Todo")
+                        }
+                        TextButton(
+                            onClick = { selected = emptySet() },
+                            enabled = !busy,
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Text("Ninguno")
+                        }
+                    }
+
+                    Button(
+                        onClick = { startBackup() },
+                        enabled = selected.isNotEmpty() && !busy,
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    ) {
+                        Text("Respaldar seleccionados")
+                    }
+
+                    Button(
+                        onClick = {
+                            restorePicker.launch(
+                                arrayOf(
+                                    "application/zip",
+                                    "application/octet-stream",
+                                    "application/x-zip-compressed",
+                                    "*/*",
+                                ),
+                            )
+                        },
+                        enabled = !busy,
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    ) {
+                        Text("Restaurar respaldo")
+                    }
+
+                    TextButton(
+                        onClick = { refresh() },
+                        enabled = !busy,
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    ) {
+                        Text("Actualizar tamaños")
                     }
                 }
             }
 
-            if (loading) {
+            if (busy) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                ) {
+                    Text(
+                        operationPhase.ifBlank { "Trabajando…" },
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    if (operationTotal > 0L) {
+                        val fraction =
+                            (operationDone.toDouble() / operationTotal.toDouble())
+                                .coerceIn(0.0, 1.0)
+                                .toFloat()
+                        LinearProgressIndicator(
+                            progress = { fraction },
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        )
+                        Text(
+                            "${NativeStorageManager.formatBytes(operationDone)} / " +
+                                NativeStorageManager.formatBytes(operationTotal),
+                            modifier = Modifier.padding(top = 4.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        LinearProgressIndicator(
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        )
+                    }
+                }
+            } else if (loading) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(20.dp),
                     horizontalArrangement = Arrangement.Center,
@@ -452,14 +733,127 @@ private fun StorageScreen(onBack: () -> Unit) {
                 }
             }
 
+            resultMessage?.let {
+                Text(
+                    it,
+                    modifier = Modifier.padding(16.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+
             error?.let {
                 Text(
-                    "No se pudo medir el almacenamiento: $it",
+                    it,
                     modifier = Modifier.padding(16.dp),
                     color = MaterialTheme.colorScheme.error,
                 )
             }
         }
+    }
+
+    if (showRestoreDialog) {
+        val info = restoreInfo
+        if (info != null) {
+            AlertDialog(
+                onDismissRequest = { if (!busy) showRestoreDialog = false },
+                title = { Text("Restaurar respaldo") },
+                text = {
+                    Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                        Text(
+                            "Respaldo: ${info.createdAt}\n" +
+                                "NewTermux ${info.appVersion} · ${info.abi}",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Text(
+                            "Elegí qué querés restaurar. Primero se verificará y preparará en un área privada; " +
+                                "los datos activos no se modifican todavía.",
+                            modifier = Modifier.padding(top = 8.dp, bottom = 8.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+
+                        info.components.forEach { component ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Checkbox(
+                                    checked = component.id in restoreSelected,
+                                    enabled = component.restorable && !busy,
+                                    onCheckedChange = { value ->
+                                        restoreSelected = if (value)
+                                            restoreSelected + component.id
+                                        else
+                                            restoreSelected - component.id
+                                    },
+                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(component.label)
+                                    Text(
+                                        NativeStorageManager.formatBytes(component.bytes) +
+                                            if (component.restorable) "" else " · sólo respaldo",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = { prepareRestore() },
+                        enabled = restoreSelected.isNotEmpty() && !busy,
+                    ) {
+                        Text("Preparar restauración")
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = { showRestoreDialog = false },
+                        enabled = !busy,
+                    ) {
+                        Text("Cancelar")
+                    }
+                },
+            )
+        }
+    }
+
+    if (showExitConfirm) {
+        AlertDialog(
+            onDismissRequest = { showExitConfirm = false },
+            title = { Text("Cerrar NewTermux y aplicar") },
+            text = {
+                Text(
+                    "Se cerrarán todas las sesiones y procesos de NewTermux. " +
+                        "La restauración preparada se aplicará antes de iniciar shells o PRoot " +
+                        "cuando vuelvas a abrir la aplicación.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showExitConfirm = false
+                        val stop = Intent(context, TermuxService::class.java)
+                            .setAction(TERMUX_SERVICE.ACTION_STOP_SERVICE)
+                        runCatching { context.startService(stop) }
+                        Handler(Looper.getMainLooper()).postDelayed({
+                            runCatching { activity?.finishAndRemoveTask() }
+                            Process.killProcess(Process.myPid())
+                        }, 1000L)
+                    },
+                ) {
+                    Text("Cerrar sesiones y salir")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExitConfirm = false }) {
+                    Text("Cancelar")
+                }
+            },
+        )
     }
 }
 
