@@ -328,4 +328,6 @@
     <string name="error_mediastore_insert">MediaStore insert returned null</string>
     <string name="error_output_stream_open">Could not open output stream</string>
 
+    <string name="title_confirm_close_session">Close session?</string>
+    <string name="msg_confirm_close_session">This session will be closed. Any process currently running in it will be interrupted.</string>
 </resources>
