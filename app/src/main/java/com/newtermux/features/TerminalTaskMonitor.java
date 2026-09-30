@@ -8,12 +8,11 @@ import com.termux.terminal.TerminalSession;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.HashSet;
-import java.util.IdentityHashMap;
+import java.util.WeakHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -159,7 +158,7 @@ public final class TerminalTaskMonitor {
         String previousProcessName;
     }
 
-    private static final Map<TerminalSession, State> STATES = new IdentityHashMap<>();
+    private static final Map<TerminalSession, State> STATES = new WeakHashMap<>();
 
     private static final Pattern ANSI_CSI =
         Pattern.compile("\\u001B\\[[0-?]*[ -/]*[@-~]");
@@ -291,7 +290,7 @@ public final class TerminalTaskMonitor {
         if (line.startsWith("Processing triggers for ")) {
             String item = packageNameAfter(line, "Processing triggers for ");
             return new Analysis("apt", "Instalando paquetes", "Procesando disparadores", item,
-                parsePercent(line), true, false, false);
+                parsePercent(line), false, false, false);
         }
         if (line.startsWith("Get:") || line.startsWith("Fetched ")) {
             return new Analysis("apt", "Instalando paquetes", "Descargando paquetes", "",
@@ -424,6 +423,8 @@ public final class TerminalTaskMonitor {
         state.percent = -1;
         state.completedItems = 0;
         state.totalItems = 0;
+        state.bytes = 0;
+        state.lines = 0;
         state.seenItems.clear();
     }
 
