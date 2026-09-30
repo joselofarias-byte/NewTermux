@@ -176,7 +176,81 @@
         android:layout_height="1dp"
         android:background="@color/nt_divider" />
 
-    <!-- Session pip row (live mini terminal previews) -->
+    <!-- Compact live summary for recognized long-running terminal tasks. -->
+    <LinearLayout
+        android:id="@+id/task_status_panel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:minHeight="58dp"
+        android:orientation="vertical"
+        android:paddingStart="10dp"
+        android:paddingEnd="10dp"
+        android:paddingTop="6dp"
+        android:paddingBottom="5dp"
+        android:background="@color/nt_tab_bg"
+        android:clickable="true"
+        android:focusable="true"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/task_status_dot"
+                android:layout_width="18dp"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:text="●"
+                android:textSize="13sp"
+                android:textColor="@android:color/holo_green_light" />
+
+            <TextView
+                android:id="@+id/task_status_title"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="@color/nt_toolbar_text"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/task_status_elapsed"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:fontFamily="monospace"
+                android:textColor="@color/nt_toolbar_text"
+                android:textSize="11sp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/task_status_detail"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="18dp"
+            android:layout_marginTop="1dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="@color/nt_on_surface"
+            android:textSize="10sp" />
+
+        <ProgressBar
+            android:id="@+id/task_status_progress"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="3dp"
+            android:layout_marginStart="18dp"
+            android:layout_marginTop="4dp"
+            android:max="100"
+            android:progress="0" />
+    </LinearLayout>
+
+        <!-- Session pip row (live mini terminal previews) -->
     <HorizontalScrollView
         android:id="@+id/session_tabs_scroll"
         android:layout_width="match_parent"
