@@ -85,3 +85,30 @@ Antes de retirar `playcompat`:
 - conservar informe y hashes.
 
 No fusionar esta rama a la cadena principal hasta completar CI y prueba física.
+
+
+## Release firmado: secretos requeridos
+
+El workflow manual `direct_release.yml` queda preparado, pero no publica
+nada automáticamente. Para producir un `directRelease` instalable deben
+existir estos secretos del repositorio:
+
+- `NEWTERMUX_RELEASE_KEYSTORE_B64`: keystore estable codificado en base64.
+- `NEWTERMUX_RELEASE_STORE_PASSWORD`: contraseña del keystore.
+- `NEWTERMUX_RELEASE_KEY_ALIAS`: alias de la clave.
+- `NEWTERMUX_RELEASE_KEY_PASSWORD`: contraseña de la clave.
+- `NEWTERMUX_RELEASE_CERT_SHA256`: SHA-256 del certificado esperado.
+
+El keystore privado no debe entrar al repositorio, a artefactos ni a logs.
+El workflow lo reconstruye temporalmente dentro del runner, compila
+`directRelease`, verifica el certificado y elimina el runner al terminar.
+
+`directRelease` falla explícitamente si las credenciales no están presentes;
+no se permite generar silenciosamente una release sin firma.
+
+El `versionCode` independiente se inyecta con `NEWTERMUX_VERSION_CODE`.
+El `versionName` sigue llegando por `TERMUX_APP_VERSION_NAME`.
+
+Hasta completar la prueba física en el HONOR 200, el workflow firmado sólo
+sube un artifact de Actions. No crea GitHub Release ni actualiza ningún APK
+instalado.
