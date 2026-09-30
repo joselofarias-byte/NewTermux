@@ -11,12 +11,6 @@ on:
         description: 'Monotonic Android versionCode'
         required: true
         default: '29'
-  push:
-    branches:
-      - feat/standalone-distribution-20260929
-    paths:
-      - '.github/release-trigger/direct-candidate'
-
 permissions:
   contents: read
 
@@ -27,9 +21,6 @@ concurrency:
 jobs:
   build-signed-arm64:
     runs-on: ubuntu-latest
-    env:
-      RELEASE_VERSION_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.version_name || '1.6.2-direct.1' }}
-      RELEASE_VERSION_CODE: ${{ github.event_name == 'workflow_dispatch' && inputs.version_code || '29' }}
     timeout-minutes: 120
     steps:
       - name: Checkout
@@ -103,9 +94,9 @@ jobs:
           TERMUX_ABIS: arm64-v8a
           TERMUX_PACKAGE_VARIANT: apt-android-7
           TERMUX_SPLIT_APKS_FOR_RELEASE_BUILDS: '1'
-          TERMUX_APP_VERSION_NAME: ${{ env.RELEASE_VERSION_NAME }}
-          NEWTERMUX_VERSION_CODE: ${{ env.RELEASE_VERSION_CODE }}
-          TERMUX_APK_VERSION_TAG: newtermux-${{ env.RELEASE_VERSION_NAME }}-direct
+          TERMUX_APP_VERSION_NAME: ${{ inputs.version_name }}
+          NEWTERMUX_VERSION_CODE: ${{ inputs.version_code }}
+          TERMUX_APK_VERSION_TAG: newtermux-${{ inputs.version_name }}-direct
           NEWTERMUX_ALLOW_UNSIGNED_DIRECT_RELEASE: '1'
         run: |
           set -euo pipefail
@@ -129,7 +120,7 @@ jobs:
           test -f "$META"
 
           ALIGNED="$RUNNER_TEMP/NewTermux-directRelease-arm64-aligned.apk"
-          FINAL="$RUNNER_TEMP/NewTermux-${{ env.RELEASE_VERSION_NAME }}-direct-arm64-v8a.apk"
+          FINAL="$RUNNER_TEMP/NewTermux-${{ inputs.version_name }}-direct-arm64-v8a.apk"
           LINEAGE="$RUNNER_TEMP/newtermux-signing-lineage"
 
           "$ZIPALIGN" -p -f 4 "$UNSIGNED" "$ALIGNED"
@@ -215,7 +206,7 @@ jobs:
       - name: Upload rotated standalone candidate
         uses: actions/upload-artifact@v6
         with:
-          name: NewTermux-directRelease-ARM64-${{ env.RELEASE_VERSION_NAME }}
+          name: NewTermux-directRelease-ARM64-${{ inputs.version_name }}
           if-no-files-found: error
           retention-days: 14
           path: |
