@@ -844,6 +844,19 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             });
         }
 
+        View btnPasteEnter = findViewById(R.id.btn_paste_enter);
+        if (btnPasteEnter != null) {
+            btnPasteEnter.setOnClickListener(v -> {
+                if (mTermuxTerminalExtraKeys != null)
+                    mTermuxTerminalExtraKeys.onTerminalExtraKeyButtonClick(null, "PASTE_ENTER", false, false, false, false);
+            });
+            btnPasteEnter.setOnLongClickListener(v -> {
+                if (mTermuxTerminalExtraKeys != null)
+                    mTermuxTerminalExtraKeys.onTerminalExtraKeyButtonClick(null, "PASTE", false, false, false, false);
+                return true;
+            });
+        }
+
         View btnPackages = findViewById(R.id.btn_packages_menu);
         if (btnPackages != null) {
             btnPackages.setOnClickListener(v -> mPackageManagerMenu.show(v));

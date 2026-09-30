@@ -326,7 +326,7 @@ public final class TermuxPropertyConstants {
     /** Defines the key for extra keys */
     public static final String KEY_EXTRA_KEYS =  "extra-keys"; // Default: "extra-keys"
     //public static final String DEFAULT_IVALUE_EXTRA_KEYS = "[[ESC, TAB, CTRL, ALT, {key: '-', popup: '|'}, DOWN, UP]]"; // Single row
-    public static final String DEFAULT_IVALUE_EXTRA_KEYS = "[[{key: 'ESC', display: 'ESC'},{key: 'TAB', display: 'TAB'},{key: 'y', display: 'Y'},{key: 'n', display: 'N'},{key: 'PASTE_ENTER', display: 'PEGAR↵'},{key: 'ENTER', display: 'ENTER'}],[{key: 'HOME', display: 'HOME'},{key: 'END', display: 'END'},'LEFT','RIGHT','UP','DOWN']]"; // NewTermux compact 6x2: Y/N plus one-tap Paste+Enter; plain Paste remains in the secondary menu
+    public static final String DEFAULT_IVALUE_EXTRA_KEYS = "[[{key: 'ESC', display: 'ESC'},{key: 'y', display: 'Y'},'UP','DOWN','CTRL'],[{key: 'TAB', display: 'TAB'},{key: 'n', display: 'N'},'LEFT','RIGHT',{key: 'ENTER', display: 'ENTER'}]]"; // NewTermux compact 5x2: ESC/Y/UP/DOWN/CTRL over TAB/N/LEFT/RIGHT/ENTER
 
     /** Defines the key for extra keys style */
     public static final String KEY_EXTRA_KEYS_STYLE =  "extra-keys-style"; // Default: "extra-keys-style"

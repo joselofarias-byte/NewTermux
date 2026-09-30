@@ -10,6 +10,7 @@ on:
       - 'app/src/main/java/com/termux/app/TermuxInstaller.java'
       - 'app/src/main/java/com/termux/app/TermuxActivity.java'
       - 'app/src/main/java/com/termux/app/terminal/io/TermuxTerminalExtraKeys.java'
+      - 'app/src/main/res/layout/newtermux_toolbar.xml'
       - 'termux-shared/src/main/java/com/termux/shared/termux/extrakeys/**'
       - 'termux-shared/src/main/java/com/termux/shared/termux/settings/properties/TermuxPropertyConstants.java'
       - 'terminal-emulator/build.gradle'

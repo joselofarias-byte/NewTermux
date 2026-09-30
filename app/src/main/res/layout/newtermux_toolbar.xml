@@ -28,7 +28,24 @@
             android:textStyle="bold"
             android:fontFamily="monospace" />
 
-        <!-- Primary quick action: copy visible terminal output -->
+        <!-- Primary quick action: clear current terminal screen -->
+        <TextView
+            android:id="@+id/btn_clear_terminal"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:layout_marginEnd="4dp"
+            android:background="@drawable/bg_package_button"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:text="@string/newtermux_toolbar_clear"
+            android:textColor="@color/nt_on_surface"
+            android:textSize="11sp"
+            android:textStyle="bold" />
+
+        <!-- Primary quick action: copy full terminal transcript -->
         <TextView
             android:id="@+id/btn_copy_visible"
             android:layout_width="wrap_content"
@@ -44,6 +61,25 @@
             android:textColor="@color/nt_on_surface"
             android:textSize="11sp"
             android:textStyle="bold" />
+
+        <!-- Primary quick action: paste clipboard and immediately send Enter -->
+        <TextView
+            android:id="@+id/btn_paste_enter"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:layout_marginEnd="4dp"
+            android:background="@drawable/bg_package_button"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:text="@string/more_paste"
+            android:textColor="@color/nt_on_surface"
+            android:textSize="11sp"
+            android:textStyle="bold" />
+
+
 
         <!-- Autocorrect Toggle Button -->
         <TextView
@@ -79,22 +115,7 @@
             android:textSize="11sp"
             android:textStyle="bold" />
 
-        <!-- Clear Button -->
-        <TextView
-            android:id="@+id/btn_clear_terminal"
-            android:layout_width="wrap_content"
-            android:layout_height="36dp"
-            android:layout_marginEnd="4dp"
-            android:background="@drawable/bg_package_button"
-            android:clickable="true"
-            android:focusable="true"
-            android:gravity="center"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp"
-            android:text="@string/newtermux_toolbar_clear"
-            android:textColor="@color/nt_on_surface"
-            android:textSize="11sp"
-            android:textStyle="bold" />
+
 
         <!-- Speech-to-Text button -->
         <ImageButton

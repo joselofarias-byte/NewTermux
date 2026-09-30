@@ -42,6 +42,11 @@ public class TermuxTerminalExtraKeys extends TerminalExtraKeys {
         {"HOME", "END", "LEFT", "RIGHT", "UP", "DOWN"}
     };
 
+    private static final String[][] PASTE_ENTER_NEWTERMUX_COMPACT_LAYOUT = new String[][] {
+        {"ESC", "TAB", "y", "n", "PASTE_ENTER", "ENTER"},
+        {"HOME", "END", "LEFT", "RIGHT", "UP", "DOWN"}
+    };
+
     public TermuxTerminalExtraKeys(TermuxActivity activity, @NonNull TerminalView terminalView,
                                    TermuxTerminalViewClient termuxTerminalViewClient,
                                    TermuxTerminalSessionActivityClient termuxTerminalSessionActivityClient) {
@@ -76,7 +81,7 @@ public class TermuxTerminalExtraKeys extends TerminalExtraKeys {
 
             mExtraKeysInfo = new ExtraKeysInfo(extrakeys, extraKeysStyle, ExtraKeysConstants.CONTROL_CHARS_ALIASES);
 
-            // Existing HONOR 200 installs can already have the previous 5x2 toolbar persisted
+            // Existing HONOR 200 installs can already have earlier NewTermux compact toolbars persisted
             // in termux.properties. Upgrade only that exact NewTermux layout at runtime so
             // unrelated custom extra-key layouts remain untouched.
             if (shouldUpgradeNewTermuxCompactLayout(mExtraKeysInfo)) {
@@ -105,7 +110,8 @@ public class TermuxTerminalExtraKeys extends TerminalExtraKeys {
 
         ExtraKeyButton[][] buttons = extraKeysInfo.getMatrix();
         return matchesLayout(buttons, LEGACY_TBM_COMPACT_LAYOUT)
-            || matchesLayout(buttons, PREVIOUS_NEWTERMUX_COMPACT_LAYOUT);
+            || matchesLayout(buttons, PREVIOUS_NEWTERMUX_COMPACT_LAYOUT)
+            || matchesLayout(buttons, PASTE_ENTER_NEWTERMUX_COMPACT_LAYOUT);
     }
 
     private static boolean matchesLayout(ExtraKeyButton[][] buttons, String[][] expected) {
