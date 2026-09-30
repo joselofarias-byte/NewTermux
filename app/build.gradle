@@ -20,6 +20,7 @@ android {
     compileSdkVersion project.properties.compileSdkVersion.toInteger()
     ndkVersion = System.getenv("JITPACK_NDK_VERSION") ?: project.properties.ndkVersion
     def appVersionName = System.getenv("TERMUX_APP_VERSION_NAME") ?: ""
+    def appVersionCode = (System.getenv("NEWTERMUX_VERSION_CODE") ?: "28").toInteger()
     def apkVersionTag = System.getenv("TERMUX_APK_VERSION_TAG") ?: ""
     def splitAPKsForDebugBuilds = System.getenv("TERMUX_SPLIT_APKS_FOR_DEBUG_BUILDS") ?: "1"
     def splitAPKsForReleaseBuilds = System.getenv("TERMUX_SPLIT_APKS_FOR_RELEASE_BUILDS") ?: "0" // F-Droid does not support split APKs #1904
@@ -49,7 +50,7 @@ android {
     defaultConfig {
         minSdkVersion project.properties.minSdkVersion.toInteger()
         targetSdkVersion project.properties.targetSdkVersion.toInteger()
-        versionCode 28
+        versionCode appVersionCode
         versionName "1.6.2"
 
         if (appVersionName) versionName = appVersionName
@@ -94,10 +95,19 @@ android {
         }
     }
 
-    // Fase 3: applicationId belongs on productFlavors, not buildTypes (AGP 8+).
-    // coexist = Play-safe debug identity. playcompat = com.termux (CI must not publish it).
+    // Identity is separate from the distribution channel.
+    // direct = standalone NewTermux delivery while retaining com.termux only
+    //          as a PREFIX/runtime compatibility exception.
+    // playcompat = legacy migration flavor kept temporarily for rollback/testing.
+    // coexist = independent debug identity for PREFIX-aware experiments.
     flavorDimensions "identity"
     productFlavors {
+        direct {
+            dimension "identity"
+            applicationId "com.termux"
+            manifestPlaceholders.TERMUX_PACKAGE_NAME = "com.termux"
+            manifestPlaceholders.TERMUX_APP_NAME = "NewTermux"
+        }
         playcompat {
             dimension "identity"
             applicationId "com.termux"
@@ -139,7 +149,10 @@ android {
     }
 
     variantFilter { variant ->
-        if (variant.flavors.any { it.name == "coexist" } && variant.buildType.name == "demo") {
+        // Keep only the legacy playcompat demo. direct is a real-shell delivery
+        // identity, so a duplicate com.termux.demo variant would add no value.
+        if (variant.buildType.name == "demo" &&
+            variant.flavors.any { it.name == "coexist" || it.name == "direct" }) {
             setIgnore(true)
         }
     }
@@ -196,6 +209,21 @@ android {
     buildFeatures {
         buildConfig true
         compose true
+    }
+}
+
+def allowUnsignedDirectReleaseForPostSigning =
+    System.getenv("NEWTERMUX_ALLOW_UNSIGNED_DIRECT_RELEASE") == "1"
+
+tasks.register("ensureDirectReleasePostSigningPipeline") {
+    doLast {
+        if (!allowUnsignedDirectReleaseForPostSigning) {
+            throw new GradleException(
+                "directRelease must be produced by the NewTermux post-signing pipeline. " +
+                "Set NEWTERMUX_ALLOW_UNSIGNED_DIRECT_RELEASE=1 only when the APK will be " +
+                "immediately signed with the approved certificate lineage."
+            )
+        }
     }
 }
 
@@ -374,8 +402,22 @@ task downloadBootstraps() {
 }
 
 afterEvaluate {
+    // Native compilation embeds bootstrap-<arch>.zip from termux-bootstrap-zip.S.
+    // directRelease may reach the NDK before javaCompile, so preparing the
+    // bootstraps only as a javaCompile dependency is too late on clean runners.
+    tasks.named("preBuild").configure {
+        dependsOn tasks.named("downloadBootstraps")
+    }
+
     android.applicationVariants.all { variant ->
         variant.javaCompileProvider.get().dependsOn(downloadBootstraps)
+    }
+    tasks.matching {
+        it.name == "assembleDirectRelease" ||
+        it.name == "bundleDirectRelease" ||
+        it.name == "packageDirectRelease"
+    }.configureEach {
+        dependsOn tasks.named("ensureDirectReleasePostSigningPipeline")
     }
 }
 

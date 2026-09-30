@@ -835,9 +835,24 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         View btnCopyVisible = findViewById(R.id.btn_copy_visible);
         if (btnCopyVisible != null) {
-            btnCopyVisible.setOnClickListener(v -> copyVisibleTerminalOutput());
+            // Primary action: copy everything in the terminal transcript in one tap.
+            btnCopyVisible.setOnClickListener(v -> copyFullTerminalTranscript());
+            // Secondary gesture retained for the rarer "visible screen only" case.
             btnCopyVisible.setOnLongClickListener(v -> {
-                copyFullTerminalTranscript();
+                copyVisibleTerminalOutput();
+                return true;
+            });
+        }
+
+        View btnPasteEnter = findViewById(R.id.btn_paste_enter);
+        if (btnPasteEnter != null) {
+            btnPasteEnter.setOnClickListener(v -> {
+                if (mTermuxTerminalExtraKeys != null)
+                    mTermuxTerminalExtraKeys.onTerminalExtraKeyButtonClick(null, "PASTE_ENTER", false, false, false, false);
+            });
+            btnPasteEnter.setOnLongClickListener(v -> {
+                if (mTermuxTerminalExtraKeys != null)
+                    mTermuxTerminalExtraKeys.onTerminalExtraKeyButtonClick(null, "PASTE", false, false, false, false);
                 return true;
             });
         }
@@ -860,6 +875,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 }
             });
         }
+
+        com.newtermux.features.ControlAppearanceDialog.applyToolbarColors(
+            this, btnClear, btnCopyVisible, btnPasteEnter);
 
         View btnMore = findViewById(R.id.btn_more_actions);
         if (btnMore != null) {
@@ -1001,10 +1019,17 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         items.add("Mis scripts");
         actions.add(() -> com.newtermux.features.ScriptLibrary.show(this, getCurrentSession()));
 
+        items.add("Personalizar controles");
+        actions.add(() -> com.newtermux.features.ControlAppearanceDialog.show(this, this::recreate));
+
+        items.add("TBM · respaldo y restauración  ›");
+        actions.add(this::showTbmMenu);
+
         items.add("Instalar componentes y PRoot");
         actions.add(this::showComponentInstaller);
 
-        items.add("Guardado automático de salidas");
+        items.add("Guardar salidas largas · "
+            + (NewTermuxSettings.isAutoSaveOutputEnabled(this) ? "Sí" : "No"));
         actions.add(this::configureAutoOutput);
 
         com.newtermux.features.NtPopupMenu.showAsDropDown(
@@ -1019,43 +1044,224 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
     private void showComponentInstaller() {
-        String[] labels = {"PRoot y distribuciones", "Debian en PRoot", "Git y SSH", "Python", "Node.js", "Go", "Herramientas de compilación"};
-        String[] commands = {"pkg install proot-distro", "proot-distro install debian", "pkg install git openssh", "pkg install python", "pkg install nodejs", "pkg install golang", "pkg install clang make cmake"};
-        new AlertDialog.Builder(this).setTitle("Instalar componentes")
-            .setItems(labels, (dialog, index) -> new AlertDialog.Builder(this)
-                .setTitle(labels[index]).setMessage("Ejecutar en la sesión actual:\n" + commands[index])
-                .setPositiveButton("Ejecutar", (d, w) -> {
-                    TerminalSession session = getCurrentSession();
-                    if (session != null) session.write(commands[index] + "\n");
-                    else showToast("Abrí una sesión primero", false);
-                }).setNegativeButton("Cancelar", null).show())
-            .setNegativeButton("Cerrar", null).show();
+        String[] labels = {
+            "PRoot y distribuciones",
+            "Debian en PRoot",
+            "Git y SSH",
+            "Python",
+            "Node.js",
+            "Go",
+            "Herramientas de compilación",
+            "Harness IA  ›"
+        };
+        String[] commands = {
+            "pkg install proot-distro",
+            "proot-distro install debian",
+            "pkg install git openssh",
+            "pkg install python",
+            "pkg install nodejs",
+            "pkg install golang",
+            "pkg install clang make cmake",
+            null
+        };
+
+        new AlertDialog.Builder(this)
+            .setTitle("Instalar componentes")
+            .setItems(labels, (dialog, index) -> {
+                if (index == labels.length - 1) {
+                    showHarnessInstaller();
+                    return;
+                }
+
+                String command = commands[index];
+                new AlertDialog.Builder(this)
+                    .setTitle(labels[index])
+                    .setMessage("Ejecutar en la sesión actual:\n" + command)
+                    .setPositiveButton("Ejecutar", (d, w) -> {
+                        TerminalSession session = getCurrentSession();
+                        if (session != null) session.write(command + "\n");
+                        else showToast("Abrí una sesión primero", false);
+                    })
+                    .setNegativeButton("Cancelar", null)
+                    .show();
+            })
+            .setNegativeButton("Cerrar", null)
+            .show();
+    }
+
+    private void showHarnessInstaller() {
+        String[] labels = {
+            "Un toque · preparar NewTermux",
+            "9router-go · router local  ›",
+            "Preparar Debian",
+            "Antigravity CLI",
+            "Codex CLI",
+            "OpenCode",
+            "Instalar los tres",
+            "Verificar instalados"
+        };
+        String[] actions = {
+            "one-touch",
+            null,
+            "prepare",
+            "antigravity",
+            "codex",
+            "opencode",
+            "all",
+            "status"
+        };
+
+        new AlertDialog.Builder(this)
+            .setTitle("Harness IA")
+            .setItems(labels, (dialog, index) -> {
+                if (index == 0) {
+                    new AlertDialog.Builder(this)
+                        .setTitle("Un toque · preparar NewTermux")
+                        .setMessage(
+                            "Instala/actualiza 9router-go, lo inicia, prepara Debian PRoot, "
+                            + "instala/actualiza Antigravity, Codex y OpenCode, configura OpenCode "
+                            + "para usar 9router/free-best y comprueba si TBM ya tiene una release "
+                            + "estable habilitada para NewTermux.\n\n"
+                            + "TBM sólo se instala si pasó su gate explícito; mientras tanto se omite "
+                            + "sin fallar. No inicia sesión ni importa credenciales.")
+                        .setPositiveButton("Ejecutar", (d, w) -> {
+                            TerminalSession session = getCurrentSession();
+                            if (session == null) {
+                                showToast("Abrí una sesión primero", false);
+                                return;
+                            }
+                            com.newtermux.features.BundledInstallerLibrary.runOneTouchAiStack(
+                                this, session);
+                        })
+                        .setNegativeButton("Cancelar", null)
+                        .show();
+                    return;
+                }
+                if (index == 1) {
+                    showRouterInstaller();
+                    return;
+                }
+
+                new AlertDialog.Builder(this)
+                    .setTitle(labels[index])
+                    .setMessage(
+                        "Se ejecutará dentro de Debian PRoot usando el instalador incluido con NewTermux. "
+                        + "Las credenciales no se incluyen ni se guardan por NewTermux.\n\n"
+                        + "Acción: " + actions[index])
+                    .setPositiveButton("Ejecutar", (d, w) -> {
+                        TerminalSession session = getCurrentSession();
+                        if (session == null) {
+                            showToast("Abrí una sesión primero", false);
+                            return;
+                        }
+                        com.newtermux.features.BundledInstallerLibrary.runAiHarnessInstaller(
+                            this, session, actions[index]);
+                    })
+                    .setNegativeButton("Cancelar", null)
+                    .show();
+            })
+            .setNegativeButton("Volver", (d, w) -> showComponentInstaller())
+            .show();
+    }
+
+    private void showRouterInstaller() {
+        String[] labels = {
+            "Instalar / actualizar 9router-go",
+            "Iniciar 9router-go",
+            "Estado de 9router-go",
+            "Detener 9router-go"
+        };
+        String[] actions = {
+            "install",
+            "start",
+            "status",
+            "stop"
+        };
+
+        new AlertDialog.Builder(this)
+            .setTitle("9router-go · router local")
+            .setItems(labels, (dialog, index) ->
+                new AlertDialog.Builder(this)
+                    .setTitle(labels[index])
+                    .setMessage(
+                        "Nuestro fork joselofarias-byte/9router-go se administra en una copia separada de NewTermux.\n"
+                        + "Puerto local predeterminado: 20128\n"
+                        + "Rutas gratuitas: free-best / free\n\n"
+                        + "Acción: " + actions[index])
+                    .setPositiveButton("Ejecutar", (d, w) -> {
+                        TerminalSession session = getCurrentSession();
+                        if (session == null) {
+                            showToast("Abrí una sesión primero", false);
+                            return;
+                        }
+                        com.newtermux.features.BundledInstallerLibrary.runNineRouterInstaller(
+                            this, session, actions[index]);
+                    })
+                    .setNegativeButton("Cancelar", null)
+                    .show()
+            )
+            .setNegativeButton("Volver", (d, w) -> showHarnessInstaller())
+            .show();
+    }
+
+    private void showTbmMenu() {
+        String[] labels = {
+            "Estado y gate de integración",
+            "Instalar / actualizar TBM validado",
+            "Abrir panel TBM",
+            "Verificar instalación"
+        };
+        String[] actions = {
+            "status",
+            "install",
+            "panel",
+            "verify"
+        };
+
+        new AlertDialog.Builder(this)
+            .setTitle("TBM · respaldo y restauración")
+            .setItems(labels, (dialog, index) ->
+                new AlertDialog.Builder(this)
+                    .setTitle(labels[index])
+                    .setMessage(
+                        "NewTermux sólo instala TBM desde una release estable del repositorio "
+                        + "joselofarias-byte/TBM-Recovery-Master que declare NEWTERMUX_READY=1. "
+                        + "Las prereleases actuales no pasan este gate.\n\n"
+                        + "Backup y restore nunca se ejecutan automáticamente; se eligen dentro del panel TBM.")
+                    .setPositiveButton("Ejecutar", (d, w) -> {
+                        TerminalSession session = getCurrentSession();
+                        if (session == null) {
+                            showToast("Abrí una sesión primero", false);
+                            return;
+                        }
+                        com.newtermux.features.BundledInstallerLibrary.runTbmInstaller(
+                            this, session, actions[index]);
+                    })
+                    .setNegativeButton("Cancelar", null)
+                    .show()
+            )
+            .setNegativeButton("Cerrar", null)
+            .show();
     }
 
     private void configureAutoOutput() {
-        EditText input = new EditText(this);
-        input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
-        input.setSingleLine(true);
-        int current = NewTermuxSettings.getAutoSaveLines(this);
-        input.setText(String.valueOf(current));
-        input.setSelectAllOnFocus(true);
-        int pad = (int) (24 * getResources().getDisplayMetrics().density);
-        LinearLayout box = new LinearLayout(this);
-        box.setPadding(pad, 0, pad, 0);
-        box.addView(input);
-        AlertDialog dialog = new AlertDialog.Builder(this).setTitle("Guardar salidas largas")
-            .setMessage("Cantidad de líneas: 0 desactiva. Cuando una sesión supera el umbral, guarda su salida en Descargas/NewTermux como .log.gz. Puede incluir información privada. Máximo 32 MiB de salida por sesión.")
-            .setView(box).setPositiveButton("Guardar", null)
-            .setNegativeButton("Cancelar", null).create();
-        dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-            try {
-                int value = Integer.parseInt(input.getText().toString());
-                if (value < 0 || value > 1000000) throw new NumberFormatException();
-                NewTermuxSettings.setAutoSaveLines(this, value);
-                dialog.dismiss();
-            } catch (NumberFormatException e) { input.setError("Ingresá entre 0 y 1.000.000"); }
-        }));
-        dialog.show();
+        boolean enabled = NewTermuxSettings.isAutoSaveOutputEnabled(this);
+        String message = enabled
+            ? "Ahora está activado. Las salidas largas se guardan comprimidas en Descargas/NewTermux como .log.gz."
+            : "Las salidas largas pueden guardarse automáticamente, comprimidas, en Descargas/NewTermux como .log.gz.";
+
+        new AlertDialog.Builder(this)
+            .setTitle("Guardar salidas largas")
+            .setMessage(message)
+            .setItems(new String[]{"Guardar", "No guardar"}, (dialog, which) -> {
+                boolean save = which == 0;
+                NewTermuxSettings.setAutoSaveOutputEnabled(this, save);
+                showToast(save
+                    ? "Guardado automático activado"
+                    : "Guardado automático desactivado", false);
+            })
+            .setNegativeButton("Cancelar", null)
+            .show();
     }
 
     private void toggleToolbarAutocorrect() {
@@ -1147,11 +1353,24 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                     if (mTermuxTerminalSessionActivityClient != null)
                         mTermuxTerminalSessionActivityClient.renameSession(session);
                 } else {
-                    session.finishIfRunning();
-                    if (mTermuxTerminalSessionActivityClient != null)
-                        mTermuxTerminalSessionActivityClient.removeFinishedSession(session);
+                    confirmCloseSession(session);
                 }
             });
+    }
+
+    private void confirmCloseSession(TerminalSession session) {
+        if (session == null) return;
+
+        new AlertDialog.Builder(this)
+            .setTitle(R.string.title_confirm_close_session)
+            .setMessage(R.string.msg_confirm_close_session)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.action_close_session, (dialog, which) -> {
+                session.finishIfRunning();
+                if (mTermuxTerminalSessionActivityClient != null)
+                    mTermuxTerminalSessionActivityClient.removeFinishedSession(session);
+            })
+            .show();
     }
 
     /**
