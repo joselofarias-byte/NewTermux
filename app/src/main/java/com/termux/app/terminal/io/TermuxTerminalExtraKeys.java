@@ -11,6 +11,7 @@ import com.termux.app.TermuxActivity;
 import com.termux.app.terminal.TermuxTerminalSessionActivityClient;
 import com.termux.app.terminal.TermuxTerminalViewClient;
 import com.termux.shared.logger.Logger;
+import com.termux.shared.interact.ShareUtils;
 import com.termux.shared.termux.extrakeys.ExtraKeyButton;
 import com.termux.shared.termux.extrakeys.ExtraKeysConstants;
 import com.termux.shared.termux.extrakeys.ExtraKeysInfo;
@@ -34,6 +35,11 @@ public class TermuxTerminalExtraKeys extends TerminalExtraKeys {
     private static final String[][] LEGACY_TBM_COMPACT_LAYOUT = new String[][] {
         {"ESC", "TAB", "UP", "DOWN", "ENTER"},
         {"HOME", "END", "LEFT", "RIGHT", "PASTE"}
+    };
+
+    private static final String[][] PREVIOUS_NEWTERMUX_COMPACT_LAYOUT = new String[][] {
+        {"ESC", "TAB", "y", "n", "PASTE", "ENTER"},
+        {"HOME", "END", "LEFT", "RIGHT", "UP", "DOWN"}
     };
 
     public TermuxTerminalExtraKeys(TermuxActivity activity, @NonNull TerminalView terminalView,
@@ -73,7 +79,7 @@ public class TermuxTerminalExtraKeys extends TerminalExtraKeys {
             // Existing HONOR 200 installs can already have the previous 5x2 toolbar persisted
             // in termux.properties. Upgrade only that exact NewTermux layout at runtime so
             // unrelated custom extra-key layouts remain untouched.
-            if (isLegacyTbmCompactLayout(mExtraKeysInfo)) {
+            if (shouldUpgradeNewTermuxCompactLayout(mExtraKeysInfo)) {
                 mExtraKeysInfo = new ExtraKeysInfo(
                     TermuxPropertyConstants.DEFAULT_IVALUE_EXTRA_KEYS,
                     extraKeysStyle,
@@ -94,16 +100,21 @@ public class TermuxTerminalExtraKeys extends TerminalExtraKeys {
         }
     }
 
-    private static boolean isLegacyTbmCompactLayout(ExtraKeysInfo extraKeysInfo) {
+    private static boolean shouldUpgradeNewTermuxCompactLayout(ExtraKeysInfo extraKeysInfo) {
         if (extraKeysInfo == null) return false;
 
         ExtraKeyButton[][] buttons = extraKeysInfo.getMatrix();
-        if (buttons.length != LEGACY_TBM_COMPACT_LAYOUT.length) return false;
+        return matchesLayout(buttons, LEGACY_TBM_COMPACT_LAYOUT)
+            || matchesLayout(buttons, PREVIOUS_NEWTERMUX_COMPACT_LAYOUT);
+    }
 
-        for (int row = 0; row < LEGACY_TBM_COMPACT_LAYOUT.length; row++) {
-            if (buttons[row].length != LEGACY_TBM_COMPACT_LAYOUT[row].length) return false;
-            for (int col = 0; col < LEGACY_TBM_COMPACT_LAYOUT[row].length; col++) {
-                if (!LEGACY_TBM_COMPACT_LAYOUT[row][col].equals(buttons[row][col].getKey()))
+    private static boolean matchesLayout(ExtraKeyButton[][] buttons, String[][] expected) {
+        if (buttons.length != expected.length) return false;
+
+        for (int row = 0; row < expected.length; row++) {
+            if (buttons[row].length != expected[row].length) return false;
+            for (int col = 0; col < expected[row].length; col++) {
+                if (!expected[row][col].equals(buttons[row][col].getKey()))
                     return false;
             }
         }
@@ -135,6 +146,15 @@ public class TermuxTerminalExtraKeys extends TerminalExtraKeys {
                 drawerLayout.closeDrawer(Gravity.LEFT);
             else
                 drawerLayout.openDrawer(Gravity.LEFT);
+        } else if ("PASTE_ENTER".equals(key)) {
+            TerminalView terminalView = mTermuxTerminalViewClient.getActivity().getTerminalView();
+            com.termux.terminal.TerminalSession session =
+                mTermuxTerminalViewClient.getActivity().getCurrentSession();
+            String text = ShareUtils.getTextStringFromClipboardIfSet(mActivity, true);
+            if (text != null && terminalView != null && terminalView.mEmulator != null && session != null) {
+                terminalView.mEmulator.paste(text);
+                super.onTerminalExtraKeyButtonClick(view, "ENTER", false, false, false, false);
+            }
         } else if ("PASTE".equals(key)) {
             if(mTermuxTerminalSessionActivityClient != null)
                 mTermuxTerminalSessionActivityClient.onPasteTextFromClipboard(null);

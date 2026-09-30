@@ -376,7 +376,7 @@ public final class ExtraKeysView extends GridLayout {
 
 
     private static final String[][] TBM_COMPACT_LAYOUT = new String[][] {
-        {"ESC", "TAB", "y", "n", "PASTE", "ENTER"},
+        {"ESC", "TAB", "y", "n", "PASTE_ENTER", "ENTER"},
         {"HOME", "END", "LEFT", "RIGHT", "UP", "DOWN"}
     };
 
@@ -410,6 +410,7 @@ public final class ExtraKeysView extends GridLayout {
             case "n":
                 return pressed ? 0xFF7A2B38 : 0xFF5A2028;
             case "PASTE":
+            case "PASTE_ENTER":
                 return pressed ? 0xFF80601C : 0xFF5C4515;
             case "UP":
             case "DOWN":
@@ -436,6 +437,7 @@ public final class ExtraKeysView extends GridLayout {
             case "n":
                 return 0xFFFFE3E8;
             case "PASTE":
+            case "PASTE_ENTER":
                 return 0xFFFFF0C7;
             case "UP":
             case "DOWN":

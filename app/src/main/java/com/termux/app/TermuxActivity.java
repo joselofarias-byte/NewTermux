@@ -835,9 +835,11 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         View btnCopyVisible = findViewById(R.id.btn_copy_visible);
         if (btnCopyVisible != null) {
-            btnCopyVisible.setOnClickListener(v -> copyVisibleTerminalOutput());
+            // Primary action: copy everything in the terminal transcript in one tap.
+            btnCopyVisible.setOnClickListener(v -> copyFullTerminalTranscript());
+            // Secondary gesture retained for the rarer "visible screen only" case.
             btnCopyVisible.setOnLongClickListener(v -> {
-                copyFullTerminalTranscript();
+                copyVisibleTerminalOutput();
                 return true;
             });
         }
