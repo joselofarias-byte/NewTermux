@@ -402,6 +402,13 @@ task downloadBootstraps() {
 }
 
 afterEvaluate {
+    // Native compilation embeds bootstrap-<arch>.zip from termux-bootstrap-zip.S.
+    // directRelease may reach the NDK before javaCompile, so preparing the
+    // bootstraps only as a javaCompile dependency is too late on clean runners.
+    tasks.named("preBuild").configure {
+        dependsOn tasks.named("downloadBootstraps")
+    }
+
     android.applicationVariants.all { variant ->
         variant.javaCompileProvider.get().dependsOn(downloadBootstraps)
     }
