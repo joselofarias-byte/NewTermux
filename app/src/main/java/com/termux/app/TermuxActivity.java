@@ -1022,6 +1022,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         items.add("Personalizar controles");
         actions.add(() -> com.newtermux.features.ControlAppearanceDialog.show(this, this::recreate));
 
+        items.add("TBM · respaldo y restauración  ›");
+        actions.add(this::showTbmMenu);
+
         items.add("Instalar componentes y PRoot");
         actions.add(this::showComponentInstaller);
 
@@ -1087,7 +1090,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     private void showHarnessInstaller() {
         String[] labels = {
-            "Un toque · dejar todo listo",
+            "Un toque · preparar NewTermux",
             "9router-go · router local  ›",
             "Preparar Debian",
             "Antigravity CLI",
@@ -1112,13 +1115,14 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             .setItems(labels, (dialog, index) -> {
                 if (index == 0) {
                     new AlertDialog.Builder(this)
-                        .setTitle("Un toque · dejar todo listo")
+                        .setTitle("Un toque · preparar NewTermux")
                         .setMessage(
                             "Instala/actualiza 9router-go, lo inicia, prepara Debian PRoot, "
                             + "instala/actualiza Antigravity, Codex y OpenCode, configura OpenCode "
-                            + "para usar 9router/free-best y verifica el stack.\n\n"
-                            + "No inicia sesión ni importa credenciales. Se puede ejecutar nuevamente "
-                            + "para reparar o actualizar.")
+                            + "para usar 9router/free-best y comprueba si TBM ya tiene una release "
+                            + "estable habilitada para NewTermux.\n\n"
+                            + "TBM sólo se instala si pasó su gate explícito; mientras tanto se omite "
+                            + "sin fallar. No inicia sesión ni importa credenciales.")
                         .setPositiveButton("Ejecutar", (d, w) -> {
                             TerminalSession session = getCurrentSession();
                             if (session == null) {
@@ -1196,6 +1200,46 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                     .show()
             )
             .setNegativeButton("Volver", (d, w) -> showHarnessInstaller())
+            .show();
+    }
+
+    private void showTbmMenu() {
+        String[] labels = {
+            "Estado y gate de integración",
+            "Instalar / actualizar TBM validado",
+            "Abrir panel TBM",
+            "Verificar instalación"
+        };
+        String[] actions = {
+            "status",
+            "install",
+            "panel",
+            "verify"
+        };
+
+        new AlertDialog.Builder(this)
+            .setTitle("TBM · respaldo y restauración")
+            .setItems(labels, (dialog, index) ->
+                new AlertDialog.Builder(this)
+                    .setTitle(labels[index])
+                    .setMessage(
+                        "NewTermux sólo instala TBM desde una release estable del repositorio "
+                        + "joselofarias-byte/TBM-Recovery-Master que declare NEWTERMUX_READY=1. "
+                        + "Las prereleases actuales no pasan este gate.\n\n"
+                        + "Backup y restore nunca se ejecutan automáticamente; se eligen dentro del panel TBM.")
+                    .setPositiveButton("Ejecutar", (d, w) -> {
+                        TerminalSession session = getCurrentSession();
+                        if (session == null) {
+                            showToast("Abrí una sesión primero", false);
+                            return;
+                        }
+                        com.newtermux.features.BundledInstallerLibrary.runTbmInstaller(
+                            this, session, actions[index]);
+                    })
+                    .setNegativeButton("Cancelar", null)
+                    .show()
+            )
+            .setNegativeButton("Cerrar", null)
             .show();
     }
 

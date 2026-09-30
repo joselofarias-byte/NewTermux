@@ -29,6 +29,10 @@ public final class BundledInstallerLibrary {
         "newtermux/installers/one-touch-ai-stack.sh";
     private static final String ONE_TOUCH_FILENAME =
         "one-touch-ai-stack.sh";
+    private static final String TBM_ASSET =
+        "newtermux/installers/tbm-integration.sh";
+    private static final String TBM_FILENAME =
+        "tbm-integration.sh";
 
     private static File installerDirectory(Context context) {
         File dir = new File(TermuxConstants.TERMUX_HOME_DIR, ".newtermux/installers");
@@ -70,9 +74,24 @@ public final class BundledInstallerLibrary {
 
         if (materialize(context, NINE_ROUTER_ASSET, NINE_ROUTER_FILENAME) == null) return;
         if (materialize(context, AI_HARNESS_ASSET, AI_HARNESS_FILENAME) == null) return;
+        if (materialize(context, TBM_ASSET, TBM_FILENAME) == null) return;
         if (materialize(context, ONE_TOUCH_ASSET, ONE_TOUCH_FILENAME) == null) return;
 
         session.write("bash \"$HOME/.newtermux/installers/" + ONE_TOUCH_FILENAME + "\"\n");
+    }
+
+    public static void runTbmInstaller(Context context, TerminalSession session, String action) {
+        if (session == null) {
+            Toast.makeText(context, "Abrí una sesión primero", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (action == null || !action.matches("status|install|panel|verify")) {
+            Toast.makeText(context, "Acción de TBM no válida", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        if (materialize(context, TBM_ASSET, TBM_FILENAME) == null) return;
+        session.write("bash \"$HOME/.newtermux/installers/" + TBM_FILENAME + "\" " + action + "\n");
     }
 
     public static void runNineRouterInstaller(Context context, TerminalSession session, String action) {
