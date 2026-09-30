@@ -119,7 +119,7 @@ public final class NativeStorageManager {
             long bytes = sizeTree(p.root, Collections.emptySet(), globalSeen);
             items.add(new Item(
                 "proot:" + p.name, "PRoot · " + p.name, p.root.getAbsolutePath(), bytes,
-                true, true, "Sistema Linux aislado administrado por proot-distro."
+                true, true, "Contenedor completo administrado por proot-distro (rootfs y metadata)."
             ));
         }
 
@@ -183,9 +183,11 @@ public final class NativeStorageManager {
         File[] current = safeList(containers);
         if (current != null) {
             for (File c : current) {
-                File root = new File(c, "rootfs");
-                if (isDirectoryNoFollow(root) && names.add(c.getName())) {
-                    out.add(new ProotRoot(c.getName(), root));
+                File rootfs = new File(c, "rootfs");
+                if (isDirectoryNoFollow(c) && isDirectoryNoFollow(rootfs) && names.add(c.getName())) {
+                    // Keep the complete container so proot-distro metadata beside rootfs is
+                    // measured, backed up and restored together with the filesystem.
+                    out.add(new ProotRoot(c.getName(), c));
                 }
             }
         }
