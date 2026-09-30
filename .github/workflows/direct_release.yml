@@ -11,6 +11,12 @@ on:
         description: 'Monotonic Android versionCode'
         required: true
         default: '29'
+  push:
+    branches:
+      - feat/standalone-distribution-20260929
+    paths:
+      - '.github/release-trigger/direct-candidate'
+
 permissions:
   contents: read
 
@@ -21,6 +27,9 @@ concurrency:
 jobs:
   build-signed-arm64:
     runs-on: ubuntu-latest
+    env:
+      RELEASE_VERSION_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.version_name || '1.6.2-direct.1' }}
+      RELEASE_VERSION_CODE: ${{ github.event_name == 'workflow_dispatch' && inputs.version_code || '29' }}
     timeout-minutes: 120
     steps:
       - name: Checkout
@@ -94,9 +103,9 @@ jobs:
           TERMUX_ABIS: arm64-v8a
           TERMUX_PACKAGE_VARIANT: apt-android-7
           TERMUX_SPLIT_APKS_FOR_RELEASE_BUILDS: '1'
-          TERMUX_APP_VERSION_NAME: ${{ inputs.version_name }}
-          NEWTERMUX_VERSION_CODE: ${{ inputs.version_code }}
-          TERMUX_APK_VERSION_TAG: newtermux-${{ inputs.version_name }}-direct
+          TERMUX_APP_VERSION_NAME: ${{ env.RELEASE_VERSION_NAME }}
+          NEWTERMUX_VERSION_CODE: ${{ env.RELEASE_VERSION_CODE }}
+          TERMUX_APK_VERSION_TAG: newtermux-${{ env.RELEASE_VERSION_NAME }}-direct
           NEWTERMUX_ALLOW_UNSIGNED_DIRECT_RELEASE: '1'
         run: |
           set -euo pipefail
@@ -120,7 +129,7 @@ jobs:
           test -f "$META"
 
           ALIGNED="$RUNNER_TEMP/NewTermux-directRelease-arm64-aligned.apk"
-          FINAL="$RUNNER_TEMP/NewTermux-${{ inputs.version_name }}-direct-arm64-v8a.apk"
+          FINAL="$RUNNER_TEMP/NewTermux-${{ env.RELEASE_VERSION_NAME }}-direct-arm64-v8a.apk"
           LINEAGE="$RUNNER_TEMP/newtermux-signing-lineage"
 
           "$ZIPALIGN" -p -f 4 "$UNSIGNED" "$ALIGNED"
@@ -173,23 +182,32 @@ jobs:
 
           "$APKSIGNER" verify --verbose --print-certs "$APK" | tee "$APK.cert.txt"
 
+          # Rotated APKs are reported as V3.1/V3.0 signers, not as "Signer #1".
+          # Parse the already verified report so the gate checks the signer Android
+          # 13+ will use and the predecessor retained for Android 12 and below.
           NEW_ACTUAL="$(
-            "$APKSIGNER" verify --min-sdk-version 36 --print-certs "$APK" |
-              sed -n 's/^Signer #1 certificate SHA-256 digest: //p' |
+            sed -n 's/^V3\.1 Signer: .*certificate SHA-256 digest: //p' "$APK.cert.txt" |
               head -1 | normalize
           )"
           EXPECTED_NEW="$(printf '%s' "$EXPECTED_NEW_CERT_SHA256" | normalize)"
+          test -n "$NEW_ACTUAL" || {
+            echo "::error::No V3.1 rotated signer found for Android 13+"
+            exit 5
+          }
           test "$NEW_ACTUAL" = "$EXPECTED_NEW" || {
-            echo "::error::Android 16 signer is not the rotated private certificate"
+            echo "::error::Android 13+ signer is not the rotated private certificate"
             exit 5
           }
 
           OLD_ACTUAL="$(
-            "$APKSIGNER" verify --min-sdk-version 28 --max-sdk-version 32 --print-certs "$APK" |
-              sed -n 's/^Signer #1 certificate SHA-256 digest: //p' |
+            sed -n 's/^V3\.0 Signer: .*certificate SHA-256 digest: //p' "$APK.cert.txt" |
               head -1 | normalize
           )"
           EXPECTED_OLD="b6da01480eefd5fbf2cd3771b8d1021ec791304bdd6c4bf41d3faabad48ee5e1"
+          test -n "$OLD_ACTUAL" || {
+            echo "::error::No V3.0 predecessor signer found for Android 12 and below"
+            exit 6
+          }
           test "$OLD_ACTUAL" = "$EXPECTED_OLD" || {
             echo "::error::Pre-Android-13 predecessor signer is not preserved"
             exit 6
@@ -206,7 +224,7 @@ jobs:
       - name: Upload rotated standalone candidate
         uses: actions/upload-artifact@v6
         with:
-          name: NewTermux-directRelease-ARM64-${{ inputs.version_name }}
+          name: NewTermux-directRelease-ARM64-${{ env.RELEASE_VERSION_NAME }}
           if-no-files-found: error
           retention-days: 14
           path: |
