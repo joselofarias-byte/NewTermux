@@ -12,7 +12,9 @@ import android.content.ServiceConnection;
 import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.view.ContextMenu;
 import android.view.ContextMenu.ContextMenuInfo;
 import android.view.Gravity;
@@ -26,6 +28,7 @@ import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.ListView;
+import android.widget.ProgressBar;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -83,6 +86,7 @@ import com.newtermux.features.AutoCorrectHandler;
 import com.newtermux.features.NewTermuxSettings;
 import com.newtermux.features.NewTermuxTheme;
 import com.newtermux.features.SpeechInputManager;
+import com.newtermux.features.TerminalTaskMonitor;
 import com.newtermux.features.TerminalTextExport;
 import com.termux.app.terminal.MiniTerminalPipView;
 
@@ -220,6 +224,24 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private String mPendingOriginal;
     private ImageButton mBtnSTT;
     private LinearLayout mSessionPipContainer;
+
+    // Compact long-task monitor shown between the toolbar and session previews.
+    private View mTaskStatusPanel;
+    private TextView mTaskStatusDot;
+    private TextView mTaskStatusTitle;
+    private TextView mTaskStatusDetail;
+    private TextView mTaskStatusElapsed;
+    private ProgressBar mTaskStatusProgress;
+    private final Handler mTaskMonitorHandler = new Handler(Looper.getMainLooper());
+    private boolean mTaskMonitorRefreshPending;
+    private final Runnable mTaskMonitorTicker = new Runnable() {
+        @Override
+        public void run() {
+            refreshTaskMonitor();
+            if (mIsVisible) mTaskMonitorHandler.postDelayed(this, 1000L);
+        }
+    };
+
     private static final int REQUEST_RECORD_AUDIO = 201;
 
     // SAF launchers for Export Screen and Make Script
@@ -435,6 +457,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         mIsOnResumeAfterOnCreate = false;
         applyAccentColor();
         applyFeatureSettings();
+        startTaskMonitorTicker();
         if (mTermuxTerminalSessionActivityClient != null)
             mTermuxTerminalSessionActivityClient.checkForFontAndColors();
 
@@ -533,6 +556,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         if (mIsInvalidState) return;
 
         mIsVisible = false;
+        mTaskMonitorHandler.removeCallbacks(mTaskMonitorTicker);
 
         if (mTermuxTerminalSessionActivityClient != null)
             mTermuxTerminalSessionActivityClient.onStop();
@@ -560,6 +584,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         if (mIsInvalidState) return;
 
+        mTaskMonitorHandler.removeCallbacksAndMessages(null);
         if (mSpeechInputManager != null) { mSpeechInputManager.destroy(); mSpeechInputManager = null; }
         if (mAutoCorrectHandler != null) { mAutoCorrectHandler.destroy(); mAutoCorrectHandler = null; }
 
@@ -921,6 +946,18 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         // Session pip row
         mSessionPipContainer = findViewById(R.id.session_pip_container);
         updateSessionTabs();
+
+        // Long-running task summary. It remains hidden for ordinary interactive shell use.
+        mTaskStatusPanel = findViewById(R.id.task_status_panel);
+        mTaskStatusDot = findViewById(R.id.task_status_dot);
+        mTaskStatusTitle = findViewById(R.id.task_status_title);
+        mTaskStatusDetail = findViewById(R.id.task_status_detail);
+        mTaskStatusElapsed = findViewById(R.id.task_status_elapsed);
+        mTaskStatusProgress = findViewById(R.id.task_status_progress);
+        if (mTaskStatusPanel != null) {
+            mTaskStatusPanel.setOnClickListener(v -> showTaskMonitorDetails());
+        }
+        refreshTaskMonitor();
 
         // STT result callback
         mSpeechInputManager.setCallback(new SpeechInputManager.SpeechCallback() {
@@ -1372,6 +1409,157 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             })
             .show();
     }
+
+    /** Coalesce raw PTY bursts into at most four status redraws per second. */
+    public void scheduleTaskMonitorRefresh(TerminalSession session) {
+        if (session == null || session != getCurrentSession() || mTaskMonitorRefreshPending) return;
+        mTaskMonitorRefreshPending = true;
+        mTaskMonitorHandler.postDelayed(() -> {
+            mTaskMonitorRefreshPending = false;
+            refreshTaskMonitor();
+        }, 250L);
+    }
+
+    private void startTaskMonitorTicker() {
+        mTaskMonitorHandler.removeCallbacks(mTaskMonitorTicker);
+        refreshTaskMonitor();
+        if (mIsVisible) mTaskMonitorHandler.postDelayed(mTaskMonitorTicker, 1000L);
+    }
+
+    public void refreshTaskMonitor() {
+        if (mTaskStatusPanel == null) return;
+        TerminalSession session = getCurrentSession();
+        TerminalTaskMonitor.Snapshot snapshot = TerminalTaskMonitor.snapshot(session, true);
+        long now = System.currentTimeMillis();
+
+        if (snapshot == null || !snapshot.shouldDisplay(now)) {
+            mTaskStatusPanel.setVisibility(View.GONE);
+            return;
+        }
+
+        mTaskStatusPanel.setVisibility(View.VISIBLE);
+
+        String health = taskHealthLabel(snapshot);
+        if (mTaskStatusTitle != null)
+            mTaskStatusTitle.setText(snapshot.title + " · " + health);
+
+        StringBuilder detail = new StringBuilder(snapshot.phase);
+        if (!DataUtils.isNullOrEmpty(snapshot.item)) detail.append(" · ").append(snapshot.item);
+        if (snapshot.completedItems > 0) {
+            detail.append(" · ").append(snapshot.completedItems);
+            if (snapshot.totalItems > 0) detail.append("/").append(snapshot.totalItems);
+            detail.append(" paquetes");
+        }
+        if (mTaskStatusDetail != null) mTaskStatusDetail.setText(detail.toString());
+
+        if (mTaskStatusElapsed != null)
+            mTaskStatusElapsed.setText(TerminalTaskMonitor.formatDuration(snapshot.elapsedMs(now)));
+
+        if (mTaskStatusProgress != null) {
+            if (snapshot.percent >= 0) {
+                mTaskStatusProgress.setIndeterminate(false);
+                mTaskStatusProgress.setProgress(snapshot.percent);
+            } else {
+                mTaskStatusProgress.setIndeterminate(snapshot.health == TerminalTaskMonitor.Health.ACTIVE);
+                if (!mTaskStatusProgress.isIndeterminate()) mTaskStatusProgress.setProgress(0);
+            }
+        }
+
+        if (mTaskStatusDot != null) {
+            int colorRes;
+            switch (snapshot.health) {
+                case ACTIVE:
+                case FINISHED:
+                    colorRes = android.R.color.holo_green_light;
+                    break;
+                case QUIET:
+                case SLOW:
+                    colorRes = android.R.color.holo_orange_light;
+                    break;
+                case STALLED:
+                case FAILED:
+                default:
+                    colorRes = android.R.color.holo_red_light;
+                    break;
+            }
+            mTaskStatusDot.setTextColor(ContextCompat.getColor(this, colorRes));
+        }
+    }
+
+    private String taskHealthLabel(TerminalTaskMonitor.Snapshot snapshot) {
+        switch (snapshot.health) {
+            case ACTIVE:
+                return snapshot.outputAgeMs(System.currentTimeMillis()) > 10_000L
+                    ? "trabajando sin salida" : "trabajando";
+            case QUIET:
+                return "sin salida reciente";
+            case SLOW:
+                return "lento";
+            case STALLED:
+                return "posible bloqueo";
+            case FINISHED:
+                return "terminado";
+            case FAILED:
+            default:
+                return "falló";
+        }
+    }
+
+    private void showTaskMonitorDetails() {
+        TerminalTaskMonitor.Snapshot snapshot =
+            TerminalTaskMonitor.snapshot(getCurrentSession(), true);
+        if (snapshot == null) return;
+
+        long now = System.currentTimeMillis();
+        String progress = snapshot.percent >= 0 ? snapshot.percent + "%" : "sin porcentaje fiable";
+        String lastOutput = snapshot.outputAgeMs(now) == Long.MAX_VALUE
+            ? "sin datos"
+            : "hace " + TerminalTaskMonitor.formatDuration(snapshot.outputAgeMs(now));
+        String process = DataUtils.isNullOrEmpty(snapshot.processName)
+            ? "no disponible" : snapshot.processName;
+        String free = TerminalTaskMonitor.formatBytes(getFilesDir().getFreeSpace());
+
+        StringBuilder message = new StringBuilder();
+        message.append("Estado: ").append(taskHealthLabel(snapshot)).append("\n");
+        message.append("Fase: ").append(snapshot.phase).append("\n");
+        if (!DataUtils.isNullOrEmpty(snapshot.item))
+            message.append("Elemento actual: ").append(snapshot.item).append("\n");
+        message.append("Progreso: ").append(progress);
+        if (snapshot.completedItems > 0) {
+            message.append(" · ").append(snapshot.completedItems);
+            if (snapshot.totalItems > 0) message.append("/").append(snapshot.totalItems);
+            message.append(" paquetes");
+        }
+        message.append("\n");
+        message.append("Tiempo: ")
+            .append(TerminalTaskMonitor.formatDuration(snapshot.elapsedMs(now))).append("\n");
+        message.append("Última salida: ").append(lastOutput).append("\n");
+        message.append("Proceso: ").append(process).append("\n");
+        if (snapshot.rootPid > 0) message.append("PID raíz: ").append(snapshot.rootPid).append("\n");
+        if (snapshot.processCount > 0)
+            message.append("Procesos observados: ").append(snapshot.processCount).append("\n");
+        message.append("CPU/I/O: ")
+            .append(snapshot.processActive ? "con actividad" : "sin cambio en la última muestra").append("\n");
+        if (snapshot.rssBytes > 0)
+            message.append("RAM de procesos: ")
+                .append(TerminalTaskMonitor.formatBytes(snapshot.rssBytes)).append("\n");
+        if (snapshot.writeBytes > 0)
+            message.append("Escritura acumulada: ")
+                .append(TerminalTaskMonitor.formatBytes(snapshot.writeBytes)).append("\n");
+        message.append("Salida recibida: ")
+            .append(TerminalTaskMonitor.formatBytes(snapshot.bytes))
+            .append(" · ").append(snapshot.lines).append(" líneas\n");
+        message.append("Espacio libre: ").append(free);
+        if (!DataUtils.isNullOrEmpty(snapshot.lastLine))
+            message.append("\n\nÚltima línea:\n").append(snapshot.lastLine);
+
+        new AlertDialog.Builder(this)
+            .setTitle(snapshot.title)
+            .setMessage(message.toString())
+            .setPositiveButton(android.R.string.ok, null)
+            .show();
+    }
+
 
     /**
      * Notify the pip for a specific session to redraw (called from onTextChanged).
