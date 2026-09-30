@@ -9,7 +9,7 @@ on:
       - 'app/build.gradle'
       - 'app/src/main/java/com/termux/app/TermuxInstaller.java'
       - 'app/src/main/java/com/termux/app/TermuxActivity.java'
-      - 'app/src/main/java/com/newtermux/features/BundledInstallerLibrary.java'
+      - 'app/src/main/java/com/newtermux/features/**'
       - 'app/src/main/assets/newtermux/installers/**'
       - 'app/src/main/java/com/termux/app/terminal/io/TermuxTerminalExtraKeys.java'
       - 'app/src/main/res/layout/newtermux_toolbar.xml'

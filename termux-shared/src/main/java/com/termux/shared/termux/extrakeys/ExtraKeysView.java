@@ -2,6 +2,7 @@ package com.termux.shared.termux.extrakeys;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.graphics.Color;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -395,49 +396,80 @@ public final class ExtraKeysView extends GridLayout {
         return true;
     }
 
+    private static final String CONTROL_PREFS = "newtermux_controls";
+
     private int tbmButtonBackgroundColor(String key, boolean pressed) {
+        String prefKey;
+        int defaultColor;
+
         switch (key) {
             case "ESC":
-                return pressed ? 0xFF8A3444 : 0xFF6B2631;
+                prefKey = "key_esc";
+                defaultColor = 0xFF7A4C57;
+                break;
             case "TAB":
-                return pressed ? 0xFF35628F : 0xFF284A70;
+                prefKey = "key_tab";
+                defaultColor = 0xFF4D6680;
+                break;
             case "CTRL":
-                return pressed ? 0xFF635296 : 0xFF4B3C73;
+                prefKey = "key_ctrl";
+                defaultColor = 0xFF64557A;
+                break;
             case "ENTER":
-                return pressed ? 0xFF18876C : 0xFF126B55;
+                prefKey = "key_enter";
+                defaultColor = 0xFF3E7068;
+                break;
             case "y":
-                return pressed ? 0xFF21795A : 0xFF175C43;
+                prefKey = "key_y";
+                defaultColor = 0xFF466C58;
+                break;
             case "n":
-                return pressed ? 0xFF7A2B38 : 0xFF5A2028;
+                prefKey = "key_n";
+                defaultColor = 0xFF704952;
+                break;
             case "UP":
             case "DOWN":
             case "LEFT":
             case "RIGHT":
-                return pressed ? 0xFF625A53 : 0xFF4B4540;
+                prefKey = "key_arrows";
+                defaultColor = 0xFF5A5752;
+                break;
             default:
                 return pressed ? mButtonActiveBackgroundColor : mButtonBackgroundColor;
         }
+
+        int color = getContext()
+            .getSharedPreferences(CONTROL_PREFS, Context.MODE_PRIVATE)
+            .getInt(prefKey, defaultColor);
+        return pressed ? pressedVariant(color) : color;
+    }
+
+    private static int pressedVariant(int color) {
+        int red = Math.min(255, Color.red(color) + 28);
+        int green = Math.min(255, Color.green(color) + 28);
+        int blue = Math.min(255, Color.blue(color) + 28);
+        return Color.rgb(red, green, blue);
     }
 
     private int tbmButtonTextColor(String key) {
         switch (key) {
             case "ESC":
-                return 0xFFFFE3E8;
+                return 0xFFFFEDF0;
             case "TAB":
-                return 0xFFE1EEFF;
+                return 0xFFF0F6FF;
             case "CTRL":
-                return 0xFFEEE8FF;
+                return 0xFFF6F1FF;
             case "ENTER":
-                return 0xFFD8FFF2;
+                return 0xFFE9FFF9;
             case "y":
-                return 0xFFDFFFEA;
+                return 0xFFEEFFF4;
             case "n":
-                return 0xFFFFE3E8;
+                return 0xFFFFEDF0;
             case "UP":
             case "DOWN":
             case "LEFT":
             case "RIGHT":
-                return 0xFFF2ECE6;
+                return 0xFFF7F4F0;
             default:
                 return mButtonTextColor;
         }

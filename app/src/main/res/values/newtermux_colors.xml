@@ -29,9 +29,9 @@
     <color name="nt_info">#2196F3</color>
 
     <!-- One-tap terminal actions -->
-    <color name="nt_quick_clear">#3B3B3B</color>
-    <color name="nt_quick_copy">#1F4F78</color>
-    <color name="nt_quick_paste_enter">#6A5113</color>
+    <color name="nt_quick_clear">#54545B</color>
+    <color name="nt_quick_copy">#52718A</color>
+    <color name="nt_quick_paste_enter">#7A673E</color>
 
     <!-- Terminal specific -->
     <color name="nt_terminal_bg">#0D0D0D</color>

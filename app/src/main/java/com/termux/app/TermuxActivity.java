@@ -876,6 +876,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             });
         }
 
+        com.newtermux.features.ControlAppearanceDialog.applyToolbarColors(
+            this, btnClear, btnCopyVisible, btnPasteEnter);
+
         View btnMore = findViewById(R.id.btn_more_actions);
         if (btnMore != null) {
             btnMore.setOnClickListener(this::showMoreActionsMenu);
@@ -1016,6 +1019,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         items.add("Mis scripts");
         actions.add(() -> com.newtermux.features.ScriptLibrary.show(this, getCurrentSession()));
 
+        items.add("Personalizar controles");
+        actions.add(() -> com.newtermux.features.ControlAppearanceDialog.show(this, this::recreate));
+
         items.add("Instalar componentes y PRoot");
         actions.add(this::showComponentInstaller);
 
@@ -1042,12 +1048,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             "Node.js",
             "Go",
             "Herramientas de compilación",
-            "Harness IA · preparar Debian",
-            "Harness IA · Antigravity CLI",
-            "Harness IA · Codex CLI",
-            "Harness IA · OpenCode",
-            "Harness IA · instalar los tres",
-            "Harness IA · verificar instalados"
+            "Harness IA  ›"
         };
         String[] commands = {
             "pkg install proot-distro",
@@ -1057,46 +1058,73 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             "pkg install nodejs",
             "pkg install golang",
             "pkg install clang make cmake",
-            null, null, null, null, null, null
-        };
-        String[] harnessActions = {
-            null, null, null, null, null, null, null,
-            "prepare", "antigravity", "codex", "opencode", "all", "status"
+            null
         };
 
-        new AlertDialog.Builder(this).setTitle("Instalar componentes")
+        new AlertDialog.Builder(this)
+            .setTitle("Instalar componentes")
             .setItems(labels, (dialog, index) -> {
-                String harnessAction = harnessActions[index];
-                String command = commands[index];
-                String message;
-                if (harnessAction != null) {
-                    message = "Se ejecutará el instalador incluido con NewTermux dentro de Debian PRoot. "
-                        + "Las credenciales no se incluyen ni se guardan por NewTermux.\n\n"
-                        + "Acción: " + harnessAction;
-                } else {
-                    message = "Ejecutar en la sesión actual:\n" + command;
+                if (index == labels.length - 1) {
+                    showHarnessInstaller();
+                    return;
                 }
 
+                String command = commands[index];
                 new AlertDialog.Builder(this)
                     .setTitle(labels[index])
-                    .setMessage(message)
+                    .setMessage("Ejecutar en la sesión actual:\n" + command)
+                    .setPositiveButton("Ejecutar", (d, w) -> {
+                        TerminalSession session = getCurrentSession();
+                        if (session != null) session.write(command + "\n");
+                        else showToast("Abrí una sesión primero", false);
+                    })
+                    .setNegativeButton("Cancelar", null)
+                    .show();
+            })
+            .setNegativeButton("Cerrar", null)
+            .show();
+    }
+
+    private void showHarnessInstaller() {
+        String[] labels = {
+            "Preparar Debian",
+            "Antigravity CLI",
+            "Codex CLI",
+            "OpenCode",
+            "Instalar los tres",
+            "Verificar instalados"
+        };
+        String[] actions = {
+            "prepare",
+            "antigravity",
+            "codex",
+            "opencode",
+            "all",
+            "status"
+        };
+
+        new AlertDialog.Builder(this)
+            .setTitle("Harness IA")
+            .setItems(labels, (dialog, index) ->
+                new AlertDialog.Builder(this)
+                    .setTitle(labels[index])
+                    .setMessage(
+                        "Se ejecutará dentro de Debian PRoot usando el instalador incluido con NewTermux. "
+                        + "Las credenciales no se incluyen ni se guardan por NewTermux.\n\n"
+                        + "Acción: " + actions[index])
                     .setPositiveButton("Ejecutar", (d, w) -> {
                         TerminalSession session = getCurrentSession();
                         if (session == null) {
                             showToast("Abrí una sesión primero", false);
                             return;
                         }
-                        if (harnessAction != null) {
-                            com.newtermux.features.BundledInstallerLibrary.runAiHarnessInstaller(
-                                this, session, harnessAction);
-                        } else {
-                            session.write(command + "\n");
-                        }
+                        com.newtermux.features.BundledInstallerLibrary.runAiHarnessInstaller(
+                            this, session, actions[index]);
                     })
                     .setNegativeButton("Cancelar", null)
-                    .show();
-            })
-            .setNegativeButton("Cerrar", null)
+                    .show()
+            )
+            .setNegativeButton("Volver", (d, w) -> showComponentInstaller())
             .show();
     }
 
