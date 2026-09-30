@@ -198,4 +198,6 @@
     <string name="error_mediastore_insert">MediaStore no pudo crear el archivo</string>
     <string name="error_output_stream_open">No se pudo abrir el flujo de salida</string>
 
+    <string name="title_confirm_close_session">¿Cerrar sesión?</string>
+    <string name="msg_confirm_close_session">La sesión se cerrará. Si hay un proceso en ejecución, se interrumpirá.</string>
 </resources>
