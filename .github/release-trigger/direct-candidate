@@ -1,0 +1,7 @@
+NewTermux directRelease one-shot candidate
+requested_at=2026-09-29T22:37:00-03:00
+version_name=1.6.2-direct.1
+version_code=29
+bootstrap_fix_commit=1aeeafd83fbb05dcb018131c6ddf84b40afa3944
+expected_predecessor_cert=b6da01480eefd5fbf2cd3771b8d1021ec791304bdd6c4bf41d3faabad48ee5e1
+expected_new_cert=2ea2a59ce79c53f3d5afee50263353e26534fb6a3931f1cf0dbfab3bd9789c16
