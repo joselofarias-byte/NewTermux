@@ -1358,11 +1358,24 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                     if (mTermuxTerminalSessionActivityClient != null)
                         mTermuxTerminalSessionActivityClient.renameSession(session);
                 } else {
-                    session.finishIfRunning();
-                    if (mTermuxTerminalSessionActivityClient != null)
-                        mTermuxTerminalSessionActivityClient.removeFinishedSession(session);
+                    confirmCloseSession(session);
                 }
             });
+    }
+
+    private void confirmCloseSession(TerminalSession session) {
+        if (session == null) return;
+
+        new AlertDialog.Builder(this)
+            .setTitle(R.string.title_confirm_close_session)
+            .setMessage(R.string.msg_confirm_close_session)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.action_close_session, (dialog, which) -> {
+                session.finishIfRunning();
+                if (mTermuxTerminalSessionActivityClient != null)
+                    mTermuxTerminalSessionActivityClient.removeFinishedSession(session);
+            })
+            .show();
     }
 
     /**
