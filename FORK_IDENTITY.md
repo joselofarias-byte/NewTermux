@@ -8,7 +8,9 @@
 
 ## Package identity
 
-`com.termux` is intentionally retained **for release** because the app package, bootstrap expectations, shared-user behavior and plugin ecosystem are tightly coupled to that identifier. Rebranding release would require a separate compatibility migration and is not part of a safe branding-only change.
+`com.termux` is temporarily retained as a **PREFIX/runtime compatibility exception**, not as a Google Play distribution dependency. The standalone `direct` build is intended to be installed, signed, versioned and updated outside Google Play while preserving `/data/data/com.termux/files/usr`. Abandoning `com.termux` entirely requires a separate bootstrap/package/PREFIX migration and must not be mixed into a branding-only change.
+
+**Standalone compatibility identity:** `assembleDirectDebug` / `assembleDirectRelease` use `com.termux` only to preserve the validated PREFIX. `playcompat` remains temporarily as a legacy migration flavor until `direct` passes physical validation.
 
 **Debug coexist identity (Fase 3):** `assembleCoexistDebug` uses `com.newtermux.dev` so the APK can sit beside Termux Play without sharing `sharedUserId`, authorities or `/data/data/com.termux/`. That id is 16 characters (same length as the abandoned `com.newtermux.app` experiment) so a later PREFIX-aware bootstrap rebuild can stay length-aligned. `com.joselofarias.newtermux.debug` was rejected: it is too long for official bootstrap ELF path strings. Do **not** install `assemblePlaycompatDebug` / `assemblePlaycompatRelease` over Termux Play (`com.termux`). See `docs/NEWTERMUX_FASE3_COEXIST_2026-09-19.md`.
 
