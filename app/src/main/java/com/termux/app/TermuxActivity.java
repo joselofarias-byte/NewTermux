@@ -1399,7 +1399,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 getString(R.string.action_rename),
                 getString(R.string.action_close),
                 getString(R.string.action_close_others),
-                getString(R.string.action_close_finished_others)
+                getString(R.string.action_close_finished_others),
+                getString(R.string.action_close_all)
             }, idx -> {
                 switch (idx) {
                     case 0:
@@ -1415,10 +1416,28 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                     case 3:
                         closeFinishedOtherSessions(session);
                         break;
+                    case 4:
+                        confirmCloseAllSessions();
+                        break;
                     default:
                         break;
                 }
             });
+    }
+
+    private void confirmCloseAllSessions() {
+        if (mTermuxService == null) return;
+        new AlertDialog.Builder(this)
+            .setTitle(R.string.action_close_all)
+            .setMessage(R.string.msg_close_all_sessions)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.action_close_all, (dialog, which) -> {
+                // Stop the service using its normal session/process cleanup path.
+                Intent stop = new Intent(this, TermuxService.class);
+                stop.setAction(TermuxConstants.TERMUX_SERVICE.ACTION_STOP_SERVICE);
+                startService(stop);
+            })
+            .show();
     }
 
     private void confirmCloseOtherSessions(TerminalSession keepSession) {

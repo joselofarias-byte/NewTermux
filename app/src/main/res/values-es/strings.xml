@@ -215,4 +215,6 @@
         <item quantity="one">Se cerró %1$d sesión finalizada.</item>
         <item quantity="other">Se cerraron %1$d sesiones finalizadas.</item>
     </plurals>
+    <string name="action_close_all">Cerrar todas las sesiones</string>
+    <string name="msg_close_all_sessions">Se cerrarán todas las sesiones. Los procesos en ejecución se interrumpirán.</string>
 </resources>

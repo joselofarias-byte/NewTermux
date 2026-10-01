@@ -345,4 +345,6 @@
         <item quantity="one">%1$d finished session closed.</item>
         <item quantity="other">%1$d finished sessions closed.</item>
     </plurals>
+    <string name="action_close_all">Close all sessions</string>
+    <string name="msg_close_all_sessions">All sessions will be closed. Running processes will be interrupted.</string>
 </resources>
