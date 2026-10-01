@@ -90,6 +90,13 @@ public class TermuxShellEnvironment extends AndroidShellEnvironment {
                 environment.put(ENV_PATH, TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH);
                 environment.remove(ENV_LD_LIBRARY_PATH);
             }
+            // Coexist package IDs are longer than com.termux, so official-deb ELF
+            // .rodata cannot be rewritten in-place. DT_RUNPATH is patched in the
+            // zip, but LD_LIBRARY_PATH is searched first and keeps bash resolvable
+            // if a leftover stock RUNPATH is present or Play Termux is installed.
+            if (!"com.termux".equals(TermuxConstants.TERMUX_PACKAGE_NAME)) {
+                environment.put(ENV_LD_LIBRARY_PATH, TermuxConstants.TERMUX_LIB_PREFIX_DIR_PATH);
+            }
         }
 
         return environment;
