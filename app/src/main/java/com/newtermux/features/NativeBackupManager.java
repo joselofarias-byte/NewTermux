@@ -153,8 +153,9 @@ public final class NativeBackupManager {
                 "No hay espacio libre suficiente para crear el respaldo con margen de seguridad");
         }
 
-        String stamp = new SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(new Date());
-        File out = new File(outDir, "NewTermux-" + stamp + ".ntbackup");
+        String stamp = new SimpleDateFormat("yyyyMMdd-HHmmss-SSS", Locale.ROOT).format(new Date());
+        File out = new File(outDir, "NewTermux-" + stamp + "-" + java.util.UUID.randomUUID() + ".ntbackup");
+        File partial = new File(out.getAbsolutePath() + ".partial");
         File tmpMeta = File.createTempFile("newtermux-backup-", ".jsonl", context.getCacheDir());
 
         JSONObject header = buildHeader(context, selectedItems);
@@ -162,7 +163,7 @@ public final class NativeBackupManager {
         long[] done = {0L};
 
         try (ZipOutputStream zip = new ZipOutputStream(
-                 new BufferedOutputStream(new FileOutputStream(out), 1024 * 1024));
+                 new BufferedOutputStream(new FileOutputStream(partial), 1024 * 1024));
              BufferedWriter metadata = new BufferedWriter(
                  new OutputStreamWriter(new FileOutputStream(tmpMeta), StandardCharsets.UTF_8),
                  256 * 1024)) {
@@ -186,12 +187,16 @@ public final class NativeBackupManager {
             addFileEntry(zip, METADATA_ENTRY, tmpMeta);
             writeTextEntry(zip, TREE_HASH_ENTRY, hex(treeDigest.digest()) + "\n");
         } catch (Exception e) {
-            out.delete();
+            partial.delete();
             throw e;
         } finally {
             tmpMeta.delete();
         }
 
+        if (!partial.renameTo(out)) {
+            partial.delete();
+            throw new IllegalStateException("No se pudo publicar el respaldo terminado");
+        }
         String archiveHash = sha256File(out);
         File sidecar = new File(out.getAbsolutePath() + ".sha256");
         try (FileOutputStream fos = new FileOutputStream(sidecar)) {
@@ -247,6 +252,10 @@ public final class NativeBackupManager {
         String expectedTreeHash = null;
         long done = 0;
         long selectedBytes = 0;
+        BackupArchivePolicy policy = new BackupArchivePolicy(Math.max(0,
+            new StatFs(context.getNoBackupFilesDir().getAbsolutePath()).getAvailableBytes() - MIN_HEADROOM));
+        Map<String, List<File>> targets = null;
+        Map<String, String> componentsByToken = new HashMap<>();
 
         try (InputStream raw = context.getContentResolver().openInputStream(uri);
              BufferedWriter selectedMeta = new BufferedWriter(
@@ -258,16 +267,23 @@ public final class NativeBackupManager {
                 ZipEntry entry;
                 while ((entry = zip.getNextEntry()) != null) {
                     String name = entry.getName();
+                    policy.entry(name);
 
                     if (HEADER_ENTRY.equals(name)) {
                         header = new JSONObject(readSmallText(zip, 1024 * 1024));
                         validateHeaderForRestore(context, header, selected);
+                        targets = resolveSelectedTargets(header, selected);
+                        JSONArray components = header.getJSONArray("components");
+                        for (int i = 0; i < components.length(); i++) {
+                            String id = components.getJSONObject(i).getString("id");
+                            componentsByToken.put(BackupArchivePolicy.componentToken(id), id);
+                        }
                         selectedBytes = selectedBytes(header, selected);
                         ensureRestoreSpace(context, selectedBytes);
                     } else if (name.startsWith("data/")) {
                         if (header == null)
                             throw new IllegalArgumentException("header.json debe ser la primera entrada del respaldo");
-                        String component = componentFromDataEntry(name);
+                        String component = componentsByToken.get(componentFromDataEntry(name));
                         if (selected.contains(component)) {
                             File target = safeStagePath(pending, name);
                             if (entry.isDirectory()) {
@@ -282,6 +298,7 @@ public final class NativeBackupManager {
                                     byte[] buf = new byte[1024 * 1024];
                                     int n;
                                     while ((n = zip.read(buf)) != -1) {
+                                        policy.payload(n);
                                         fos.write(buf, 0, n);
                                         fileDigest.update(buf, 0, n);
                                         done += n;
@@ -300,7 +317,7 @@ public final class NativeBackupManager {
                         BufferedReader reader = new BufferedReader(
                             new InputStreamReader(zip, StandardCharsets.UTF_8), 256 * 1024);
                         String line;
-                        while ((line = reader.readLine()) != null) {
+                        while ((line = readMetadataLine(reader)) != null) {
                             byte[] canonical = (line + "\n").getBytes(StandardCharsets.UTF_8);
                             treeDigest.update(canonical);
 
@@ -308,7 +325,11 @@ public final class NativeBackupManager {
                             String component = meta.getString("component");
                             if (!selected.contains(component)) continue;
 
-                            if ("file".equals(meta.getString("type"))) {
+                            String type = meta.getString("type");
+                            policy.destination(component, meta.getInt("root"), meta.getString("path"),
+                                type, meta.optString("zipEntry", ""));
+                            resolveMetadataTarget(targets, meta); // reject unsafe destinations before READY
+                            if ("file".equals(type)) {
                                 String zipEntry = meta.getString("zipEntry");
                                 String actual = extractedHashes.get(zipEntry);
                                 if (actual == null || !actual.equalsIgnoreCase(meta.getString("sha256"))) {
@@ -546,11 +567,15 @@ public final class NativeBackupManager {
             throw new IllegalArgumentException("El respaldo pertenece a otra identidad de aplicación");
 
         Set<String> available = new HashSet<>();
+        Set<String> tokens = new HashSet<>();
         JSONArray components = header.getJSONArray("components");
         for (int i = 0; i < components.length(); i++) {
             JSONObject c = components.getJSONObject(i);
             String id = c.getString("id");
-            available.add(id);
+            if (!available.add(id) || !tokens.add(BackupArchivePolicy.componentToken(id)))
+                throw new IllegalArgumentException("Componente duplicado o ambiguo: " + id);
+            if (c.optLong("bytes", 0) < 0)
+                throw new IllegalArgumentException("Tamaño de componente inválido");
             if (selected.contains(id) && !c.optBoolean("restorable", false))
                 throw new IllegalArgumentException(id + " está disponible para respaldo pero no para restauración");
         }
@@ -572,6 +597,7 @@ public final class NativeBackupManager {
     private static Map<String, List<File>> resolveSelectedTargets(JSONObject header, Set<String> selected) throws Exception {
         Map<String, List<File>> out = new LinkedHashMap<>();
         JSONArray components = header.getJSONArray("components");
+        Set<String> resolvedPaths = new HashSet<>();
         for (int i = 0; i < components.length(); i++) {
             JSONObject c = components.getJSONObject(i);
             String id = c.getString("id");
@@ -582,6 +608,8 @@ public final class NativeBackupManager {
             for (int r = 0; r < roots.length(); r++) {
                 File root = resolveLogicalRoot(roots.getJSONObject(r));
                 validateTargetForComponent(id, root);
+                if (!resolvedPaths.add(root.getCanonicalPath()))
+                    throw new IllegalArgumentException("Raíz de restauración duplicada");
                 resolved.add(root);
             }
             if (resolved.isEmpty())
@@ -612,6 +640,7 @@ public final class NativeBackupManager {
     private static File resolveLogicalRoot(JSONObject root) throws Exception {
         String scope = root.getString("scope");
         String rel = root.optString("relative", "");
+        BackupArchivePolicy.relativePath(rel, true);
         File base;
         if ("home".equals(scope)) base = TermuxConstants.TERMUX_HOME_DIR;
         else if ("prefix".equals(scope)) base = TermuxConstants.TERMUX_PREFIX_DIR;
@@ -646,6 +675,12 @@ public final class NativeBackupManager {
         if (id.startsWith("proot:")) {
             File base = new File(TermuxConstants.TERMUX_PREFIX_DIR, "var/lib/proot-distro");
             ensureInside(root, base);
+            String rel = relativeTo(base.getCanonicalPath(), root.getCanonicalPath());
+            String[] parts = rel.split("/", -1);
+            String name = id.substring("proot:".length());
+            if (parts.length != 2 || !("containers".equals(parts[0])
+                    || "installed-rootfs".equals(parts[0])) || !parts[1].equals(name) || name.isEmpty())
+                throw new IllegalArgumentException("Raíz PRoot inválida: " + rel);
             return;
         }
         throw new IllegalArgumentException("Componente no restaurable: " + id);
@@ -656,7 +691,12 @@ public final class NativeBackupManager {
         JSONArray components = header.getJSONArray("components");
         for (int i = 0; i < components.length(); i++) {
             JSONObject c = components.getJSONObject(i);
-            if (selected.contains(c.getString("id"))) total += Math.max(0, c.optLong("bytes", 0));
+            if (selected.contains(c.getString("id"))) {
+                long bytes = c.optLong("bytes", 0);
+                if (bytes < 0 || bytes > Long.MAX_VALUE - MIN_HEADROOM - total)
+                    throw new IllegalArgumentException("Tamaño de respaldo inválido");
+                total += bytes;
+            }
         }
         return total;
     }
@@ -791,19 +831,13 @@ public final class NativeBackupManager {
     }
 
     private static String dataEntryName(String component, int root, String rel) {
-        String safeComponent = component.replaceAll("[^A-Za-z0-9._-]", "_");
-        String base = "data/" + safeComponent + "/" + root + "/";
-        return rel.isEmpty() ? base : base + rel;
+        return BackupArchivePolicy.dataEntryName(component, root, rel);
     }
 
     private static String componentFromDataEntry(String name) {
-        if (!name.startsWith("data/")) return "";
         int slash = name.indexOf('/', 5);
-        if (slash < 0) return "";
-        String token = name.substring(5, slash);
-        // Only ':' is normalized in current component ids (proot:<name>).
-        if (token.startsWith("proot_")) return "proot:" + token.substring("proot_".length());
-        return token;
+        if (slash < 0) throw new IllegalArgumentException("Entrada de datos inválida");
+        return name.substring(5, slash);
     }
 
     private static File safeStagePath(File pending, String zipName) throws Exception {
@@ -821,6 +855,7 @@ public final class NativeBackupManager {
             throw new IllegalArgumentException("Raíz inválida para " + component);
         File base = roots.get(root);
         String rel = meta.optString("path", "");
+        BackupArchivePolicy.relativePath(rel, true);
         File target = rel.isEmpty() ? base : new File(base, rel);
         ensureInside(target, base);
         return target;
@@ -874,6 +909,18 @@ public final class NativeBackupManager {
             out.write(buf, 0, n);
         }
         return out.toString(StandardCharsets.UTF_8.name());
+    }
+
+    private static String readMetadataLine(BufferedReader reader) throws Exception {
+        StringBuilder line = new StringBuilder();
+        int c;
+        while ((c = reader.read()) != -1) {
+            if (c == '\n') return line.toString();
+            if (line.length() >= 1024 * 1024)
+                throw new IllegalArgumentException("Registro de metadata demasiado grande");
+            line.append((char) c);
+        }
+        return line.length() == 0 ? null : line.toString();
     }
 
     private static void drain(InputStream in) throws Exception {
