@@ -29,6 +29,7 @@ public final class TerminalTaskMonitor {
 
     public enum Health {
         ACTIVE,
+        WARNING,
         QUIET,
         SLOW,
         STALLED,
@@ -43,6 +44,7 @@ public final class TerminalTaskMonitor {
         public final String phase;
         public final String item;
         public final String lastLine;
+        public final String warningLine;
         public final String processName;
         public final Health health;
         public final int percent;
@@ -67,6 +69,7 @@ public final class TerminalTaskMonitor {
             this.phase = safe(state.phase, "Trabajando");
             this.item = safe(state.item, "");
             this.lastLine = safe(state.lastLine, "");
+            this.warningLine = safe(state.warningLine, "");
             this.processName = safe(state.processName, "");
             this.health = health;
             this.percent = state.percent;
@@ -134,6 +137,7 @@ public final class TerminalTaskMonitor {
         String phase;
         String item;
         String lastLine;
+        String warningLine;
         String processName;
         boolean tracked;
         boolean completed;
@@ -148,6 +152,7 @@ public final class TerminalTaskMonitor {
         long startedAtMs;
         long finishedAtMs;
         long lastOutputAtMs;
+        long warningAtMs;
         long bytes;
         long lines;
         long rssBytes;
@@ -248,13 +253,20 @@ public final class TerminalTaskMonitor {
         if (state.completed) {
             health = state.failed ? Health.FAILED : Health.FINISHED;
         } else {
+            long warningAge = state.warningAtMs <= 0 ? Long.MAX_VALUE : now - state.warningAtMs;
             long silence = state.lastOutputAtMs <= 0 ? Long.MAX_VALUE : now - state.lastOutputAtMs;
-            if (silence <= 10_000L || state.processActive) health = Health.ACTIVE;
+            if (warningAge <= 60_000L) health = Health.WARNING;
+            else if (silence <= 10_000L || state.processActive) health = Health.ACTIVE;
             else if (silence <= 45_000L) health = Health.QUIET;
             else if (silence <= 180_000L) health = Health.SLOW;
             else health = Health.STALLED;
         }
         return new Snapshot(state, health);
+    }
+
+    static boolean isScriptCommandError(String rawLine) {
+        String line = clean(rawLine).trim();
+        return line.contains(": line ") && line.endsWith(": command not found");
     }
 
     static int aptPackageTotal(String rawLine) {
@@ -374,6 +386,16 @@ public final class TerminalTaskMonitor {
         if (line.isEmpty()) return;
         state.lines++;
         state.lastLine = truncate(line, 500);
+
+        if (isScriptCommandError(line)) {
+            if (!state.tracked) {
+                state.tracked = true;
+                state.startedAtMs = now;
+                state.title = "Tarea en terminal";
+            }
+            state.warningLine = truncate(line, 500);
+            state.warningAtMs = now;
+        }
 
         int aptTotal = aptPackageTotal(line);
 
