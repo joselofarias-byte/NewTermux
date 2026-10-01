@@ -87,6 +87,15 @@ public final class TermuxInstaller {
     static void setupBootstrapIfNeeded(final Activity activity, final Runnable whenDone) {
         // Demo/coexist build: skip the real bootstrap. Write a fake interactive shell to the
         // demo package's own files dir (the only dir we can write to) and proceed.
+        String identityError = CoexistIdentity.mismatchReason(activity);
+        if (identityError != null) {
+            Logger.logError(LOG_TAG, "Bootstrap aborted: " + identityError);
+            MessageDialogUtils.exitAppWithErrorMessage(activity,
+                activity.getString(R.string.bootstrap_error_title),
+                identityError);
+            return;
+        }
+
         if (BuildConfig.IS_DEMO) {
             new Thread() {
                 @Override
