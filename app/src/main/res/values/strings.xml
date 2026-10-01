@@ -78,7 +78,10 @@
 
     <string name="action_rename">Rename</string>
     <string name="action_close">Close</string>
+    <string name="action_close_others">Close all except this</string>
+    <string name="action_close_finished_others">Close finished except this</string>
     <string name="newtermux_toolbar_copy">Copy</string>
+    <string name="newtermux_toolbar_paste_enter">Paste+↵</string>
     <string name="msg_visible_screen_copied">Visible terminal output copied</string>
     <string name="msg_full_transcript_copied">Full terminal transcript copied</string>
     <string name="newtermux_toolbar_packages">Packages</string>
@@ -87,6 +90,7 @@
     <string name="newtermux_toolbar_root">Root access</string>
     <string name="newtermux_toolbar_settings">Settings</string>
     <string name="newtermux_toolbar_new_session">New session</string>
+    <string name="newtermux_toolbar_open_drawer">Open tools and shortcuts</string>
     <string name="newtermux_toolbar_more">More actions</string>
     <string name="more_save_txt">Save screen as TXT</string>
     <string name="more_paste">Paste</string>
@@ -296,6 +300,7 @@
     <string name="drawer_button_label_hint">Button label</string>
     <string name="drawer_command_hint">Command</string>
     <string name="drawer_edit_button_title">Edit button %1$d</string>
+    <string name="drawer_edit_shortcuts">Edit shortcuts</string>
     <string name="action_save">Save</string>
     <string name="action_reset">Reset</string>
     <string name="action_cancel">Cancel</string>
@@ -327,4 +332,17 @@
     <string name="error_mediastore_insert">MediaStore insert returned null</string>
     <string name="error_output_stream_open">Could not open output stream</string>
 
+    <string name="title_confirm_close_session">Close session?</string>
+    <string name="msg_confirm_close_session">This session will be closed. Any process currently running in it will be interrupted.</string>
+    <string name="title_close_other_sessions">Close other sessions?</string>
+    <string name="msg_no_other_sessions">There are no other sessions to close.</string>
+    <string name="msg_no_finished_sessions">There are no finished sessions to close.</string>
+    <plurals name="msg_close_other_sessions">
+        <item quantity="one">%1$d other session will be closed. Any running process in it will be interrupted.</item>
+        <item quantity="other">%1$d other sessions will be closed. Any running processes in them will be interrupted.</item>
+    </plurals>
+    <plurals name="msg_finished_sessions_closed">
+        <item quantity="one">%1$d finished session closed.</item>
+        <item quantity="other">%1$d finished sessions closed.</item>
+    </plurals>
 </resources>

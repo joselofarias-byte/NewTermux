@@ -27,9 +27,11 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.zip.GZIPOutputStream;
 
-/** Opt-in, bounded raw PTY capture. One compressed file is created per session after the line threshold. */
+/** Opt-in, bounded raw PTY capture. Long outputs are saved automatically as streaming gzip logs. */
 public final class AutoOutputCapture {
     private static final int MAX_BYTES = 32 * 1024 * 1024;
+    // Internal definition of "long": users only choose whether automatic saving is on or off.
+    private static final int AUTO_SAVE_LINE_THRESHOLD = 500;
     private static final Map<TerminalSession, Capture> CAPTURES = new IdentityHashMap<>();
     private static final ExecutorService IO = Executors.newSingleThreadExecutor();
     private static final class Capture {
@@ -45,11 +47,10 @@ public final class AutoOutputCapture {
     private AutoOutputCapture() {}
 
     public static void accept(@NonNull Context context, @NonNull TerminalSession session, byte[] data, int length) {
-        int threshold = NewTermuxSettings.getAutoSaveLines(context);
-        if (threshold == 0 || length <= 0) return;
+        if (!NewTermuxSettings.isAutoSaveOutputEnabled(context) || length <= 0) return;
         byte[] chunk = Arrays.copyOf(data, length);
         Context app = context.getApplicationContext();
-        IO.execute(() -> write(app, session, chunk, threshold));
+        IO.execute(() -> write(app, session, chunk, AUTO_SAVE_LINE_THRESHOLD));
     }
 
     public static void finish(@NonNull TerminalSession session) {

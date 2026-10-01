@@ -12,7 +12,9 @@ import android.content.ServiceConnection;
 import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.view.ContextMenu;
 import android.view.ContextMenu.ContextMenuInfo;
 import android.view.Gravity;
@@ -26,6 +28,7 @@ import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.ListView;
+import android.widget.ProgressBar;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -83,6 +86,7 @@ import com.newtermux.features.AutoCorrectHandler;
 import com.newtermux.features.NewTermuxSettings;
 import com.newtermux.features.NewTermuxTheme;
 import com.newtermux.features.SpeechInputManager;
+import com.newtermux.features.TerminalTaskMonitor;
 import com.newtermux.features.TerminalTextExport;
 import com.termux.app.terminal.MiniTerminalPipView;
 
@@ -220,6 +224,24 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private String mPendingOriginal;
     private ImageButton mBtnSTT;
     private LinearLayout mSessionPipContainer;
+
+    // Compact long-task monitor shown between the toolbar and session previews.
+    private View mTaskStatusPanel;
+    private TextView mTaskStatusDot;
+    private TextView mTaskStatusTitle;
+    private TextView mTaskStatusDetail;
+    private TextView mTaskStatusElapsed;
+    private ProgressBar mTaskStatusProgress;
+    private final Handler mTaskMonitorHandler = new Handler(Looper.getMainLooper());
+    private boolean mTaskMonitorRefreshPending;
+    private final Runnable mTaskMonitorTicker = new Runnable() {
+        @Override
+        public void run() {
+            refreshTaskMonitor();
+            if (mIsVisible) mTaskMonitorHandler.postDelayed(this, 1000L);
+        }
+    };
+
     private static final int REQUEST_RECORD_AUDIO = 201;
 
     // SAF launchers for Export Screen and Make Script
@@ -435,6 +457,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         mIsOnResumeAfterOnCreate = false;
         applyAccentColor();
         applyFeatureSettings();
+        startTaskMonitorTicker();
         if (mTermuxTerminalSessionActivityClient != null)
             mTermuxTerminalSessionActivityClient.checkForFontAndColors();
 
@@ -533,6 +556,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         if (mIsInvalidState) return;
 
         mIsVisible = false;
+        mTaskMonitorHandler.removeCallbacks(mTaskMonitorTicker);
 
         if (mTermuxTerminalSessionActivityClient != null)
             mTermuxTerminalSessionActivityClient.onStop();
@@ -560,6 +584,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         if (mIsInvalidState) return;
 
+        mTaskMonitorHandler.removeCallbacksAndMessages(null);
         if (mSpeechInputManager != null) { mSpeechInputManager.destroy(); mSpeechInputManager = null; }
         if (mAutoCorrectHandler != null) { mAutoCorrectHandler.destroy(); mAutoCorrectHandler = null; }
 
@@ -825,6 +850,16 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         if (btnClose != null) btnClose.setOnClickListener(v -> hideAutocorrectBar());
 
         // Wire toolbar buttons
+        View appTitle = findViewById(R.id.tv_app_title);
+        if (appTitle != null) {
+            appTitle.setOnClickListener(v -> {
+                DrawerLayout drawer = getDrawer();
+                if (drawer == null) return;
+                if (drawer.isDrawerOpen(Gravity.START)) drawer.closeDrawer(Gravity.START);
+                else drawer.openDrawer(Gravity.START);
+            });
+        }
+
         mBtnSTT = findViewById(R.id.btn_stt);
         if (mBtnSTT != null) {
             mBtnSTT.setOnClickListener(v -> onSTTButtonClicked());
@@ -835,9 +870,24 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         View btnCopyVisible = findViewById(R.id.btn_copy_visible);
         if (btnCopyVisible != null) {
-            btnCopyVisible.setOnClickListener(v -> copyVisibleTerminalOutput());
+            // Primary action: copy everything in the terminal transcript in one tap.
+            btnCopyVisible.setOnClickListener(v -> copyFullTerminalTranscript());
+            // Secondary gesture retained for the rarer "visible screen only" case.
             btnCopyVisible.setOnLongClickListener(v -> {
-                copyFullTerminalTranscript();
+                copyVisibleTerminalOutput();
+                return true;
+            });
+        }
+
+        View btnPasteEnter = findViewById(R.id.btn_paste_enter);
+        if (btnPasteEnter != null) {
+            btnPasteEnter.setOnClickListener(v -> {
+                if (mTermuxTerminalExtraKeys != null)
+                    mTermuxTerminalExtraKeys.onTerminalExtraKeyButtonClick(null, "PASTE_ENTER", false, false, false, false);
+            });
+            btnPasteEnter.setOnLongClickListener(v -> {
+                if (mTermuxTerminalExtraKeys != null)
+                    mTermuxTerminalExtraKeys.onTerminalExtraKeyButtonClick(null, "PASTE", false, false, false, false);
                 return true;
             });
         }
@@ -860,6 +910,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 }
             });
         }
+
+        com.newtermux.features.ControlAppearanceDialog.applyToolbarColors(
+            this, btnClear, btnCopyVisible, btnPasteEnter);
 
         View btnMore = findViewById(R.id.btn_more_actions);
         if (btnMore != null) {
@@ -903,6 +956,18 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         // Session pip row
         mSessionPipContainer = findViewById(R.id.session_pip_container);
         updateSessionTabs();
+
+        // Long-running task summary. It remains hidden for ordinary interactive shell use.
+        mTaskStatusPanel = findViewById(R.id.task_status_panel);
+        mTaskStatusDot = findViewById(R.id.task_status_dot);
+        mTaskStatusTitle = findViewById(R.id.task_status_title);
+        mTaskStatusDetail = findViewById(R.id.task_status_detail);
+        mTaskStatusElapsed = findViewById(R.id.task_status_elapsed);
+        mTaskStatusProgress = findViewById(R.id.task_status_progress);
+        if (mTaskStatusPanel != null) {
+            mTaskStatusPanel.setOnClickListener(v -> showTaskMonitorDetails());
+        }
+        refreshTaskMonitor();
 
         // STT result callback
         mSpeechInputManager.setCallback(new SpeechInputManager.SpeechCallback() {
@@ -1001,10 +1066,17 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         items.add("Mis scripts");
         actions.add(() -> com.newtermux.features.ScriptLibrary.show(this, getCurrentSession()));
 
+        items.add("Personalizar controles");
+        actions.add(() -> com.newtermux.features.ControlAppearanceDialog.show(this, this::recreate));
+
+        items.add("TBM · respaldo y restauración  ›");
+        actions.add(this::showTbmMenu);
+
         items.add("Instalar componentes y PRoot");
         actions.add(this::showComponentInstaller);
 
-        items.add("Guardado automático de salidas");
+        items.add("Guardar salidas largas · "
+            + (NewTermuxSettings.isAutoSaveOutputEnabled(this) ? "Sí" : "No"));
         actions.add(this::configureAutoOutput);
 
         com.newtermux.features.NtPopupMenu.showAsDropDown(
@@ -1019,43 +1091,224 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
     private void showComponentInstaller() {
-        String[] labels = {"PRoot y distribuciones", "Debian en PRoot", "Git y SSH", "Python", "Node.js", "Go", "Herramientas de compilación"};
-        String[] commands = {"pkg install proot-distro", "proot-distro install debian", "pkg install git openssh", "pkg install python", "pkg install nodejs", "pkg install golang", "pkg install clang make cmake"};
-        new AlertDialog.Builder(this).setTitle("Instalar componentes")
-            .setItems(labels, (dialog, index) -> new AlertDialog.Builder(this)
-                .setTitle(labels[index]).setMessage("Ejecutar en la sesión actual:\n" + commands[index])
-                .setPositiveButton("Ejecutar", (d, w) -> {
-                    TerminalSession session = getCurrentSession();
-                    if (session != null) session.write(commands[index] + "\n");
-                    else showToast("Abrí una sesión primero", false);
-                }).setNegativeButton("Cancelar", null).show())
-            .setNegativeButton("Cerrar", null).show();
+        String[] labels = {
+            "PRoot y distribuciones",
+            "Debian en PRoot",
+            "Git y SSH",
+            "Python",
+            "Node.js",
+            "Go",
+            "Herramientas de compilación",
+            "Harness IA  ›"
+        };
+        String[] commands = {
+            "pkg install proot-distro",
+            "proot-distro install debian",
+            "pkg install git openssh",
+            "pkg install python",
+            "pkg install nodejs",
+            "pkg install golang",
+            "pkg install clang make cmake",
+            null
+        };
+
+        new AlertDialog.Builder(this)
+            .setTitle("Instalar componentes")
+            .setItems(labels, (dialog, index) -> {
+                if (index == labels.length - 1) {
+                    showHarnessInstaller();
+                    return;
+                }
+
+                String command = commands[index];
+                new AlertDialog.Builder(this)
+                    .setTitle(labels[index])
+                    .setMessage("Ejecutar en la sesión actual:\n" + command)
+                    .setPositiveButton("Ejecutar", (d, w) -> {
+                        TerminalSession session = getCurrentSession();
+                        if (session != null) session.write(command + "\n");
+                        else showToast("Abrí una sesión primero", false);
+                    })
+                    .setNegativeButton("Cancelar", null)
+                    .show();
+            })
+            .setNegativeButton("Cerrar", null)
+            .show();
+    }
+
+    private void showHarnessInstaller() {
+        String[] labels = {
+            "Un toque · preparar NewTermux",
+            "9router-go · router local  ›",
+            "Preparar Debian",
+            "Antigravity CLI",
+            "Codex CLI",
+            "OpenCode",
+            "Instalar los tres",
+            "Verificar instalados"
+        };
+        String[] actions = {
+            "one-touch",
+            null,
+            "prepare",
+            "antigravity",
+            "codex",
+            "opencode",
+            "all",
+            "status"
+        };
+
+        new AlertDialog.Builder(this)
+            .setTitle("Harness IA")
+            .setItems(labels, (dialog, index) -> {
+                if (index == 0) {
+                    new AlertDialog.Builder(this)
+                        .setTitle("Un toque · preparar NewTermux")
+                        .setMessage(
+                            "Instala/actualiza 9router-go, lo inicia, prepara Debian PRoot, "
+                            + "instala/actualiza Antigravity, Codex y OpenCode, configura OpenCode "
+                            + "para usar 9router/free-best y comprueba si TBM ya tiene una release "
+                            + "estable habilitada para NewTermux.\n\n"
+                            + "TBM sólo se instala si pasó su gate explícito; mientras tanto se omite "
+                            + "sin fallar. No inicia sesión ni importa credenciales.")
+                        .setPositiveButton("Ejecutar", (d, w) -> {
+                            TerminalSession session = getCurrentSession();
+                            if (session == null) {
+                                showToast("Abrí una sesión primero", false);
+                                return;
+                            }
+                            com.newtermux.features.BundledInstallerLibrary.runOneTouchAiStack(
+                                this, session);
+                        })
+                        .setNegativeButton("Cancelar", null)
+                        .show();
+                    return;
+                }
+                if (index == 1) {
+                    showRouterInstaller();
+                    return;
+                }
+
+                new AlertDialog.Builder(this)
+                    .setTitle(labels[index])
+                    .setMessage(
+                        "Se ejecutará dentro de Debian PRoot usando el instalador incluido con NewTermux. "
+                        + "Las credenciales no se incluyen ni se guardan por NewTermux.\n\n"
+                        + "Acción: " + actions[index])
+                    .setPositiveButton("Ejecutar", (d, w) -> {
+                        TerminalSession session = getCurrentSession();
+                        if (session == null) {
+                            showToast("Abrí una sesión primero", false);
+                            return;
+                        }
+                        com.newtermux.features.BundledInstallerLibrary.runAiHarnessInstaller(
+                            this, session, actions[index]);
+                    })
+                    .setNegativeButton("Cancelar", null)
+                    .show();
+            })
+            .setNegativeButton("Volver", (d, w) -> showComponentInstaller())
+            .show();
+    }
+
+    private void showRouterInstaller() {
+        String[] labels = {
+            "Instalar / actualizar 9router-go",
+            "Iniciar 9router-go",
+            "Estado de 9router-go",
+            "Detener 9router-go"
+        };
+        String[] actions = {
+            "install",
+            "start",
+            "status",
+            "stop"
+        };
+
+        new AlertDialog.Builder(this)
+            .setTitle("9router-go · router local")
+            .setItems(labels, (dialog, index) ->
+                new AlertDialog.Builder(this)
+                    .setTitle(labels[index])
+                    .setMessage(
+                        "Nuestro fork joselofarias-byte/9router-go se administra en una copia separada de NewTermux.\n"
+                        + "Puerto local predeterminado: 20128\n"
+                        + "Rutas gratuitas: free-best / free\n\n"
+                        + "Acción: " + actions[index])
+                    .setPositiveButton("Ejecutar", (d, w) -> {
+                        TerminalSession session = getCurrentSession();
+                        if (session == null) {
+                            showToast("Abrí una sesión primero", false);
+                            return;
+                        }
+                        com.newtermux.features.BundledInstallerLibrary.runNineRouterInstaller(
+                            this, session, actions[index]);
+                    })
+                    .setNegativeButton("Cancelar", null)
+                    .show()
+            )
+            .setNegativeButton("Volver", (d, w) -> showHarnessInstaller())
+            .show();
+    }
+
+    private void showTbmMenu() {
+        String[] labels = {
+            "Estado y gate de integración",
+            "Instalar / actualizar TBM validado",
+            "Abrir panel TBM",
+            "Verificar instalación"
+        };
+        String[] actions = {
+            "status",
+            "install",
+            "panel",
+            "verify"
+        };
+
+        new AlertDialog.Builder(this)
+            .setTitle("TBM · respaldo y restauración")
+            .setItems(labels, (dialog, index) ->
+                new AlertDialog.Builder(this)
+                    .setTitle(labels[index])
+                    .setMessage(
+                        "NewTermux sólo instala TBM desde una release estable del repositorio "
+                        + "joselofarias-byte/TBM-Recovery-Master que declare NEWTERMUX_READY=1. "
+                        + "Las prereleases actuales no pasan este gate.\n\n"
+                        + "Backup y restore nunca se ejecutan automáticamente; se eligen dentro del panel TBM.")
+                    .setPositiveButton("Ejecutar", (d, w) -> {
+                        TerminalSession session = getCurrentSession();
+                        if (session == null) {
+                            showToast("Abrí una sesión primero", false);
+                            return;
+                        }
+                        com.newtermux.features.BundledInstallerLibrary.runTbmInstaller(
+                            this, session, actions[index]);
+                    })
+                    .setNegativeButton("Cancelar", null)
+                    .show()
+            )
+            .setNegativeButton("Cerrar", null)
+            .show();
     }
 
     private void configureAutoOutput() {
-        EditText input = new EditText(this);
-        input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
-        input.setSingleLine(true);
-        int current = NewTermuxSettings.getAutoSaveLines(this);
-        input.setText(String.valueOf(current));
-        input.setSelectAllOnFocus(true);
-        int pad = (int) (24 * getResources().getDisplayMetrics().density);
-        LinearLayout box = new LinearLayout(this);
-        box.setPadding(pad, 0, pad, 0);
-        box.addView(input);
-        AlertDialog dialog = new AlertDialog.Builder(this).setTitle("Guardar salidas largas")
-            .setMessage("Cantidad de líneas: 0 desactiva. Cuando una sesión supera el umbral, guarda su salida en Descargas/NewTermux como .log.gz. Puede incluir información privada. Máximo 32 MiB de salida por sesión.")
-            .setView(box).setPositiveButton("Guardar", null)
-            .setNegativeButton("Cancelar", null).create();
-        dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-            try {
-                int value = Integer.parseInt(input.getText().toString());
-                if (value < 0 || value > 1000000) throw new NumberFormatException();
-                NewTermuxSettings.setAutoSaveLines(this, value);
-                dialog.dismiss();
-            } catch (NumberFormatException e) { input.setError("Ingresá entre 0 y 1.000.000"); }
-        }));
-        dialog.show();
+        boolean enabled = NewTermuxSettings.isAutoSaveOutputEnabled(this);
+        String message = enabled
+            ? "Ahora está activado. Las salidas largas se guardan comprimidas en Descargas/NewTermux como .log.gz."
+            : "Las salidas largas pueden guardarse automáticamente, comprimidas, en Descargas/NewTermux como .log.gz.";
+
+        new AlertDialog.Builder(this)
+            .setTitle("Guardar salidas largas")
+            .setMessage(message)
+            .setItems(new String[]{"Guardar", "No guardar"}, (dialog, which) -> {
+                boolean save = which == 0;
+                NewTermuxSettings.setAutoSaveOutputEnabled(this, save);
+                showToast(save
+                    ? "Guardado automático activado"
+                    : "Guardado automático desactivado", false);
+            })
+            .setNegativeButton("Cancelar", null)
+            .show();
     }
 
     private void toggleToolbarAutocorrect() {
@@ -1139,20 +1392,268 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
     private void showSessionPopupMenu(View anchor, TerminalSession session) {
-        // Bannerlator-style pop-out menu: rounded + outlined card with a thin gray divider
-        // between options (see NtPopupMenu).
+        // Session-scoped actions live on the miniature itself so cleanup does not get
+        // buried in a global menu.
         com.newtermux.features.NtPopupMenu.showAsDropDown(this, anchor, null,
-            new String[]{getString(R.string.action_rename), getString(R.string.action_close)}, idx -> {
-                if (idx == 0) {
-                    if (mTermuxTerminalSessionActivityClient != null)
-                        mTermuxTerminalSessionActivityClient.renameSession(session);
-                } else {
-                    session.finishIfRunning();
-                    if (mTermuxTerminalSessionActivityClient != null)
-                        mTermuxTerminalSessionActivityClient.removeFinishedSession(session);
+            new String[]{
+                getString(R.string.action_rename),
+                getString(R.string.action_close),
+                getString(R.string.action_close_others),
+                getString(R.string.action_close_finished_others)
+            }, idx -> {
+                switch (idx) {
+                    case 0:
+                        if (mTermuxTerminalSessionActivityClient != null)
+                            mTermuxTerminalSessionActivityClient.renameSession(session);
+                        break;
+                    case 1:
+                        confirmCloseSession(session);
+                        break;
+                    case 2:
+                        confirmCloseOtherSessions(session);
+                        break;
+                    case 3:
+                        closeFinishedOtherSessions(session);
+                        break;
+                    default:
+                        break;
                 }
             });
     }
+
+    private void confirmCloseOtherSessions(TerminalSession keepSession) {
+        if (keepSession == null || mTermuxService == null) return;
+
+        List<com.termux.shared.termux.shell.command.runner.terminal.TermuxSession> snapshot =
+            new ArrayList<>(mTermuxService.getTermuxSessions());
+        int count = 0;
+        for (com.termux.shared.termux.shell.command.runner.terminal.TermuxSession item : snapshot) {
+            TerminalSession terminal = item == null ? null : item.getTerminalSession();
+            if (terminal != null && terminal != keepSession) count++;
+        }
+
+        if (count == 0) {
+            showToast(getString(R.string.msg_no_other_sessions), false);
+            return;
+        }
+
+        final int closeCount = count;
+        new AlertDialog.Builder(this)
+            .setTitle(R.string.title_close_other_sessions)
+            .setMessage(getResources().getQuantityString(
+                R.plurals.msg_close_other_sessions, closeCount, closeCount))
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.action_close_others, (dialog, which) -> {
+                List<com.termux.shared.termux.shell.command.runner.terminal.TermuxSession> current =
+                    new ArrayList<>(mTermuxService.getTermuxSessions());
+                for (com.termux.shared.termux.shell.command.runner.terminal.TermuxSession item : current) {
+                    TerminalSession terminal = item == null ? null : item.getTerminalSession();
+                    if (terminal == null || terminal == keepSession) continue;
+                    terminal.finishIfRunning();
+                    if (mTermuxTerminalSessionActivityClient != null)
+                        mTermuxTerminalSessionActivityClient.removeFinishedSession(terminal);
+                }
+                if (mTermuxTerminalSessionActivityClient != null)
+                    mTermuxTerminalSessionActivityClient.setCurrentSession(keepSession);
+                updateSessionTabs();
+            })
+            .show();
+    }
+
+    private void closeFinishedOtherSessions(TerminalSession keepSession) {
+        if (keepSession == null || mTermuxService == null ||
+            mTermuxTerminalSessionActivityClient == null) return;
+
+        List<com.termux.shared.termux.shell.command.runner.terminal.TermuxSession> snapshot =
+            new ArrayList<>(mTermuxService.getTermuxSessions());
+        int removed = 0;
+        for (com.termux.shared.termux.shell.command.runner.terminal.TermuxSession item : snapshot) {
+            TerminalSession terminal = item == null ? null : item.getTerminalSession();
+            if (terminal == null || terminal == keepSession || terminal.isRunning()) continue;
+            mTermuxTerminalSessionActivityClient.removeFinishedSession(terminal);
+            removed++;
+        }
+
+        mTermuxTerminalSessionActivityClient.setCurrentSession(keepSession);
+        updateSessionTabs();
+        showToast(removed == 0
+            ? getString(R.string.msg_no_finished_sessions)
+            : getResources().getQuantityString(R.plurals.msg_finished_sessions_closed, removed, removed),
+            false);
+    }
+
+    private void confirmCloseSession(TerminalSession session) {
+        if (session == null) return;
+
+        new AlertDialog.Builder(this)
+            .setTitle(R.string.title_confirm_close_session)
+            .setMessage(R.string.msg_confirm_close_session)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.action_close_session, (dialog, which) -> {
+                session.finishIfRunning();
+                if (mTermuxTerminalSessionActivityClient != null)
+                    mTermuxTerminalSessionActivityClient.removeFinishedSession(session);
+            })
+            .show();
+    }
+
+    /** Coalesce raw PTY bursts into at most four status redraws per second. */
+    public void scheduleTaskMonitorRefresh(TerminalSession session) {
+        if (session == null || session != getCurrentSession() || mTaskMonitorRefreshPending) return;
+        mTaskMonitorRefreshPending = true;
+        mTaskMonitorHandler.postDelayed(() -> {
+            mTaskMonitorRefreshPending = false;
+            refreshTaskMonitor();
+        }, 250L);
+    }
+
+    private void startTaskMonitorTicker() {
+        mTaskMonitorHandler.removeCallbacks(mTaskMonitorTicker);
+        refreshTaskMonitor();
+        if (mIsVisible) mTaskMonitorHandler.postDelayed(mTaskMonitorTicker, 1000L);
+    }
+
+    public void refreshTaskMonitor() {
+        if (mTaskStatusPanel == null) return;
+        TerminalSession session = getCurrentSession();
+        TerminalTaskMonitor.Snapshot snapshot = TerminalTaskMonitor.snapshot(session, true);
+        long now = System.currentTimeMillis();
+
+        if (snapshot == null || !snapshot.shouldDisplay(now)) {
+            mTaskStatusPanel.setVisibility(View.GONE);
+            return;
+        }
+
+        mTaskStatusPanel.setVisibility(View.VISIBLE);
+
+        String health = taskHealthLabel(snapshot);
+        if (mTaskStatusTitle != null)
+            mTaskStatusTitle.setText(snapshot.title + " · " + health);
+
+        StringBuilder detail = new StringBuilder(snapshot.phase);
+        if (!DataUtils.isNullOrEmpty(snapshot.item)) detail.append(" · ").append(snapshot.item);
+        if (snapshot.completedItems > 0) {
+            detail.append(" · ").append(snapshot.completedItems);
+            if (snapshot.totalItems > 0) detail.append("/").append(snapshot.totalItems);
+            detail.append(" paquetes");
+        }
+        if (mTaskStatusDetail != null) mTaskStatusDetail.setText(detail.toString());
+
+        if (mTaskStatusElapsed != null)
+            mTaskStatusElapsed.setText(TerminalTaskMonitor.formatDuration(snapshot.elapsedMs(now)));
+
+        if (mTaskStatusProgress != null) {
+            if (snapshot.percent >= 0) {
+                mTaskStatusProgress.setIndeterminate(false);
+                mTaskStatusProgress.setProgress(snapshot.percent);
+            } else {
+                mTaskStatusProgress.setIndeterminate(snapshot.health == TerminalTaskMonitor.Health.ACTIVE);
+                if (!mTaskStatusProgress.isIndeterminate()) mTaskStatusProgress.setProgress(0);
+            }
+        }
+
+        if (mTaskStatusDot != null) {
+            int colorRes;
+            switch (snapshot.health) {
+                case ACTIVE:
+                case FINISHED:
+                    colorRes = android.R.color.holo_green_light;
+                    break;
+                case WARNING:
+                    colorRes = android.R.color.holo_red_light;
+                    break;
+                case QUIET:
+                case SLOW:
+                    colorRes = android.R.color.holo_orange_light;
+                    break;
+                case STALLED:
+                case FAILED:
+                default:
+                    colorRes = android.R.color.holo_red_light;
+                    break;
+            }
+            mTaskStatusDot.setTextColor(ContextCompat.getColor(this, colorRes));
+        }
+    }
+
+    private String taskHealthLabel(TerminalTaskMonitor.Snapshot snapshot) {
+        switch (snapshot.health) {
+            case ACTIVE:
+                return snapshot.outputAgeMs(System.currentTimeMillis()) > 10_000L
+                    ? "trabajando sin salida" : "trabajando";
+            case WARNING:
+                return "error reciente";
+            case QUIET:
+                return "sin salida reciente";
+            case SLOW:
+                return "lento";
+            case STALLED:
+                return "posible bloqueo";
+            case FINISHED:
+                return "terminado";
+            case FAILED:
+            default:
+                return "falló";
+        }
+    }
+
+    private void showTaskMonitorDetails() {
+        TerminalTaskMonitor.Snapshot snapshot =
+            TerminalTaskMonitor.snapshot(getCurrentSession(), true);
+        if (snapshot == null) return;
+
+        long now = System.currentTimeMillis();
+        String progress = snapshot.percent >= 0 ? snapshot.percent + "%" : "sin porcentaje fiable";
+        String lastOutput = snapshot.outputAgeMs(now) == Long.MAX_VALUE
+            ? "sin datos"
+            : "hace " + TerminalTaskMonitor.formatDuration(snapshot.outputAgeMs(now));
+        String process = DataUtils.isNullOrEmpty(snapshot.processName)
+            ? "no disponible" : snapshot.processName;
+        String free = TerminalTaskMonitor.formatBytes(getFilesDir().getFreeSpace());
+
+        StringBuilder message = new StringBuilder();
+        message.append("Estado: ").append(taskHealthLabel(snapshot)).append("\n");
+        message.append("Fase: ").append(snapshot.phase).append("\n");
+        if (!DataUtils.isNullOrEmpty(snapshot.item))
+            message.append("Elemento actual: ").append(snapshot.item).append("\n");
+        message.append("Progreso: ").append(progress);
+        if (snapshot.completedItems > 0) {
+            message.append(" · ").append(snapshot.completedItems);
+            if (snapshot.totalItems > 0) message.append("/").append(snapshot.totalItems);
+            message.append(" paquetes");
+        }
+        message.append("\n");
+        message.append("Tiempo: ")
+            .append(TerminalTaskMonitor.formatDuration(snapshot.elapsedMs(now))).append("\n");
+        message.append("Última salida: ").append(lastOutput).append("\n");
+        message.append("Proceso: ").append(process).append("\n");
+        if (snapshot.rootPid > 0) message.append("PID raíz: ").append(snapshot.rootPid).append("\n");
+        if (snapshot.processCount > 0)
+            message.append("Procesos observados: ").append(snapshot.processCount).append("\n");
+        message.append("CPU/I/O: ")
+            .append(snapshot.processActive ? "con actividad" : "sin cambio en la última muestra").append("\n");
+        if (snapshot.rssBytes > 0)
+            message.append("RAM de procesos: ")
+                .append(TerminalTaskMonitor.formatBytes(snapshot.rssBytes)).append("\n");
+        if (snapshot.writeBytes > 0)
+            message.append("Escritura acumulada: ")
+                .append(TerminalTaskMonitor.formatBytes(snapshot.writeBytes)).append("\n");
+        message.append("Salida recibida: ")
+            .append(TerminalTaskMonitor.formatBytes(snapshot.bytes))
+            .append(" · ").append(snapshot.lines).append(" líneas\n");
+        message.append("Espacio libre: ").append(free);
+        if (!DataUtils.isNullOrEmpty(snapshot.warningLine))
+            message.append("\n\nError reciente detectado:\n").append(snapshot.warningLine);
+        if (!DataUtils.isNullOrEmpty(snapshot.lastLine))
+            message.append("\n\nÚltima línea:\n").append(snapshot.lastLine);
+
+        new AlertDialog.Builder(this)
+            .setTitle(snapshot.title)
+            .setMessage(message.toString())
+            .setPositiveButton(android.R.string.ok, null)
+            .show();
+    }
+
 
     /**
      * Notify the pip for a specific session to redraw (called from onTextChanged).
@@ -1406,6 +1907,18 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             container.addView(btn);
         }
 
+        MaterialButton editShortcutsBtn = new MaterialButton(this,
+            null, com.google.android.material.R.attr.materialButtonOutlinedStyle);
+        LinearLayout.LayoutParams editLp = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        editLp.bottomMargin = marginBtm;
+        editShortcutsBtn.setLayoutParams(editLp);
+        editShortcutsBtn.setStrokeColor(accentCsl);
+        editShortcutsBtn.setTextColor(accentColor);
+        editShortcutsBtn.setText(R.string.drawer_edit_shortcuts);
+        editShortcutsBtn.setOnClickListener(v -> showDrawerShortcutEditor());
+        container.addView(editShortcutsBtn);
+
         // +/- controls — apply accent stroke/text color
         MaterialButton addBtn    = findViewById(R.id.drawer_btn_add);
         MaterialButton removeBtn = findViewById(R.id.drawer_btn_remove);
@@ -1436,6 +1949,26 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 }
             });
         }
+    }
+
+    private void showDrawerShortcutEditor() {
+        SharedPreferences prefs = getSharedPreferences(DRAWER_PREFS, MODE_PRIVATE);
+        int count = prefs.getInt("btn_count", DRAWER_BTN_DEFAULT_NAMES.length);
+        String[] labels = new String[count];
+
+        for (int i = 0; i < count; i++) {
+            String defName = i < DRAWER_BTN_DEFAULT_NAMES.length ? DRAWER_BTN_DEFAULT_NAMES[i] : "";
+            String name = prefs.getString("btn_" + (i + 1) + "_name", defName);
+            labels[i] = name == null || name.trim().isEmpty()
+                ? getString(R.string.drawer_button_number, i + 1)
+                : name;
+        }
+
+        new AlertDialog.Builder(this)
+            .setTitle(R.string.drawer_edit_shortcuts)
+            .setItems(labels, (dialog, which) -> showEditDrawerButtonDialog(which))
+            .setNegativeButton(android.R.string.cancel, null)
+            .show();
     }
 
     private void showEditDrawerButtonDialog(int idx) {

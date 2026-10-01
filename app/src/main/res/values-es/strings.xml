@@ -30,7 +30,10 @@
 
     <string name="action_rename">Renombrar</string>
     <string name="action_close">Cerrar</string>
+    <string name="action_close_others">Cerrar todas excepto ésta</string>
+    <string name="action_close_finished_others">Cerrar finalizadas excepto ésta</string>
     <string name="newtermux_toolbar_copy">Copiar</string>
+    <string name="newtermux_toolbar_paste_enter">Pegar+↵</string>
     <string name="msg_visible_screen_copied">Salida visible copiada</string>
     <string name="msg_full_transcript_copied">Transcripción completa copiada</string>
     <string name="newtermux_toolbar_packages">Paquetes</string>
@@ -39,6 +42,7 @@
     <string name="newtermux_toolbar_root">Acceso root</string>
     <string name="newtermux_toolbar_settings">Ajustes</string>
     <string name="newtermux_toolbar_new_session">Nueva sesión</string>
+    <string name="newtermux_toolbar_open_drawer">Abrir herramientas y accesos</string>
     <string name="newtermux_toolbar_more">Más acciones</string>
     <string name="more_save_txt">Guardar pantalla como TXT</string>
     <string name="more_paste">Pegar</string>
@@ -166,6 +170,7 @@
     <string name="drawer_button_label_hint">Nombre del botón</string>
     <string name="drawer_command_hint">Comando</string>
     <string name="drawer_edit_button_title">Editar botón %1$d</string>
+    <string name="drawer_edit_shortcuts">Editar accesos</string>
     <string name="action_save">Guardar</string>
     <string name="action_reset">Restablecer</string>
     <string name="action_cancel">Cancelar</string>
@@ -197,4 +202,17 @@
     <string name="error_mediastore_insert">MediaStore no pudo crear el archivo</string>
     <string name="error_output_stream_open">No se pudo abrir el flujo de salida</string>
 
+    <string name="title_confirm_close_session">¿Cerrar sesión?</string>
+    <string name="msg_confirm_close_session">La sesión se cerrará. Si hay un proceso en ejecución, se interrumpirá.</string>
+    <string name="title_close_other_sessions">¿Cerrar las demás sesiones?</string>
+    <string name="msg_no_other_sessions">No hay otras sesiones para cerrar.</string>
+    <string name="msg_no_finished_sessions">No hay sesiones finalizadas para cerrar.</string>
+    <plurals name="msg_close_other_sessions">
+        <item quantity="one">Se cerrará %1$d sesión adicional. Si tiene un proceso en ejecución, se interrumpirá.</item>
+        <item quantity="other">Se cerrarán %1$d sesiones adicionales. Si tienen procesos en ejecución, se interrumpirán.</item>
+    </plurals>
+    <plurals name="msg_finished_sessions_closed">
+        <item quantity="one">Se cerró %1$d sesión finalizada.</item>
+        <item quantity="other">Se cerraron %1$d sesiones finalizadas.</item>
+    </plurals>
 </resources>

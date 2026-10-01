@@ -4,6 +4,7 @@ import android.app.Application;
 import android.content.Context;
 
 import com.newtermux.features.ClipboardAccessNoticeManager;
+import com.newtermux.features.NativeBackupManager;
 import com.termux.BuildConfig;
 import com.termux.shared.errors.Error;
 import com.termux.shared.logger.Logger;
@@ -40,6 +41,11 @@ public class TermuxApplication extends Application {
             Logger.logError(LOG_TAG, "Stopping before filesystem access: " + identityError);
             return;
         }
+
+        // Publish a previously verified native NewTermux restore before any shell/session
+        // subsystem starts touching HOME or PRoot. The operation is idempotent; failures
+        // leave staging intact so the next launch can retry safely.
+        NativeBackupManager.applyPendingRestore(context);
 
         // Hide Android's transient clipboard-access overlay so it cannot cover compact extra keys.
         // Best-effort: requires WRITE_SECURE_SETTINGS to have been granted to this APK.

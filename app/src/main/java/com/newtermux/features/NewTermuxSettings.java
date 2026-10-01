@@ -25,6 +25,7 @@ public class NewTermuxSettings {
     public static final String KEY_EXTRA_KEYS_VISIBLE        = "extra_keys_visible";
     public static final String KEY_EXTRA_KEYS_IN_DRAWER      = "extra_keys_in_drawer";
     public static final String KEY_KEEP_ALIVE_BACKGROUND     = "keep_alive_background";
+    public static final String KEY_AUTO_SAVE_OUTPUT_ENABLED  = "auto_save_output_enabled";
     // Internal one-time gate: set once we have shown the battery-optimization nudge.
     public static final String KEY_BATTERY_OPT_PROMPTED      = "battery_opt_prompted";
 
@@ -112,12 +113,19 @@ public class NewTermuxSettings {
         prefs(ctx).edit().remove("pending_command").apply();
     }
 
-    /** Zero disables automatic capture; other values are output newline thresholds. */
-    public static int getAutoSaveLines(Context ctx) {
-        return Math.max(0, prefs(ctx).getInt("auto_save_output_lines", 0));
+    /** Automatic capture is a simple on/off choice.
+     *  Migrate the old numeric threshold preference: any value > 0 meant enabled. */
+    public static boolean isAutoSaveOutputEnabled(Context ctx) {
+        SharedPreferences p = prefs(ctx);
+        if (p.contains(KEY_AUTO_SAVE_OUTPUT_ENABLED))
+            return p.getBoolean(KEY_AUTO_SAVE_OUTPUT_ENABLED, false);
+        return p.getInt("auto_save_output_lines", 0) > 0;
     }
-    public static void setAutoSaveLines(Context ctx, int lines) {
-        prefs(ctx).edit().putInt("auto_save_output_lines", Math.max(0, lines)).apply();
+    public static void setAutoSaveOutputEnabled(Context ctx, boolean enabled) {
+        prefs(ctx).edit()
+            .putBoolean(KEY_AUTO_SAVE_OUTPUT_ENABLED, enabled)
+            .remove("auto_save_output_lines")
+            .apply();
     }
 
     // Generic setter for all boolean keys (used by preference listener)
@@ -146,6 +154,7 @@ public class NewTermuxSettings {
             case KEY_EXTRA_KEYS_VISIBLE:           return isExtraKeysVisible(ctx);
             case KEY_EXTRA_KEYS_IN_DRAWER:         return isExtraKeysInDrawer(ctx);
             case KEY_KEEP_ALIVE_BACKGROUND:        return isKeepAliveInBackground(ctx);
+            case KEY_AUTO_SAVE_OUTPUT_ENABLED:       return isAutoSaveOutputEnabled(ctx);
             default:                               return prefs(ctx).getBoolean(key, false);
         }
     }

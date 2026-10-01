@@ -18,6 +18,7 @@ android {
 
     flavorDimensions "identity"
     productFlavors {
+        direct { dimension "identity" }
         playcompat { dimension "identity" }
         coexist { dimension "identity" }
     }
@@ -34,7 +35,8 @@ android {
     }
 
     variantFilter { variant ->
-        if (variant.flavors.any { it.name == "coexist" } && variant.buildType.name == "demo") {
+        if (variant.buildType.name == "demo" &&
+            variant.flavors.any { it.name == "coexist" || it.name == "direct" }) {
             setIgnore(true)
         }
     }
