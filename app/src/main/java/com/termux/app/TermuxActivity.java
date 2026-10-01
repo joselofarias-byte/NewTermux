@@ -850,6 +850,16 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         if (btnClose != null) btnClose.setOnClickListener(v -> hideAutocorrectBar());
 
         // Wire toolbar buttons
+        View appTitle = findViewById(R.id.tv_app_title);
+        if (appTitle != null) {
+            appTitle.setOnClickListener(v -> {
+                DrawerLayout drawer = getDrawer();
+                if (drawer == null) return;
+                if (drawer.isDrawerOpen(Gravity.START)) drawer.closeDrawer(Gravity.START);
+                else drawer.openDrawer(Gravity.START);
+            });
+        }
+
         mBtnSTT = findViewById(R.id.btn_stt);
         if (mBtnSTT != null) {
             mBtnSTT.setOnClickListener(v -> onSTTButtonClicked());
@@ -1382,17 +1392,94 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
     private void showSessionPopupMenu(View anchor, TerminalSession session) {
-        // Bannerlator-style pop-out menu: rounded + outlined card with a thin gray divider
-        // between options (see NtPopupMenu).
+        // Session-scoped actions live on the miniature itself so cleanup does not get
+        // buried in a global menu.
         com.newtermux.features.NtPopupMenu.showAsDropDown(this, anchor, null,
-            new String[]{getString(R.string.action_rename), getString(R.string.action_close)}, idx -> {
-                if (idx == 0) {
-                    if (mTermuxTerminalSessionActivityClient != null)
-                        mTermuxTerminalSessionActivityClient.renameSession(session);
-                } else {
-                    confirmCloseSession(session);
+            new String[]{
+                getString(R.string.action_rename),
+                getString(R.string.action_close),
+                getString(R.string.action_close_others),
+                getString(R.string.action_close_finished_others)
+            }, idx -> {
+                switch (idx) {
+                    case 0:
+                        if (mTermuxTerminalSessionActivityClient != null)
+                            mTermuxTerminalSessionActivityClient.renameSession(session);
+                        break;
+                    case 1:
+                        confirmCloseSession(session);
+                        break;
+                    case 2:
+                        confirmCloseOtherSessions(session);
+                        break;
+                    case 3:
+                        closeFinishedOtherSessions(session);
+                        break;
+                    default:
+                        break;
                 }
             });
+    }
+
+    private void confirmCloseOtherSessions(TerminalSession keepSession) {
+        if (keepSession == null || mTermuxService == null) return;
+
+        List<com.termux.shared.termux.shell.command.runner.terminal.TermuxSession> snapshot =
+            new ArrayList<>(mTermuxService.getTermuxSessions());
+        int count = 0;
+        for (com.termux.shared.termux.shell.command.runner.terminal.TermuxSession item : snapshot) {
+            TerminalSession terminal = item == null ? null : item.getTerminalSession();
+            if (terminal != null && terminal != keepSession) count++;
+        }
+
+        if (count == 0) {
+            showToast(getString(R.string.msg_no_other_sessions), false);
+            return;
+        }
+
+        final int closeCount = count;
+        new AlertDialog.Builder(this)
+            .setTitle(R.string.title_close_other_sessions)
+            .setMessage(getResources().getQuantityString(
+                R.plurals.msg_close_other_sessions, closeCount, closeCount))
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.action_close_others, (dialog, which) -> {
+                List<com.termux.shared.termux.shell.command.runner.terminal.TermuxSession> current =
+                    new ArrayList<>(mTermuxService.getTermuxSessions());
+                for (com.termux.shared.termux.shell.command.runner.terminal.TermuxSession item : current) {
+                    TerminalSession terminal = item == null ? null : item.getTerminalSession();
+                    if (terminal == null || terminal == keepSession) continue;
+                    terminal.finishIfRunning();
+                    if (mTermuxTerminalSessionActivityClient != null)
+                        mTermuxTerminalSessionActivityClient.removeFinishedSession(terminal);
+                }
+                if (mTermuxTerminalSessionActivityClient != null)
+                    mTermuxTerminalSessionActivityClient.setCurrentSession(keepSession);
+                updateSessionTabs();
+            })
+            .show();
+    }
+
+    private void closeFinishedOtherSessions(TerminalSession keepSession) {
+        if (keepSession == null || mTermuxService == null ||
+            mTermuxTerminalSessionActivityClient == null) return;
+
+        List<com.termux.shared.termux.shell.command.runner.terminal.TermuxSession> snapshot =
+            new ArrayList<>(mTermuxService.getTermuxSessions());
+        int removed = 0;
+        for (com.termux.shared.termux.shell.command.runner.terminal.TermuxSession item : snapshot) {
+            TerminalSession terminal = item == null ? null : item.getTerminalSession();
+            if (terminal == null || terminal == keepSession || terminal.isRunning()) continue;
+            mTermuxTerminalSessionActivityClient.removeFinishedSession(terminal);
+            removed++;
+        }
+
+        mTermuxTerminalSessionActivityClient.setCurrentSession(keepSession);
+        updateSessionTabs();
+        showToast(removed == 0
+            ? getString(R.string.msg_no_finished_sessions)
+            : getResources().getQuantityString(R.plurals.msg_finished_sessions_closed, removed, removed),
+            false);
     }
 
     private void confirmCloseSession(TerminalSession session) {
@@ -1813,6 +1900,18 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             container.addView(btn);
         }
 
+        MaterialButton editShortcutsBtn = new MaterialButton(this,
+            null, com.google.android.material.R.attr.materialButtonOutlinedStyle);
+        LinearLayout.LayoutParams editLp = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        editLp.bottomMargin = marginBtm;
+        editShortcutsBtn.setLayoutParams(editLp);
+        editShortcutsBtn.setStrokeColor(accentCsl);
+        editShortcutsBtn.setTextColor(accentColor);
+        editShortcutsBtn.setText(R.string.drawer_edit_shortcuts);
+        editShortcutsBtn.setOnClickListener(v -> showDrawerShortcutEditor());
+        container.addView(editShortcutsBtn);
+
         // +/- controls — apply accent stroke/text color
         MaterialButton addBtn    = findViewById(R.id.drawer_btn_add);
         MaterialButton removeBtn = findViewById(R.id.drawer_btn_remove);
@@ -1843,6 +1942,26 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 }
             });
         }
+    }
+
+    private void showDrawerShortcutEditor() {
+        SharedPreferences prefs = getSharedPreferences(DRAWER_PREFS, MODE_PRIVATE);
+        int count = prefs.getInt("btn_count", DRAWER_BTN_DEFAULT_NAMES.length);
+        String[] labels = new String[count];
+
+        for (int i = 0; i < count; i++) {
+            String defName = i < DRAWER_BTN_DEFAULT_NAMES.length ? DRAWER_BTN_DEFAULT_NAMES[i] : "";
+            String name = prefs.getString("btn_" + (i + 1) + "_name", defName);
+            labels[i] = name == null || name.trim().isEmpty()
+                ? getString(R.string.drawer_button_number, i + 1)
+                : name;
+        }
+
+        new AlertDialog.Builder(this)
+            .setTitle(R.string.drawer_edit_shortcuts)
+            .setItems(labels, (dialog, which) -> showEditDrawerButtonDialog(which))
+            .setNegativeButton(android.R.string.cancel, null)
+            .show();
     }
 
     private void showEditDrawerButtonDialog(int idx) {
