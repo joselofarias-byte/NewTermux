@@ -1,0 +1,15 @@
+# Reproducible package sets for a clean NewTermux Dev (com.newtermux.dev).
+# Install only from official repos. Do not copy a Play PREFIX.
+
+# Termux APT — https://packages-cf.termux.dev/apt/termux-main
+termux:proot-distro
+termux:git
+termux:gh
+# termux:nodejs   # optional native; prefer Debian guest for Codex
+
+# Debian guest via proot-distro (deb.debian.org)
+debian:ca-certificates
+debian:curl
+debian:git
+# debian:nodejs   # optional; enable with FASE5_INSTALL_NODE=1
+# Codex CLI is not an apt package. See docs/NEWTERMUX_FASE5_PROOT_DEBIAN_CODEX_2026-09-19.md

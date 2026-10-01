@@ -1,4 +1,11 @@
 #!/bin/bash
+# REFUSED (Fase 4): ELF fil/file rewrite for com.newtermux.app.
+# Abandoned 2026-03-02. Use scripts/fase4/prepare-prefix-aware-bootstrap.sh
+# (official generate-bootstraps.sh, TERMUX_APP_PACKAGE=com.newtermux.dev).
+echo "REFUSED: scripts/patch-bootstrap.sh is the abandoned ELF PREFIX hack." >&2
+echo "See docs/NEWTERMUX_FASE4_GO_REPOS_2026-09-19.md" >&2
+exit 2
+
 set -e
 
 ARCH=$1

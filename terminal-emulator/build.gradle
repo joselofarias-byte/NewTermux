@@ -22,10 +22,26 @@ android {
         }
     }
 
+    flavorDimensions "identity"
+    productFlavors {
+        playcompat { dimension "identity" }
+        coexist { dimension "identity" }
+    }
+
     buildTypes {
+        debug {}
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+        demo {
+            initWith debug
+        }
+    }
+
+    variantFilter { variant ->
+        if (variant.flavors.any { it.name == "coexist" } && variant.buildType.name == "demo") {
+            setIgnore(true)
         }
     }
 

@@ -28,7 +28,12 @@ jobs:
         run: |
           cd termux-packages
           
-          # Configure for NewTermux package name
+          # Abandoned 2026-03-02. Official rebuild uses com.newtermux.dev only
+          # after an explicit pinned termux-packages SHA (see scripts/fase4/).
+          echo "REFUSED: TERMUX_APP_PACKAGE=com.newtermux.app is the abandoned experiment."
+          echo "Use scripts/fase4/prepare-prefix-aware-bootstrap.sh"
+          echo "See docs/NEWTERMUX_FASE4_GO_REPOS_2026-09-19.md"
+          exit 2
           export TERMUX_APP_PACKAGE="com.newtermux.app"
           
           # The wiki says: Set TERMUX_APP_PACKAGE to your package name.

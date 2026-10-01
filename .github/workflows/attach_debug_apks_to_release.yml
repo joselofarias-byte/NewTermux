@@ -16,6 +16,12 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
+      - name: Refuse attaching debug APKs to GitHub Release
+        run: |
+          echo "Fase 6: debug APKs must stay CI artifacts. Do not hub release edit."
+          echo "See docs/NEWTERMUX_FASE6_BUILD_CI_2026-09-19.md"
+          exit 2
+
       - name: Clone repository
         uses: actions/checkout@v6
         with:
@@ -40,14 +46,14 @@ jobs:
            exit_on_error "The versionName '${RELEASE_VERSION_NAME/v/}' is not a valid version as per semantic version '2.0.0' spec in the format 'major.minor.patch(-prerelease)(+buildmetadata)'. https://semver.org/spec/v2.0.0.html."
           fi
 
-          APK_DIR_PATH="./app/build/outputs/apk/debug"
+          APK_DIR_PATH="./app/build/outputs/apk/coexist/debug"
           APK_VERSION_TAG="$RELEASE_VERSION_NAME+${{ env.PACKAGE_VARIANT }}-github-debug"
           APK_BASENAME_PREFIX="termux-app_$APK_VERSION_TAG"
 
           echo "Building APKs for 'APK_VERSION_TAG' release"
           export TERMUX_APK_VERSION_TAG="$APK_VERSION_TAG" # Used by app/build.gradle
           export TERMUX_PACKAGE_VARIANT="${{ env.PACKAGE_VARIANT }}" # Used by app/build.gradle
-          if ! ./gradlew assembleDebug; then
+          if ! ./gradlew assembleCoexistDebug; then
             exit_on_error "Build failed for '$APK_VERSION_TAG' release."
           fi
 
