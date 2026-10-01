@@ -1,12 +1,16 @@
 // ==UserScript==
 // @name         ShortXLinks Final URL Catcher
 // @namespace    local.shortxlinks.bypass
-// @version      1.1.0
-// @description  Captura y muestra la URL final devuelta por ShortXLinks sin abrir popups.
+// @version      1.2.0
+// @description  Salta etapas ShortXLinks/MTC y captura el destino entregado por /links/go.
 // @match        *://shortxlinks.in/*
 // @match        *://*.shortxlinks.in/*
 // @match        *://shortxlinks.com/*
 // @match        *://*.shortxlinks.com/*
+// @match        *://iti-result.in/*
+// @match        *://*.iti-result.in/*
+// @updateURL    https://raw.githubusercontent.com/joselofarias-byte/NewTermux/tools/shortxlinks-bypass-20260930/tools/userscripts/SHORTXLINKS-BYPASS.user.js
+// @downloadURL  https://raw.githubusercontent.com/joselofarias-byte/NewTermux/tools/shortxlinks-bypass-20260930/tools/userscripts/SHORTXLINKS-BYPASS.user.js
 // @run-at       document-start
 // @grant        none
 // ==/UserScript==
@@ -15,6 +19,71 @@
   'use strict';
 
   const seen = new Set();
+
+  function isMtcHost(hostname) {
+    return /^mtc\d+\./i.test(hostname) && /(^|\.)iti-result\.in$/i.test(hostname);
+  }
+
+  function decodeB64Json(value) {
+    try {
+      const normalized = String(value).replace(/-/g, '+').replace(/_/g, '/');
+      const padded = normalized + '='.repeat((4 - normalized.length % 4) % 4);
+      return JSON.parse(atob(padded));
+    } catch {
+      return null;
+    }
+  }
+
+  function resolveMtcTarget(raw) {
+    if (!raw) return null;
+    let target = String(raw);
+    try {
+      const nested = new URL(target, location.href).searchParams.get('safelink_redirect');
+      if (nested) {
+        const decoded = decodeB64Json(nested);
+        if (decoded && decoded.safelink) target = decoded.safelink;
+      }
+    } catch {}
+    return target;
+  }
+
+  function handleMtcStage() {
+    const direct = new URLSearchParams(location.search).get('safelink_redirect');
+    if (direct) {
+      const decoded = decodeB64Json(direct);
+      if (decoded && decoded.safelink) {
+        location.replace(decoded.safelink);
+        return true;
+      }
+    }
+
+    let tries = 0;
+    const timer = setInterval(() => {
+      tries++;
+      const el = document.getElementById('value') ||
+                 document.querySelector('input[name="newwpsafelink"]');
+      const raw = el ? el.value : window.ad_mem;
+
+      if (raw) {
+        const decoded = decodeB64Json(raw);
+        if (decoded && decoded.linkr) {
+          clearInterval(timer);
+          const target = resolveMtcTarget(decoded.linkr);
+          if (target) location.replace(target);
+          return;
+        }
+      }
+
+      if (tries >= 120) clearInterval(timer);
+    }, 250);
+
+    return true;
+  }
+
+  if (isMtcHost(location.hostname)) {
+    handleMtcStage();
+    return;
+  }
 
   function isHttpUrl(value) {
     try {
