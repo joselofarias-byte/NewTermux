@@ -567,6 +567,9 @@ private fun StorageScreen(onBack: () -> Unit) {
                     (used.toFloat() / snap.totalBytes.toFloat()).coerceIn(0f, 1f)
                 else 0f
 
+                val identified = snap.measuredBytes.coerceAtLeast(0L).coerceAtMost(used)
+                val otherDevice = (used - identified).coerceAtLeast(0L)
+
                 Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
                     Text(
                         "Dispositivo: ${NativeStorageManager.formatBytes(used)} usados · " +
@@ -578,9 +581,15 @@ private fun StorageScreen(onBack: () -> Unit) {
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                     )
                     Text(
-                        "Las barras muestran qué ocupa espacio. PRoot, modelos, cachés y respaldos " +
-                            "se separan para no contarlos dos veces.",
+                        "NewTermux identificado: ${NativeStorageManager.formatBytes(identified)} · " +
+                            "Otros datos del dispositivo: ${NativeStorageManager.formatBytes(otherDevice)}",
                         modifier = Modifier.padding(top = 8.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        "Los tamaños de cada componente son espacio realmente asignado en disco. " +
+                            "HOME, PRoot, modelos, cachés, staging TBM y respaldos se separan para no contarlos dos veces.",
+                        modifier = Modifier.padding(top = 6.dp),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -588,7 +597,7 @@ private fun StorageScreen(onBack: () -> Unit) {
 
                 HorizontalDivider()
 
-                val maxItem = snap.items.maxOfOrNull { it.bytes }?.coerceAtLeast(1L) ?: 1L
+                val maxItem = snap.items.maxOfOrNull { it.allocatedBytes }?.coerceAtLeast(1L) ?: 1L
                 snap.items.forEach { item ->
                     val checked = item.id in selected
                     Row(
@@ -618,14 +627,14 @@ private fun StorageScreen(onBack: () -> Unit) {
                                     style = MaterialTheme.typography.bodyLarge,
                                 )
                                 Text(
-                                    NativeStorageManager.formatBytes(item.bytes),
+                                    NativeStorageManager.formatBytes(item.allocatedBytes),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
                             LinearProgressIndicator(
                                 progress = {
-                                    (item.bytes.toFloat() / maxItem.toFloat()).coerceIn(0f, 1f)
+                                    (item.allocatedBytes.toFloat() / maxItem.toFloat()).coerceIn(0f, 1f)
                                 },
                                 modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
                             )
@@ -645,11 +654,20 @@ private fun StorageScreen(onBack: () -> Unit) {
                 val selectedBytes = snap.items
                     .filter { it.id in selected }
                     .sumOf { it.bytes }
+                val selectedDiskBytes = snap.items
+                    .filter { it.id in selected }
+                    .sumOf { it.allocatedBytes }
 
                 Column(Modifier.fillMaxWidth().padding(16.dp)) {
                     Text(
-                        "Seleccionado: ${NativeStorageManager.formatBytes(selectedBytes)}",
+                        "Seleccionado para respaldo: ${NativeStorageManager.formatBytes(selectedBytes)}",
                         style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        "${NativeStorageManager.formatBytes(selectedDiskBytes)} ocupados actualmente en disco",
+                        modifier = Modifier.padding(top = 2.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
 
                     Row(
