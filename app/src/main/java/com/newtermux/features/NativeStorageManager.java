@@ -3,6 +3,7 @@ package com.newtermux.features;
 import android.content.Context;
 import android.os.Environment;
 import android.os.StatFs;
+import android.os.SystemClock;
 import android.system.Os;
 import android.system.OsConstants;
 import android.system.StructStat;
@@ -115,7 +116,7 @@ public final class NativeStorageManager {
         int phase = 0;
 
         report(progress, "Calculando HOME", phase, totalPhases);
-        long homeBytes = sizeTree(home, homeExcludes, globalSeen);
+        long homeBytes = sizeTree(home, homeExcludes, globalSeen, progress, "Calculando HOME", phase, totalPhases);
         items.add(new Item(
             "home", "HOME", home.getAbsolutePath(), homeBytes,
             true, true, "Archivos personales y proyectos; modelos, cachés y respaldos se muestran aparte."
@@ -123,7 +124,7 @@ public final class NativeStorageManager {
         report(progress, "HOME listo", ++phase, totalPhases);
 
         report(progress, "Calculando paquetes / PREFIX", phase, totalPhases);
-        long prefixBytes = sizeTree(prefix, prefixExcludes, globalSeen);
+        long prefixBytes = sizeTree(prefix, prefixExcludes, globalSeen, progress, "Calculando paquetes / PREFIX", phase, totalPhases);
         items.add(new Item(
             "prefix", "Paquetes / PREFIX", prefix.getAbsolutePath(), prefixBytes,
             true, false, "Paquetes y herramientas de NewTermux. Restauración requiere compatibilidad exacta."
@@ -132,7 +133,7 @@ public final class NativeStorageManager {
 
         for (ProotRoot p : proots) {
             report(progress, "Calculando PRoot · " + p.name, phase, totalPhases);
-            long bytes = sizeTree(p.root, Collections.emptySet(), globalSeen);
+            long bytes = sizeTree(p.root, Collections.emptySet(), globalSeen, progress, "Calculando PRoot · " + p.name, phase, totalPhases);
             items.add(new Item(
                 "proot:" + p.name, "PRoot · " + p.name, p.root.getAbsolutePath(), bytes,
                 true, true, "Contenedor completo administrado por proot-distro (rootfs y metadata)."
@@ -141,7 +142,7 @@ public final class NativeStorageManager {
         }
 
         report(progress, "Calculando modelos LLM", phase, totalPhases);
-        long modelBytes = sizeRoots(modelRoots, Collections.emptySet(), globalSeen);
+        long modelBytes = sizeRoots(modelRoots, Collections.emptySet(), globalSeen, progress, "Calculando modelos LLM", phase, totalPhases);
         if (modelBytes > 0 || !modelRoots.isEmpty()) {
             items.add(new Item(
                 "models", "Modelos LLM", joinPaths(modelRoots), modelBytes,
@@ -152,7 +153,7 @@ public final class NativeStorageManager {
 
         // Cache roots may contain model roots; exclude those so models are never counted twice.
         report(progress, "Calculando cachés y temporales", phase, totalPhases);
-        long cacheBytes = sizeRoots(cacheRoots, canonicalSet(modelRoots), globalSeen);
+        long cacheBytes = sizeRoots(cacheRoots, canonicalSet(modelRoots), globalSeen, progress, "Calculando cachés y temporales", phase, totalPhases);
         items.add(new Item(
             "cache", "Cachés y temporales", joinPaths(cacheRoots), cacheBytes,
             false, false, "Contenido regenerable. No se incluye en respaldos."
@@ -160,7 +161,7 @@ public final class NativeStorageManager {
         report(progress, "Cachés listas", ++phase, totalPhases);
 
         report(progress, "Calculando respaldos", phase, totalPhases);
-        long backupBytes = sizeRoots(backupRoots, Collections.emptySet(), globalSeen);
+        long backupBytes = sizeRoots(backupRoots, Collections.emptySet(), globalSeen, progress, "Calculando respaldos", phase, totalPhases);
         items.add(new Item(
             "backups", "Respaldos", joinPaths(backupRoots), backupBytes,
             false, false, "Los respaldos existentes nunca se incluyen dentro de otro respaldo."
@@ -173,7 +174,7 @@ public final class NativeStorageManager {
         );
         report(progress, "Calculando salidas y registros", phase, totalPhases);
         Set<String> logExcludes = canonicalSet(backupRoots);
-        long outputBytes = sizeTree(sharedLogs, logExcludes, globalSeen);
+        long outputBytes = sizeTree(sharedLogs, logExcludes, globalSeen, progress, "Calculando salidas y registros", phase, totalPhases);
         if (outputBytes > 0) {
             items.add(new Item(
                 "outputs", "Salidas y registros", sharedLogs.getAbsolutePath(), outputBytes,
@@ -231,13 +232,31 @@ public final class NativeStorageManager {
         return out;
     }
 
-    private static long sizeRoots(List<File> roots, Set<String> excludes, Set<String> seen) {
+    private static final class ScanProgressState {
+        long visited;
+        long bytes;
+        long lastReportMs;
+    }
+
+    private static long sizeRoots(List<File> roots, Set<String> excludes, Set<String> seen,
+                                  Progress progress, String phase, int completed, int totalPhases) {
+        ScanProgressState state = new ScanProgressState();
         long total = 0;
-        for (File root : roots) total += sizeTree(root, excludes, seen);
+        for (File root : roots) {
+            total += sizeTreeInternal(root, excludes, seen, progress, phase, completed, totalPhases, state);
+        }
         return total;
     }
 
-    private static long sizeTree(File root, Set<String> excludes, Set<String> seen) {
+    private static long sizeTree(File root, Set<String> excludes, Set<String> seen,
+                                 Progress progress, String phase, int completed, int totalPhases) {
+        return sizeTreeInternal(root, excludes, seen, progress, phase, completed, totalPhases,
+            new ScanProgressState());
+    }
+
+    private static long sizeTreeInternal(File root, Set<String> excludes, Set<String> seen,
+                                         Progress progress, String phase, int completed, int totalPhases,
+                                         ScanProgressState state) {
         if (root == null || !root.exists()) return 0;
 
         long sum = 0;
@@ -246,34 +265,69 @@ public final class NativeStorageManager {
 
         while (!pending.isEmpty()) {
             File current = pending.pop();
+            state.visited++;
             String path = current.getAbsolutePath();
-            if (isExcluded(path, excludes)) continue;
+            if (isExcluded(path, excludes)) {
+                maybeReportTreeProgress(progress, phase, completed, totalPhases, state);
+                continue;
+            }
 
             StructStat st;
             try {
                 st = Os.lstat(path);
             } catch (Exception e) {
+                maybeReportTreeProgress(progress, phase, completed, totalPhases, state);
                 continue;
             }
 
             // Never follow symlinks. This also keeps ~/storage from exploding the scan.
-            if (OsConstants.S_ISLNK(st.st_mode)) continue;
-
-            String inode = st.st_dev + ":" + st.st_ino;
-            if (!seen.add(inode)) continue;
-
-            if (OsConstants.S_ISREG(st.st_mode)) {
-                sum += Math.max(0, st.st_size);
+            if (OsConstants.S_ISLNK(st.st_mode)) {
+                maybeReportTreeProgress(progress, phase, completed, totalPhases, state);
                 continue;
             }
-            if (!OsConstants.S_ISDIR(st.st_mode)) continue;
+
+            String inode = st.st_dev + ":" + st.st_ino;
+            if (!seen.add(inode)) {
+                maybeReportTreeProgress(progress, phase, completed, totalPhases, state);
+                continue;
+            }
+
+            if (OsConstants.S_ISREG(st.st_mode)) {
+                long bytes = Math.max(0, st.st_size);
+                sum += bytes;
+                state.bytes += bytes;
+                maybeReportTreeProgress(progress, phase, completed, totalPhases, state);
+                continue;
+            }
+            if (!OsConstants.S_ISDIR(st.st_mode)) {
+                maybeReportTreeProgress(progress, phase, completed, totalPhases, state);
+                continue;
+            }
 
             File[] children = safeList(current);
-            if (children == null) continue;
-            for (File child : children) pending.push(child);
+            if (children != null) {
+                for (File child : children) pending.push(child);
+            }
+            maybeReportTreeProgress(progress, phase, completed, totalPhases, state);
         }
 
         return sum;
+    }
+
+    private static void maybeReportTreeProgress(Progress progress, String phase, int completed,
+                                                int totalPhases, ScanProgressState state) {
+        if (progress == null) return;
+        long now = SystemClock.elapsedRealtime();
+        if (state.lastReportMs != 0 && now - state.lastReportMs < 750) return;
+        state.lastReportMs = now;
+        String detail = String.format(
+            Locale.getDefault(),
+            "%s · %,d elementos · %s",
+            phase,
+            state.visited,
+            formatBytes(state.bytes)
+        );
+        report(progress, detail, completed, totalPhases);
     }
 
     private static boolean isExcluded(String path, Set<String> excludes) {
