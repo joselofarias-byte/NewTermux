@@ -322,6 +322,9 @@ private fun StorageScreen(onBack: () -> Unit) {
 
     var snapshot by remember { mutableStateOf<NativeStorageManager.Snapshot?>(null) }
     var loading by remember { mutableStateOf(true) }
+    var scanPhase by remember { mutableStateOf("Preparando inventario…") }
+    var scanDone by remember { mutableStateOf(0) }
+    var scanTotal by remember { mutableStateOf(0) }
     var error by remember { mutableStateOf<String?>(null) }
     var selected by remember { mutableStateOf<Set<String>>(emptySet()) }
     var initializedSelection by remember { mutableStateOf(false) }
@@ -351,11 +354,23 @@ private fun StorageScreen(onBack: () -> Unit) {
 
     fun refresh() {
         loading = true
+        scanPhase = "Preparando inventario…"
+        scanDone = 0
+        scanTotal = 0
         error = null
         scope.launch {
             val result = runCatching {
                 withContext(Dispatchers.IO) {
-                    NativeStorageManager.scan(context.applicationContext)
+                    NativeStorageManager.scan(
+                        context.applicationContext,
+                        NativeStorageManager.Progress { phase, done, total ->
+                            activity?.runOnUiThread {
+                                scanPhase = phase
+                                scanDone = done.coerceAtLeast(0)
+                                scanTotal = total.coerceAtLeast(0)
+                            }
+                        },
+                    )
                 }
             }
             result.onSuccess { snap ->
@@ -725,11 +740,36 @@ private fun StorageScreen(onBack: () -> Unit) {
                     }
                 }
             } else if (loading) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(20.dp),
-                    horizontalArrangement = Arrangement.Center,
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     CircularProgressIndicator()
+                    Text(
+                        scanPhase,
+                        modifier = Modifier.padding(top = 14.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    if (scanTotal > 0) {
+                        val fraction =
+                            (scanDone.toFloat() / scanTotal.toFloat()).coerceIn(0f, 1f)
+                        LinearProgressIndicator(
+                            progress = { fraction },
+                            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                        )
+                        Text(
+                            "$scanDone / $scanTotal etapas",
+                            modifier = Modifier.padding(top = 6.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Text(
+                        "El cálculo se ejecuta en segundo plano. Podés volver atrás mientras termina.",
+                        modifier = Modifier.padding(top = 10.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
 
