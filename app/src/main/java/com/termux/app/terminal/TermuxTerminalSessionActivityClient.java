@@ -513,11 +513,27 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
             }
 
             TerminalColors.COLOR_SCHEME.updateWith(props);
+            // Apply the reloaded colors to every live session (not only new ones) so a terminal
+            // theme change from the Theme Picker takes effect immediately on the running session(s).
+            TermuxService service = mActivity.getTermuxService();
+            if (service != null) {
+                int count = service.getTermuxSessionsSize();
+                for (int i = 0; i < count; i++) {
+                    TermuxSession ts = service.getTermuxSession(i);
+                    if (ts != null && ts.getTerminalSession() != null && ts.getTerminalSession().getEmulator() != null) {
+                        ts.getTerminalSession().getEmulator().mColors.reset();
+                    }
+                }
+            }
             TerminalSession session = mActivity.getCurrentSession();
             if (session != null && session.getEmulator() != null) {
                 session.getEmulator().mColors.reset();
             }
             updateBackgroundColor();
+            // Repaint so the new colors are visible right away.
+            if (mActivity.getTerminalView() != null) {
+                mActivity.getTerminalView().onScreenUpdated();
+            }
 
             final Typeface newTypeface = (fontFile.exists() && fontFile.length() > 0) ? Typeface.createFromFile(fontFile) : Typeface.MONOSPACE;
             mActivity.getTerminalView().setTypeface(newTypeface);
