@@ -450,7 +450,7 @@ public final class NativeBackupManager {
                     File target = resolveMetadataTarget(targets, meta);
                     if (!target.isDirectory() && !target.mkdirs())
                         throw new IllegalStateException("No se pudo crear " + target);
-                    applyModeAndTime(target, meta, false);
+                    // Keep directories writable until their children are published.
                 }
             }
 
@@ -474,8 +474,8 @@ public final class NativeBackupManager {
                         copyFile(staged, target);
                         applyModeAndTime(target, meta, false);
                     } else if ("symlink".equals(type)) {
-                        File tmp = new File(parent, target.getName() + ".newtermux-restore-link");
-                        deleteTree(tmp);
+                        File tmp = File.createTempFile(".newtermux-restore-link-", ".tmp", parent);
+                        if (!tmp.delete()) throw new IllegalStateException("No se pudo preparar enlace temporal");
                         Os.symlink(meta.getString("linkTarget"), tmp.getAbsolutePath());
                         try {
                             if (isDirectoryNoFollow(target)) deleteTree(target);
@@ -488,6 +488,22 @@ public final class NativeBackupManager {
                 }
             }
 
+            // Apply directory modes only after all payload is published. Otherwise a
+            // read-only directory in the archive prevents its own children restoring.
+            List<JSONObject> directories = new ArrayList<>();
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(
+                    new FileInputStream(metadataFile), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    JSONObject meta = new JSONObject(line);
+                    if ("dir".equals(meta.getString("type"))) directories.add(meta);
+                }
+            }
+            // Native v1 writes parents before children; finalize in reverse order
+            // so restrictive parent modes cannot prevent finalizing a child.
+            Collections.reverse(directories);
+            for (JSONObject meta : directories)
+                applyModeAndTime(resolveMetadataTarget(targets, meta), meta, false);
             for (File rollback : rollbacks.values()) deleteTree(rollback);
             deleteTree(pending);
         } catch (Exception e) {
@@ -982,19 +998,22 @@ public final class NativeBackupManager {
     }
 
     private static void copyFile(File source, File target) throws Exception {
-        File tmp = new File(target.getParentFile(), target.getName() + ".newtermux-restore-tmp");
-        try (FileInputStream in = new FileInputStream(source);
-             FileOutputStream out = new FileOutputStream(tmp)) {
-            byte[] buf = new byte[1024 * 1024];
-            int n;
-            while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
-            out.getFD().sync();
-        }
+        // A fixed name may already be a HOME symlink. Create a fresh sibling so
+        // opening the temporary file cannot follow that link and overwrite its target.
+        File tmp = File.createTempFile(".newtermux-restore-", ".tmp", target.getParentFile());
         try {
+            try (FileInputStream in = new FileInputStream(source);
+                 FileOutputStream out = new FileOutputStream(tmp)) {
+                byte[] buf = new byte[1024 * 1024];
+                int n;
+                while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+                out.getFD().sync();
+            }
             Os.rename(tmp.getAbsolutePath(), target.getAbsolutePath());
         } catch (Exception e) {
-            tmp.delete();
             throw new IllegalStateException("No se pudo publicar " + target, e);
+        } finally {
+            tmp.delete();
         }
     }
 

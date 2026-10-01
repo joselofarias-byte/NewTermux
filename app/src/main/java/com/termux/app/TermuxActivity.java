@@ -1434,7 +1434,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             .setPositiveButton(R.string.action_close_all, (dialog, which) -> {
                 // Stop the service using its normal session/process cleanup path.
                 Intent stop = new Intent(this, TermuxService.class);
-                stop.setAction(TermuxConstants.TERMUX_SERVICE.ACTION_STOP_SERVICE);
+                stop.setAction(TermuxConstants.TERMUX_APP.TERMUX_SERVICE.ACTION_STOP_SERVICE);
                 startService(stop);
             })
             .show();
