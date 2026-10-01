@@ -1559,6 +1559,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 case FINISHED:
                     colorRes = android.R.color.holo_green_light;
                     break;
+                case WARNING:
+                    colorRes = android.R.color.holo_red_light;
+                    break;
                 case QUIET:
                 case SLOW:
                     colorRes = android.R.color.holo_orange_light;
@@ -1578,6 +1581,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             case ACTIVE:
                 return snapshot.outputAgeMs(System.currentTimeMillis()) > 10_000L
                     ? "trabajando sin salida" : "trabajando";
+            case WARNING:
+                return "error reciente";
             case QUIET:
                 return "sin salida reciente";
             case SLOW:
@@ -1637,6 +1642,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             .append(TerminalTaskMonitor.formatBytes(snapshot.bytes))
             .append(" · ").append(snapshot.lines).append(" líneas\n");
         message.append("Espacio libre: ").append(free);
+        if (!DataUtils.isNullOrEmpty(snapshot.warningLine))
+            message.append("\n\nError reciente detectado:\n").append(snapshot.warningLine);
         if (!DataUtils.isNullOrEmpty(snapshot.lastLine))
             message.append("\n\nÚltima línea:\n").append(snapshot.lastLine);
 
