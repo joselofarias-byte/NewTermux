@@ -36,6 +36,14 @@ public class TerminalTaskMonitorTest {
     }
 
     @Test
+    public void recognizesShellCommandNotFoundAsScriptError() {
+        assertTrue(TerminalTaskMonitor.isScriptCommandError(
+            "/bin/bash: line 13: llvm-19-tools: command not found"));
+        assertFalse(TerminalTaskMonitor.isScriptCommandError(
+            "llvm-19-tools is already the newest version"));
+    }
+
+    @Test
     public void recognizesGitProgress() {
         TerminalTaskMonitor.Analysis a =
             TerminalTaskMonitor.analyzeLine("Receiving objects: 67% (670/1000), 8.10 MiB | 5.00 MiB/s");
