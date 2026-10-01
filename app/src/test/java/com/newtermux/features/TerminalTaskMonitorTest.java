@@ -24,6 +24,18 @@ public class TerminalTaskMonitorTest {
     }
 
     @Test
+    public void aptSummaryUsesCurrentTransactionTotal() {
+        assertEquals(20, TerminalTaskMonitor.aptPackageTotal(
+            "0 upgraded, 20 newly installed, 0 to remove and 3 not upgraded."));
+        assertEquals(4, TerminalTaskMonitor.aptPackageTotal(
+            "0 upgraded, 4 newly installed, 0 to remove and 3 not upgraded."));
+        assertEquals(7, TerminalTaskMonitor.aptPackageTotal(
+            "3 upgraded, 4 newly installed, 0 to remove and 0 not upgraded."));
+        assertEquals(-1, TerminalTaskMonitor.aptPackageTotal(
+            "Reading package lists... Done"));
+    }
+
+    @Test
     public void recognizesGitProgress() {
         TerminalTaskMonitor.Analysis a =
             TerminalTaskMonitor.analyzeLine("Receiving objects: 67% (670/1000), 8.10 MiB | 5.00 MiB/s");
