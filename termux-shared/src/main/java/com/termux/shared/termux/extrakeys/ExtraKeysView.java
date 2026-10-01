@@ -405,34 +405,34 @@ public final class ExtraKeysView extends GridLayout {
         switch (key) {
             case "ESC":
                 prefKey = "key_esc";
-                defaultColor = 0xFF7A4C57;
+                defaultColor = 0xFF8A3F52;
                 break;
             case "TAB":
                 prefKey = "key_tab";
-                defaultColor = 0xFF4D6680;
+                defaultColor = 0xFF345D8A;
                 break;
             case "CTRL":
                 prefKey = "key_ctrl";
-                defaultColor = 0xFF64557A;
+                defaultColor = 0xFF674A91;
                 break;
             case "ENTER":
                 prefKey = "key_enter";
-                defaultColor = 0xFF3E7068;
+                defaultColor = 0xFF277887;
                 break;
             case "y":
                 prefKey = "key_y";
-                defaultColor = 0xFF466C58;
+                defaultColor = 0xFF34724C;
                 break;
             case "n":
                 prefKey = "key_n";
-                defaultColor = 0xFF704952;
+                defaultColor = 0xFF8A572C;
                 break;
             case "UP":
             case "DOWN":
             case "LEFT":
             case "RIGHT":
                 prefKey = "key_arrows";
-                defaultColor = 0xFF5A5752;
+                defaultColor = 0xFF575A60;
                 break;
             default:
                 return pressed ? mButtonActiveBackgroundColor : mButtonBackgroundColor;
