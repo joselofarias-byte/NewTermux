@@ -10,7 +10,7 @@ import android.system.StructStat;
 import com.termux.shared.termux.TermuxConstants;
 
 import java.io.File;
-import java.io.IOException;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -63,9 +63,17 @@ public final class NativeStorageManager {
         }
     }
 
+    public interface Progress {
+        void onProgress(String phase, int completed, int total);
+    }
+
     private NativeStorageManager() {}
 
     public static Snapshot scan(Context context) {
+        return scan(context, null);
+    }
+
+    public static Snapshot scan(Context context, Progress progress) {
         File home = TermuxConstants.TERMUX_HOME_DIR;
         File prefix = TermuxConstants.TERMUX_PREFIX_DIR;
         File prootBase = new File(prefix, "var/lib/proot-distro");
@@ -102,27 +110,37 @@ public final class NativeStorageManager {
 
         List<Item> items = new ArrayList<>();
         Set<String> globalSeen = new HashSet<>();
+        List<ProotRoot> proots = discoverProots(prootBase);
+        final int totalPhases = 6 + proots.size();
+        int phase = 0;
 
+        report(progress, "Calculando HOME", phase, totalPhases);
         long homeBytes = sizeTree(home, homeExcludes, globalSeen);
         items.add(new Item(
             "home", "HOME", home.getAbsolutePath(), homeBytes,
             true, true, "Archivos personales y proyectos; modelos, cachés y respaldos se muestran aparte."
         ));
+        report(progress, "HOME listo", ++phase, totalPhases);
 
+        report(progress, "Calculando paquetes / PREFIX", phase, totalPhases);
         long prefixBytes = sizeTree(prefix, prefixExcludes, globalSeen);
         items.add(new Item(
             "prefix", "Paquetes / PREFIX", prefix.getAbsolutePath(), prefixBytes,
             true, false, "Paquetes y herramientas de NewTermux. Restauración requiere compatibilidad exacta."
         ));
+        report(progress, "PREFIX listo", ++phase, totalPhases);
 
-        for (ProotRoot p : discoverProots(prootBase)) {
+        for (ProotRoot p : proots) {
+            report(progress, "Calculando PRoot · " + p.name, phase, totalPhases);
             long bytes = sizeTree(p.root, Collections.emptySet(), globalSeen);
             items.add(new Item(
                 "proot:" + p.name, "PRoot · " + p.name, p.root.getAbsolutePath(), bytes,
                 true, true, "Contenedor completo administrado por proot-distro (rootfs y metadata)."
             ));
+            report(progress, "PRoot · " + p.name + " listo", ++phase, totalPhases);
         }
 
+        report(progress, "Calculando modelos LLM", phase, totalPhases);
         long modelBytes = sizeRoots(modelRoots, Collections.emptySet(), globalSeen);
         if (modelBytes > 0 || !modelRoots.isEmpty()) {
             items.add(new Item(
@@ -130,24 +148,30 @@ public final class NativeStorageManager {
                 true, true, "Modelos detectados en rutas conocidas de HOME."
             ));
         }
+        report(progress, "Modelos listos", ++phase, totalPhases);
 
         // Cache roots may contain model roots; exclude those so models are never counted twice.
+        report(progress, "Calculando cachés y temporales", phase, totalPhases);
         long cacheBytes = sizeRoots(cacheRoots, canonicalSet(modelRoots), globalSeen);
         items.add(new Item(
             "cache", "Cachés y temporales", joinPaths(cacheRoots), cacheBytes,
             false, false, "Contenido regenerable. No se incluye en respaldos."
         ));
+        report(progress, "Cachés listas", ++phase, totalPhases);
 
+        report(progress, "Calculando respaldos", phase, totalPhases);
         long backupBytes = sizeRoots(backupRoots, Collections.emptySet(), globalSeen);
         items.add(new Item(
             "backups", "Respaldos", joinPaths(backupRoots), backupBytes,
             false, false, "Los respaldos existentes nunca se incluyen dentro de otro respaldo."
         ));
+        report(progress, "Respaldos listos", ++phase, totalPhases);
 
         File sharedLogs = new File(
             Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
             "NewTermux"
         );
+        report(progress, "Calculando salidas y registros", phase, totalPhases);
         Set<String> logExcludes = canonicalSet(backupRoots);
         long outputBytes = sizeTree(sharedLogs, logExcludes, globalSeen);
         if (outputBytes > 0) {
@@ -156,6 +180,7 @@ public final class NativeStorageManager {
                 false, false, "Archivos exportados y registros comprimidos de NewTermux."
             ));
         }
+        report(progress, "Inventario terminado", ++phase, totalPhases);
 
         StatFs stat = new StatFs(context.getFilesDir().getAbsolutePath());
         long total = stat.getTotalBytes();
@@ -214,30 +239,40 @@ public final class NativeStorageManager {
 
     private static long sizeTree(File root, Set<String> excludes, Set<String> seen) {
         if (root == null || !root.exists()) return 0;
-        String canonical = canonical(root);
-        if (canonical == null || isExcluded(canonical, excludes)) return 0;
-
-        StructStat st;
-        try {
-            st = Os.lstat(root.getAbsolutePath());
-        } catch (Exception e) {
-            return 0;
-        }
-
-        if (OsConstants.S_ISLNK(st.st_mode)) return 0;
-
-        String inode = st.st_dev + ":" + st.st_ino;
-        if (!seen.add(inode)) return 0;
-
-        if (OsConstants.S_ISREG(st.st_mode)) return Math.max(0, st.st_size);
-        if (!OsConstants.S_ISDIR(st.st_mode)) return 0;
 
         long sum = 0;
-        File[] children = safeList(root);
-        if (children == null) return 0;
-        for (File child : children) {
-            sum += sizeTree(child, excludes, seen);
+        ArrayDeque<File> pending = new ArrayDeque<>();
+        pending.push(root);
+
+        while (!pending.isEmpty()) {
+            File current = pending.pop();
+            String path = current.getAbsolutePath();
+            if (isExcluded(path, excludes)) continue;
+
+            StructStat st;
+            try {
+                st = Os.lstat(path);
+            } catch (Exception e) {
+                continue;
+            }
+
+            // Never follow symlinks. This also keeps ~/storage from exploding the scan.
+            if (OsConstants.S_ISLNK(st.st_mode)) continue;
+
+            String inode = st.st_dev + ":" + st.st_ino;
+            if (!seen.add(inode)) continue;
+
+            if (OsConstants.S_ISREG(st.st_mode)) {
+                sum += Math.max(0, st.st_size);
+                continue;
+            }
+            if (!OsConstants.S_ISDIR(st.st_mode)) continue;
+
+            File[] children = safeList(current);
+            if (children == null) continue;
+            for (File child : children) pending.push(child);
         }
+
         return sum;
     }
 
@@ -281,12 +316,18 @@ public final class NativeStorageManager {
         }
     }
 
+    /**
+     * Scanner paths deliberately use absolute paths instead of getCanonicalPath().
+     * Calling getCanonicalPath() for every entry performs extra filesystem resolution
+     * and made large HOME/PRoot inventories take minutes on-device. Symlink safety is
+     * enforced separately with lstat(), and hard links are deduplicated by inode.
+     */
     private static String canonical(File file) {
-        try {
-            return file.getCanonicalPath();
-        } catch (IOException e) {
-            return null;
-        }
+        return file == null ? null : file.getAbsolutePath();
+    }
+
+    private static void report(Progress progress, String phase, int completed, int total) {
+        if (progress != null) progress.onProgress(phase, completed, total);
     }
 
     private static boolean isDirectoryNoFollow(File file) {
