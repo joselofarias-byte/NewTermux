@@ -29,6 +29,7 @@ import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.ProgressBar;
+import android.widget.PopupWindow;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -224,6 +225,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private String mPendingOriginal;
     private ImageButton mBtnSTT;
     private LinearLayout mSessionPipContainer;
+    private PopupWindow mSessionNoticePopup;
+    private final Handler mSessionNoticeHandler = new Handler(Looper.getMainLooper());
+    private final Runnable mDismissSessionNotice = () -> dismissSessionNotice();
 
     // Compact long-task monitor shown between the toolbar and session previews.
     private View mTaskStatusPanel;
@@ -557,6 +561,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         mIsVisible = false;
         mTaskMonitorHandler.removeCallbacks(mTaskMonitorTicker);
+        mSessionNoticeHandler.removeCallbacks(mDismissSessionNotice);
+        dismissSessionNotice();
 
         if (mTermuxTerminalSessionActivityClient != null)
             mTermuxTerminalSessionActivityClient.onStop();
@@ -585,6 +591,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         if (mIsInvalidState) return;
 
         mTaskMonitorHandler.removeCallbacksAndMessages(null);
+        mSessionNoticeHandler.removeCallbacksAndMessages(null);
+        dismissSessionNotice();
         if (mSpeechInputManager != null) { mSpeechInputManager.destroy(); mSpeechInputManager = null; }
         if (mAutoCorrectHandler != null) { mAutoCorrectHandler.destroy(); mAutoCorrectHandler = null; }
 
@@ -1351,6 +1359,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             LinearLayout.LayoutParams wrapperLp = new LinearLayout.LayoutParams(pipWidthPx, LinearLayout.LayoutParams.WRAP_CONTENT);
             wrapperLp.setMarginEnd(marginPx);
             wrapper.setLayoutParams(wrapperLp);
+            wrapper.setTag(session);
 
             // Session name label
             android.widget.TextView nameLabel = new android.widget.TextView(this);
@@ -1388,6 +1397,95 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             });
 
             mSessionPipContainer.addView(wrapper);
+        }
+    }
+
+    /**
+     * Show a compact transient notice anchored to the session miniature that caused it.
+     * This keeps "[N]" session-change notices away from the main toolbar controls.
+     */
+    public void showSessionNotice(TerminalSession session, String text, boolean longDuration) {
+        if (text == null || text.isEmpty()) return;
+
+        mSessionNoticeHandler.removeCallbacks(mDismissSessionNotice);
+        dismissSessionNotice();
+
+        View anchor = findSessionNoticeAnchor(session);
+        if (anchor == null || !anchor.isShown()) {
+            // Fallback for a session that disappeared before the notice could be anchored.
+            showToast(text, longDuration);
+            return;
+        }
+
+        float density = getResources().getDisplayMetrics().density;
+        int horizontalPadding = Math.round(12 * density);
+        int verticalPadding = Math.round(7 * density);
+        int edgeMargin = Math.round(8 * density);
+        int gap = Math.round(6 * density);
+
+        TextView label = new TextView(this);
+        label.setText(text);
+        label.setTextColor(androidx.core.content.ContextCompat.getColor(
+            this, com.termux.R.color.nt_on_surface));
+        label.setTextSize(13f);
+        label.setGravity(Gravity.CENTER);
+        label.setMaxLines(2);
+        label.setPadding(horizontalPadding, verticalPadding, horizontalPadding, verticalPadding);
+        label.setBackgroundResource(com.termux.R.drawable.bg_popup_menu);
+
+        View decor = getWindow().getDecorView();
+        int screenWidth = Math.max(decor.getWidth(), getResources().getDisplayMetrics().widthPixels);
+        int maxWidth = Math.max(1, screenWidth - 2 * edgeMargin);
+        label.setMaxWidth(Math.min(maxWidth, Math.round(280 * density)));
+        label.measure(
+            View.MeasureSpec.makeMeasureSpec(maxWidth, View.MeasureSpec.AT_MOST),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+
+        int[] anchorLocation = new int[2];
+        anchor.getLocationOnScreen(anchorLocation);
+        int popupWidth = Math.max(1, label.getMeasuredWidth());
+        int desiredLeft = anchorLocation[0] + (anchor.getWidth() - popupWidth) / 2;
+        int clampedLeft = Math.max(edgeMargin,
+            Math.min(desiredLeft, screenWidth - edgeMargin - popupWidth));
+        int xOffset = clampedLeft - anchorLocation[0];
+
+        PopupWindow popup = new PopupWindow(
+            label,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            false);
+        popup.setClippingEnabled(true);
+        popup.setOutsideTouchable(false);
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP)
+            popup.setElevation(8 * density);
+
+        try {
+            popup.showAsDropDown(anchor, xOffset, gap, Gravity.START);
+            mSessionNoticePopup = popup;
+            mSessionNoticeHandler.postDelayed(
+                mDismissSessionNotice,
+                longDuration ? 2800L : 1600L);
+        } catch (WindowManager.BadTokenException e) {
+            showToast(text, longDuration);
+        }
+    }
+
+    private View findSessionNoticeAnchor(TerminalSession session) {
+        if (session == null || mSessionPipContainer == null) return null;
+        for (int i = 0; i < mSessionPipContainer.getChildCount(); i++) {
+            View child = mSessionPipContainer.getChildAt(i);
+            if (child != null && child.getTag() == session) return child;
+        }
+        return null;
+    }
+
+    private void dismissSessionNotice() {
+        if (mSessionNoticePopup != null) {
+            try {
+                mSessionNoticePopup.dismiss();
+            } catch (Exception ignored) {
+            }
+            mSessionNoticePopup = null;
         }
     }
 
