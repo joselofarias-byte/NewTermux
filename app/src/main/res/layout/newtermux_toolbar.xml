@@ -19,12 +19,19 @@
         <TextView
             android:id="@+id/tv_app_title"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_height="36dp"
             android:layout_marginEnd="6dp"
-            android:text="NT"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:paddingStart="4dp"
+            android:paddingEnd="4dp"
+            android:text="☰ NT"
+            android:contentDescription="@string/newtermux_toolbar_open_drawer"
             android:singleLine="true"
             android:textColor="@color/nt_toolbar_text"
-            android:textSize="16sp"
+            android:textSize="15sp"
             android:textStyle="bold"
             android:fontFamily="monospace" />
 
