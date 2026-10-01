@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="nt_ctrl_shortcut_interrupt">Ctrl+C · Interrupt process</string>
+    <string name="nt_ctrl_shortcut_suspend">Ctrl+Z · Suspend process</string>
+    <string name="nt_ctrl_shortcut_eof">Ctrl+D · EOF / exit shell</string>
+    <string name="nt_ctrl_shortcut_tab">Ctrl+I · Tab</string>
+    <string name="nt_ctrl_shortcut_clear">Ctrl+L · Clear / redraw</string>
+    <string name="nt_ctrl_shortcut_history">Ctrl+R · Search history</string>
+    <string name="nt_ctrl_shortcut_line_start">Ctrl+A · Start of line</string>
+    <string name="nt_ctrl_shortcut_line_end">Ctrl+E · End of line</string>
+    <string name="nt_ctrl_shortcut_delete_to_start">Ctrl+U · Delete to start</string>
+    <string name="nt_ctrl_shortcut_delete_to_end">Ctrl+K · Delete to end</string>
+    <string name="nt_ctrl_shortcut_delete_word">Ctrl+W · Delete previous word</string>
+    <string name="nt_ctrl_shortcut_sigquit">Ctrl+\ · SIGQUIT</string>
+    <string name="nt_ctrl_shortcut_pause_output">Ctrl+S · Pause terminal output</string>
+    <string name="nt_ctrl_shortcut_resume_output">Ctrl+Q · Resume terminal output</string>
+</resources>

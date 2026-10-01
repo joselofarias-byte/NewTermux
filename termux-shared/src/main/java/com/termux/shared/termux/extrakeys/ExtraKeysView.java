@@ -27,6 +27,7 @@ import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 import android.widget.GridLayout;
+import android.widget.PopupMenu;
 import android.widget.PopupWindow;
 
 import androidx.annotation.NonNull;
@@ -92,6 +93,15 @@ public final class ExtraKeysView extends GridLayout {
          * @param button The {@link MaterialButton} that was clicked.
          */
         void onExtraKeyButtonClick(View view, ExtraKeyButton buttonInfo, MaterialButton button);
+
+        /**
+         * Send a shortcut directly without changing the latched state of the modifier buttons.
+         * NewTermux uses this for the long-press CTRL menu in its compact HONOR 200 layout.
+         */
+        default void onExtraKeyShortcutClick(View view, String key,
+                                             boolean ctrlDown, boolean altDown,
+                                             boolean shiftDown, boolean fnDown) {
+        }
 
         /**
          * This is called by {@link ExtraKeysView} when a button is clicked so that the client
@@ -207,6 +217,7 @@ public final class ExtraKeysView extends GridLayout {
     protected ScheduledExecutorService mScheduledExecutor;
     protected Handler mHandler;
     protected SpecialButtonsLongHoldRunnable mSpecialButtonsLongHoldRunnable;
+    protected Runnable mCtrlShortcutsLongHoldRunnable;
     protected int mLongPressCount;
 
 
@@ -537,7 +548,7 @@ public final class ExtraKeysView extends GridLayout {
                         case MotionEvent.ACTION_DOWN:
                             view.setBackgroundColor(buttonActiveBackgroundColor);
                             // Start long press scheduled executors which will be stopped in next MotionEvent
-                            startScheduledExecutors(view, buttonInfo, button);
+                            startScheduledExecutors(view, buttonInfo, button, useTbmCompactPalette);
                             return true;
 
                         case MotionEvent.ACTION_MOVE:
@@ -645,7 +656,8 @@ public final class ExtraKeysView extends GridLayout {
     }
 
 
-    public void startScheduledExecutors(View view, ExtraKeyButton buttonInfo, MaterialButton button) {
+    public void startScheduledExecutors(View view, ExtraKeyButton buttonInfo, MaterialButton button,
+                                        boolean useTbmCompactPalette) {
         stopScheduledExecutors();
         mLongPressCount = 0;
         if (mRepetitiveKeys.contains(buttonInfo.getKey())) {
@@ -656,6 +668,22 @@ public final class ExtraKeysView extends GridLayout {
                 mLongPressCount++;
                 onExtraKeyButtonClick(view, buttonInfo, button);
             }, mLongPressTimeout, mLongPressRepeatDelay, TimeUnit.MILLISECONDS);
+        } else if (useTbmCompactPalette && SpecialButton.CTRL.getKey().equals(buttonInfo.getKey())) {
+            // NewTermux compact layout: a short CTRL press keeps the normal one-shot modifier
+            // behaviour, while a long press opens direct CTRL shortcuts instead of locking CTRL.
+            if (mHandler == null)
+                mHandler = new Handler(Looper.getMainLooper());
+            mCtrlShortcutsLongHoldRunnable = () -> {
+                SpecialButtonState state = mSpecialButtons.get(SpecialButton.CTRL);
+                if (state != null) {
+                    state.setIsLocked(false);
+                    state.setIsActive(false);
+                }
+                mLongPressCount++;
+                performExtraKeyButtonHapticFeedback(view, buttonInfo, button);
+                showCtrlShortcutMenu(view);
+            };
+            mHandler.postDelayed(mCtrlShortcutsLongHoldRunnable, mLongPressTimeout);
         } else if (isSpecialButton(buttonInfo)) {
             // Lock the key if long pressed by running mSpecialButtonsLongHoldRunnable after
             // waiting for mLongPressTimeout milliseconds. If user does not long press, then the
@@ -680,6 +708,11 @@ public final class ExtraKeysView extends GridLayout {
             mHandler.removeCallbacks(mSpecialButtonsLongHoldRunnable);
             mSpecialButtonsLongHoldRunnable = null;
         }
+
+        if (mCtrlShortcutsLongHoldRunnable != null && mHandler != null) {
+            mHandler.removeCallbacks(mCtrlShortcutsLongHoldRunnable);
+            mCtrlShortcutsLongHoldRunnable = null;
+        }
     }
 
     public class SpecialButtonsLongHoldRunnable implements Runnable {
@@ -697,6 +730,55 @@ public final class ExtraKeysView extends GridLayout {
         }
     }
 
+
+
+    private void showCtrlShortcutMenu(View anchor) {
+        PopupMenu popup = new PopupMenu(getContext(), anchor);
+
+        popup.getMenu().add(0, 1, 1, R.string.nt_ctrl_shortcut_interrupt);
+        popup.getMenu().add(0, 2, 2, R.string.nt_ctrl_shortcut_suspend);
+        popup.getMenu().add(0, 3, 3, R.string.nt_ctrl_shortcut_eof);
+        popup.getMenu().add(0, 4, 4, R.string.nt_ctrl_shortcut_tab);
+        popup.getMenu().add(0, 5, 5, R.string.nt_ctrl_shortcut_clear);
+        popup.getMenu().add(0, 6, 6, R.string.nt_ctrl_shortcut_history);
+        popup.getMenu().add(0, 7, 7, R.string.nt_ctrl_shortcut_line_start);
+        popup.getMenu().add(0, 8, 8, R.string.nt_ctrl_shortcut_line_end);
+        popup.getMenu().add(0, 9, 9, R.string.nt_ctrl_shortcut_delete_to_start);
+        popup.getMenu().add(0, 10, 10, R.string.nt_ctrl_shortcut_delete_to_end);
+        popup.getMenu().add(0, 11, 11, R.string.nt_ctrl_shortcut_delete_word);
+        popup.getMenu().add(0, 12, 12, R.string.nt_ctrl_shortcut_sigquit);
+        popup.getMenu().add(0, 13, 13, R.string.nt_ctrl_shortcut_pause_output);
+        popup.getMenu().add(0, 14, 14, R.string.nt_ctrl_shortcut_resume_output);
+
+        popup.setOnMenuItemClickListener(item -> {
+            String key;
+            switch (item.getItemId()) {
+                case 1: key = "C"; break;
+                case 2: key = "Z"; break;
+                case 3: key = "D"; break;
+                case 4: key = "I"; break;
+                case 5: key = "L"; break;
+                case 6: key = "R"; break;
+                case 7: key = "A"; break;
+                case 8: key = "E"; break;
+                case 9: key = "U"; break;
+                case 10: key = "K"; break;
+                case 11: key = "W"; break;
+                case 12: key = "\\"; break;
+                case 13: key = "S"; break;
+                case 14: key = "Q"; break;
+                default: return false;
+            }
+
+            if (mExtraKeysViewClient != null) {
+                mExtraKeysViewClient.onExtraKeyShortcutClick(
+                    anchor, key, true, false, false, false);
+            }
+            return true;
+        });
+
+        popup.show();
+    }
 
 
     void showPopup(View view, ExtraKeyButton extraButton) {

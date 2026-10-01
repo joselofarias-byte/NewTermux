@@ -78,6 +78,13 @@ public class TerminalExtraKeys implements ExtraKeysView.IExtraKeysView {
     }
 
     @Override
+    public void onExtraKeyShortcutClick(View view, String key,
+                                        boolean ctrlDown, boolean altDown,
+                                        boolean shiftDown, boolean fnDown) {
+        onTerminalExtraKeyButtonClick(view, key, ctrlDown, altDown, shiftDown, fnDown);
+    }
+
+    @Override
     public boolean performExtraKeyButtonHapticFeedback(View view, ExtraKeyButton buttonInfo, MaterialButton button) {
         return false;
     }
