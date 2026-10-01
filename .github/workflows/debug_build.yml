@@ -50,7 +50,8 @@ jobs:
            exit_on_error "The versionName '${RELEASE_VERSION_NAME/v/}' is not a valid version as per semantic version '2.0.0' spec in the format 'major.minor.patch(-prerelease)(+buildmetadata)'. https://semver.org/spec/v2.0.0.html."
           fi
 
-          APK_DIR_PATH="./app/build/outputs/apk/debug"
+          # coexistDebug only. assembleDebug would also emit playcompatDebug (com.termux).
+          APK_DIR_PATH="./app/build/outputs/apk/coexist/debug"
           APK_VERSION_TAG="$RELEASE_VERSION_NAME-${{ env.PACKAGE_VARIANT }}-github-debug" # Note the "-", GITHUB_SHA will already have "+" before it
           APK_BASENAME_PREFIX="termux-app_$APK_VERSION_TAG"
 
@@ -63,7 +64,7 @@ jobs:
           export TERMUX_APP_VERSION_NAME="${RELEASE_VERSION_NAME/v/}" # Used by app/build.gradle
           export TERMUX_APK_VERSION_TAG="$APK_VERSION_TAG" # Used by app/build.gradle
           export TERMUX_PACKAGE_VARIANT="${{ env.PACKAGE_VARIANT }}" # Used by app/build.gradle
-          if ! ./gradlew assembleDebug; then
+          if ! ./gradlew assembleCoexistDebug; then
             exit_on_error "Build failed for '$APK_VERSION_TAG' build."
           fi
 
@@ -75,7 +76,7 @@ jobs:
             fi
           done
 
-          echo "Generating sha25sums file"
+          echo "Generating sha256sums file"
           if ! (cd "$APK_DIR_PATH"; sha256sum \
             "${APK_BASENAME_PREFIX}_universal.apk" \
             "${APK_BASENAME_PREFIX}_arm64-v8a.apk" \
@@ -83,8 +84,15 @@ jobs:
             "${APK_BASENAME_PREFIX}_x86_64.apk" \
             "${APK_BASENAME_PREFIX}_x86.apk" \
             > "${APK_BASENAME_PREFIX}_sha256sums"); then
-            exit_on_error "Generate sha25sums failed for '$APK_VERSION_TAG' release."
+            exit_on_error "Generate sha256sums failed for '$APK_VERSION_TAG' debug CI artifact."
           fi
+
+          echo "Verifying coexist debug identity (not playcompat, not release)"
+          chmod +x ./scripts/fase6/verify-coexist-apk.sh
+          if ! ./scripts/fase6/verify-coexist-apk.sh "$APK_DIR_PATH/output-metadata.json"; then
+            exit_on_error "Coexist APK verification failed."
+          fi
+          cp ./scripts/fase6/DEBUG-NOT-RELEASE.txt "$APK_DIR_PATH/DEBUG-NOT-RELEASE.txt"
 
       - name: Attach universal APK file
         uses: actions/upload-artifact@v6
@@ -133,3 +141,4 @@ jobs:
           path: |
             ${{ env.APK_DIR_PATH }}/${{ env.APK_BASENAME_PREFIX }}_sha256sums
             ${{ env.APK_DIR_PATH }}/output-metadata.json
+            ${{ env.APK_DIR_PATH }}/DEBUG-NOT-RELEASE.txt
