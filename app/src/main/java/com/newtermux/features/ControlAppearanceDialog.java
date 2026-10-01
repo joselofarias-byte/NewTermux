@@ -30,16 +30,16 @@ public final class ControlAppearanceDialog {
     public static final String KEY_ENTER = "key_enter";
     public static final String KEY_ARROWS = "key_arrows";
 
-    public static final int DEFAULT_TOOLBAR_CLEAR = 0xFF54545B;
-    public static final int DEFAULT_TOOLBAR_COPY = 0xFF52718A;
-    public static final int DEFAULT_TOOLBAR_PASTE = 0xFF7A673E;
-    public static final int DEFAULT_ESC = 0xFF7A4C57;
-    public static final int DEFAULT_Y = 0xFF466C58;
-    public static final int DEFAULT_TAB = 0xFF4D6680;
-    public static final int DEFAULT_N = 0xFF704952;
-    public static final int DEFAULT_CTRL = 0xFF64557A;
-    public static final int DEFAULT_ENTER = 0xFF3E7068;
-    public static final int DEFAULT_ARROWS = 0xFF5A5752;
+    public static final int DEFAULT_TOOLBAR_CLEAR = 0xFF7A4148;
+    public static final int DEFAULT_TOOLBAR_COPY = 0xFF3E6F91;
+    public static final int DEFAULT_TOOLBAR_PASTE = 0xFF806222;
+    public static final int DEFAULT_ESC = 0xFF8A3F52;
+    public static final int DEFAULT_Y = 0xFF34724C;
+    public static final int DEFAULT_TAB = 0xFF345D8A;
+    public static final int DEFAULT_N = 0xFF8A572C;
+    public static final int DEFAULT_CTRL = 0xFF674A91;
+    public static final int DEFAULT_ENTER = 0xFF277887;
+    public static final int DEFAULT_ARROWS = 0xFF575A60;
 
     private static SharedPreferences prefs(Context context) {
         return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
@@ -103,14 +103,14 @@ public final class ControlAppearanceDialog {
             row.setSpan(new ForegroundColorSpan(color), 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             rows.add(row);
         }
-        rows.add("Restablecer paleta pastel");
+        rows.add("Restablecer paleta diferenciada");
 
         new AlertDialog.Builder(context)
             .setTitle("Personalizar controles")
             .setItems(rows.toArray(new CharSequence[0]), (dialog, which) -> {
                 if (which == names.length) {
                     prefs(context).edit().clear().apply();
-                    Toast.makeText(context, "Paleta pastel restablecida", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(context, "Paleta diferenciada restablecida", Toast.LENGTH_SHORT).show();
                     if (onChanged != null) onChanged.run();
                     return;
                 }
