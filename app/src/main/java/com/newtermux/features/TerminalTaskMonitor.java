@@ -257,12 +257,22 @@ public final class TerminalTaskMonitor {
         return new Snapshot(state, health);
     }
 
+    static int aptPackageTotal(String rawLine) {
+        String line = clean(rawLine).trim();
+        Matcher total = APT_TOTAL.matcher(line);
+        if (!total.find()) return -1;
+        int upgraded = parseInt(total.group(1));
+        int installed = parseInt(total.group(2));
+        // We currently count packages that are unpacked/configured. Packages only being removed
+        // are deliberately excluded until "Removing ..." is tracked as its own progress phase.
+        return upgraded + installed;
+    }
+
     static Analysis analyzeLine(String rawLine) {
         String line = clean(rawLine).trim();
         if (line.isEmpty()) return null;
 
-        Matcher total = APT_TOTAL.matcher(line);
-        if (total.find()) {
+        if (aptPackageTotal(line) >= 0) {
             return new Analysis("apt", "Instalando paquetes", "Preparando instalación", "",
                 parsePercent(line), false, false, false);
         }
@@ -365,12 +375,7 @@ public final class TerminalTaskMonitor {
         state.lines++;
         state.lastLine = truncate(line, 500);
 
-        Matcher total = APT_TOTAL.matcher(line);
-        if (total.find()) {
-            int upgraded = parseInt(total.group(1));
-            int installed = parseInt(total.group(2));
-            state.totalItems = Math.max(state.totalItems, upgraded + installed);
-        }
+        int aptTotal = aptPackageTotal(line);
 
         Analysis a = analyzeLine(line);
         if (a == null) {
@@ -389,6 +394,30 @@ public final class TerminalTaskMonitor {
             state.kind = a.kind;
             state.seenItems.clear();
             state.completedItems = 0;
+            state.totalItems = 0;
+            state.percent = -1;
+            state.item = "";
+            state.startedAtMs = now;
+        }
+
+        if (aptTotal >= 0) {
+            // An APT summary is authoritative for THIS transaction. Never keep the larger total
+            // from a previous apt command in the same shell/script (e.g. 20 packages, then 4).
+            // This was visible on-device as 1/20 after APT had announced 4 new packages.
+            boolean replacingPreviousAptTransaction =
+                state.totalItems > 0 || state.completedItems > 0 || state.percent > 0;
+            if (replacingPreviousAptTransaction) {
+                state.startedAtMs = now;
+                state.finishedAtMs = 0;
+                state.completed = false;
+                state.failed = false;
+                state.exitStatus = Integer.MIN_VALUE;
+            }
+            state.totalItems = aptTotal;
+            state.completedItems = 0;
+            state.percent = aptTotal > 0 ? 0 : -1;
+            state.item = "";
+            state.seenItems.clear();
         }
 
         if (a.phase != null && !a.phase.equals(state.phase) && a.countItem) {
