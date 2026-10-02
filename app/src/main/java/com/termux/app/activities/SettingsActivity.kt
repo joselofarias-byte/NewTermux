@@ -356,7 +356,7 @@ private object NativeStorageSession {
 
     private fun onMain(block: () -> Unit) {
         if (Looper.myLooper() == Looper.getMainLooper()) block()
-        else mainHandler.post(block)
+        else mainHandler.post { block() }
     }
 
     fun ensureScan(context: Context, force: Boolean = false) {
