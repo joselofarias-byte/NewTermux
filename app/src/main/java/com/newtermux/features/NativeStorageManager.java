@@ -102,8 +102,11 @@ public final class NativeStorageManager {
             new File(sharedStorage, "Download-Folders/tbm_backups")
         );
 
-        // TBM cutover snapshots are large historical/staging copies. They are not the
-        // active HOME and must not inflate the HOME figure or be recursively backed up.
+        // TBM keeps large recovery workspaces under ~/.tbm. The entire workspace is
+        // separate from active HOME, then split into useful categories below.
+        File tbmRoot = new File(home, ".tbm");
+        File tbmTmpRoot = new File(tbmRoot, "tmp");
+        File tbmCutoverSourceRoot = new File(tbmRoot, "cutover-source");
         List<File> tbmStageRoots = discoverTbmStageRoots(home);
 
         List<File> cacheRoots = existingUnique(
@@ -114,9 +117,16 @@ public final class NativeStorageManager {
 
         Set<String> homeExcludes = canonicalSet(modelRoots);
         addAll(homeExcludes, backupRoots);
-        addAll(homeExcludes, tbmStageRoots);
+        // Exclude ALL of ~/.tbm from active HOME. Individual TBM categories are measured below.
+        addIfInside(homeExcludes, tbmRoot, home);
         // HOME cache is presented separately. Never exclude app cache because it is not inside HOME.
         addIfInside(homeExcludes, new File(home, ".cache"), home);
+
+        Set<String> tbmOtherExcludes = new LinkedHashSet<>();
+        addIfInside(tbmOtherExcludes, tbmTmpRoot, tbmRoot);
+        addIfInside(tbmOtherExcludes, tbmCutoverSourceRoot, tbmRoot);
+        for (File stageRoot : tbmStageRoots) addIfInside(tbmOtherExcludes, stageRoot, tbmRoot);
+        for (File backupRoot : backupRoots) addIfInside(tbmOtherExcludes, backupRoot, tbmRoot);
 
         Set<String> prefixExcludes = new LinkedHashSet<>();
         addIfInside(prefixExcludes, prootBase, prefix);
@@ -125,14 +135,14 @@ public final class NativeStorageManager {
         List<Item> items = new ArrayList<>();
         Set<String> globalSeen = new HashSet<>();
         List<ProotRoot> proots = discoverProots(prootBase);
-        final int totalPhases = 7 + proots.size();
+        final int totalPhases = 10 + proots.size();
         int phase = 0;
 
         report(progress, "Calculando HOME", phase, totalPhases);
         Usage homeUsage = sizeTree(home, homeExcludes, globalSeen, progress, "Calculando HOME", phase, totalPhases);
         items.add(new Item(
             "home", "HOME", home.getAbsolutePath(), homeUsage.logicalBytes, homeUsage.allocatedBytes,
-            true, true, "HOME activo; modelos, cachés, respaldos y staging de TBM se muestran aparte."
+            true, true, "HOME activo; modelos, cachés, respaldos y todo el espacio de trabajo TBM se muestran aparte."
         ));
         report(progress, "HOME listo", ++phase, totalPhases);
 
@@ -173,6 +183,30 @@ public final class NativeStorageManager {
         ));
         report(progress, "Cachés listas", ++phase, totalPhases);
 
+        report(progress, "Calculando temporales de TBM", phase, totalPhases);
+        Usage tbmTmpUsage = sizeTree(tbmTmpRoot, Collections.emptySet(), globalSeen, progress,
+            "Calculando temporales de TBM", phase, totalPhases);
+        if (tbmTmpUsage.logicalBytes > 0 || tbmTmpUsage.allocatedBytes > 0 || tbmTmpRoot.exists()) {
+            items.add(new Item(
+                "tbm-tmp", "TBM · temporales / probes", tbmTmpRoot.getAbsolutePath(),
+                tbmTmpUsage.logicalBytes, tbmTmpUsage.allocatedBytes,
+                false, false, "Área temporal de probes, resume y staging transitorio de TBM. No forma parte del HOME activo."
+            ));
+        }
+        report(progress, "Temporales de TBM listos", ++phase, totalPhases);
+
+        report(progress, "Calculando fuente cutover de TBM", phase, totalPhases);
+        Usage tbmCutoverUsage = sizeTree(tbmCutoverSourceRoot, Collections.emptySet(), globalSeen, progress,
+            "Calculando fuente cutover de TBM", phase, totalPhases);
+        if (tbmCutoverUsage.logicalBytes > 0 || tbmCutoverUsage.allocatedBytes > 0 || tbmCutoverSourceRoot.exists()) {
+            items.add(new Item(
+                "tbm-cutover-source", "TBM · fuente cutover", tbmCutoverSourceRoot.getAbsolutePath(),
+                tbmCutoverUsage.logicalBytes, tbmCutoverUsage.allocatedBytes,
+                false, false, "Archivo/fuente de migración y manifest de TBM. Se conserva separado del HOME activo."
+            ));
+        }
+        report(progress, "Fuente cutover de TBM lista", ++phase, totalPhases);
+
         report(progress, "Calculando staging de TBM", phase, totalPhases);
         Usage tbmStageUsage = sizeRoots(tbmStageRoots, Collections.emptySet(), globalSeen, progress,
             "Calculando staging de TBM", phase, totalPhases);
@@ -184,6 +218,18 @@ public final class NativeStorageManager {
             ));
         }
         report(progress, "Staging de TBM listo", ++phase, totalPhases);
+
+        report(progress, "Calculando metadatos de TBM", phase, totalPhases);
+        Usage tbmOtherUsage = sizeTree(tbmRoot, tbmOtherExcludes, globalSeen, progress,
+            "Calculando metadatos de TBM", phase, totalPhases);
+        if (tbmOtherUsage.logicalBytes > 0 || tbmOtherUsage.allocatedBytes > 0 || tbmRoot.exists()) {
+            items.add(new Item(
+                "tbm-other", "TBM · metadatos / otros", tbmRoot.getAbsolutePath(),
+                tbmOtherUsage.logicalBytes, tbmOtherUsage.allocatedBytes,
+                false, false, "Estado, rollback, binarios y metadatos TBM fuera de temporales, cutover, staging y respaldos."
+            ));
+        }
+        report(progress, "Metadatos de TBM listos", ++phase, totalPhases);
 
         report(progress, "Calculando respaldos", phase, totalPhases);
         Usage backupUsage = sizeRoots(backupRoots, Collections.emptySet(), globalSeen, progress, "Calculando respaldos", phase, totalPhases);
