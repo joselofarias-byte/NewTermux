@@ -1417,6 +1417,8 @@ private object LegacyBackupSession {
 private fun LegacyBackupProgressDialog() {
     if (!LegacyBackupSession.running) return
 
+    var showCancelConfirmation by remember { mutableStateOf(false) }
+
     val phase = LegacyBackupSession.phase
     val done = LegacyBackupSession.doneBytes
     val total = LegacyBackupSession.totalBytes
@@ -1427,13 +1429,46 @@ private fun LegacyBackupProgressDialog() {
         (done.toDouble() / total.toDouble()).coerceIn(0.0, 0.99).toFloat()
     } else null
 
+    if (showCancelConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showCancelConfirmation = false },
+            title = { Text("Cancelar respaldo") },
+            text = {
+                Text(
+                    "¿Seguro que querés cancelar el respaldo? " +
+                        "El archivo parcial se eliminará y no podrá usarse para restaurar.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showCancelConfirmation = false
+                        LegacyBackupSession.cancel()
+                    },
+                    enabled = !cancelling,
+                ) {
+                    Text("Sí, cancelar")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showCancelConfirmation = false },
+                    enabled = !cancelling,
+                ) {
+                    Text("Continuar respaldo")
+                }
+            },
+        )
+        return
+    }
+
     AlertDialog(
         onDismissRequest = {},
         title = { Text(if (cancelling) "Cancelando respaldo…" else "Respaldo en curso") },
         confirmButton = {},
         dismissButton = {
             TextButton(
-                onClick = { LegacyBackupSession.cancel() },
+                onClick = { showCancelConfirmation = true },
                 enabled = !cancelling,
             ) {
                 Text(if (cancelling) "Cancelando…" else "Cancelar respaldo")
