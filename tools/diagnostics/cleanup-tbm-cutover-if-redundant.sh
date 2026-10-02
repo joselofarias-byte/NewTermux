@@ -71,12 +71,36 @@ for proc in /proc/[0-9]*; do
 done
 
 # Find candidate full migration tar archives on shared storage.
+# Fast paths first, then a bounded discovery pass so moved archives are still found.
 ARCHIVES=()
+add_archive() {
+  local p="$1" x
+  [ -f "$p" ] || return 0
+  for x in "${ARCHIVES[@]}"; do [ "$x" = "$p" ] && return 0; done
+  ARCHIVES+=("$p")
+}
 shopt -s nullglob
-for p in /storage/emulated/0/Download-Folders/tbm_backups/tbm_migration_*.tar; do [ -f "$p" ] && ARCHIVES+=("$p"); done
-for p in "$HOME"/storage/downloads/tbm_backups/tbm_migration_*.tar; do [ -f "$p" ] && ARCHIVES+=("$p"); done
-for p in "$HOME"/storage/downloads/tbm_migration_*.tar; do [ -f "$p" ] && ARCHIVES+=("$p"); done
+for p in /storage/emulated/0/Download-Folders/tbm_backups/tbm_migration_*.tar; do add_archive "$p"; done
+for p in "$HOME"/storage/downloads/tbm_backups/tbm_migration_*.tar; do add_archive "$p"; done
+for p in "$HOME"/storage/downloads/tbm_migration_*.tar; do add_archive "$p"; done
 shopt -u nullglob
+
+# Historical exact name seen during this migration, if still present.
+add_archive "/storage/emulated/0/Download-Folders/tbm_backups/tbm_migration_20260923-001255.tar"
+
+# Broader read-only discovery. Limit depth to avoid crawling Android internals forever.
+DISCOVERY_ROOTS=("/storage/emulated/0" "$HOME/storage/shared" "$HOME/storage/downloads")
+for root in "${DISCOVERY_ROOTS[@]}"; do
+  [ -d "$root" ] || continue
+  while IFS= read -r p; do add_archive "$p"; done < <(
+    find "$root" -maxdepth 7 -type f \(
+      -name "tbm_migration_*.tar" -o -name "tbm-migration-*.tar" -o -name "*tbm*migration*.tar"
+    \) -print 2>/dev/null
+  )
+done
+
+status "Candidatos de backup externo encontrados: ${#ARCHIVES[@]}"
+for p in "${ARCHIVES[@]}"; do status "Candidato: $p ($(fmt "$(disk_bytes "$p")"))"; done
 
 INTERNAL_MANIFEST_SHA="$(sha256sum "$INTERNAL_MANIFEST" | awk '{print $1}')"
 STAGE_MANIFEST_SHA="$(sha256sum "$STAGE_MANIFEST" | awk '{print $1}')"
