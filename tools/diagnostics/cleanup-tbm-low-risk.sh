@@ -18,6 +18,10 @@ STAMP="$(date +%Y%m%d-%H%M%S)"
 OUT="$HOME/storage/downloads/NT-TBM-CLEANUP-GATE-$STAMP.txt"
 MANIFEST="$HOME/storage/downloads/NT-TBM-CLEANUP-MANIFEST-$STAMP.txt"
 
+status() {
+  printf '[%s] %s\n' "$(date +%H:%M:%S)" "$*" | tee -a "$OUT"
+}
+
 fmt() {
   awk -v b="$1" 'BEGIN {
     if (b >= 1099511627776) printf "%.2f TB", b/1099511627776;
@@ -43,11 +47,13 @@ sum_bytes() {
   echo "$total"
 }
 
-if ! du --version >/dev/null 2>&1 || ! du -s -B1 -- "$HOME" >/dev/null 2>&1; then
+if ! du --version >/dev/null 2>&1; then
   echo "ERROR: falta GNU du/coreutils." | tee "$OUT"
   echo "Ejecuta: pkg install coreutils" | tee -a "$OUT"
   exit 2
 fi
+
+status "Iniciando compuerta de limpieza TBM"
 
 if [ ! -d "$TBM" ]; then
   echo "ERROR: no existe $TBM" | tee "$OUT"
@@ -97,9 +103,23 @@ for p in "$TMP"/tbm-panel-smoke-*; do [ -e "$p" ] && CANDIDATES+=("$p"); done
 for p in "$TMP"/tbm-restore-payload-staging-*; do [ -e "$p" ] && CANDIDATES+=("$p"); done
 shopt -u nullglob
 
+status "Midiendo candidatos conservadores..."
 CANDIDATE_BYTES="$(sum_bytes "${CANDIDATES[@]}")"
+status "Candidatos: $(fmt "$CANDIDATE_BYTES")"
+
+status "Midiendo ~/.tbm completo... puede demorar."
 TBM_BEFORE="$(disk_bytes "$TBM")"
+status "~/.tbm: $(fmt "$TBM_BEFORE")"
+
+status "Midiendo HOME completo... puede demorar."
 HOME_BEFORE="$(disk_bytes "$HOME")"
+status "HOME: $(fmt "$HOME_BEFORE")"
+
+CURRENT_STAGE_BYTES=0
+if [ -n "$CURRENT_STAGE_PATH" ] && [ -d "$CURRENT_STAGE_PATH" ]; then
+  status "Midiendo etapa actual..."
+  CURRENT_STAGE_BYTES="$(disk_bytes "$CURRENT_STAGE_PATH")"
+fi
 
 {
   echo "===== TBM CLEANUP GATE ====="
@@ -120,8 +140,8 @@ HOME_BEFORE="$(disk_bytes "$HOME")"
   echo "CURRENT_STAGE_PATH=${CURRENT_STAGE_PATH:-NO_RESUELTO}"
   if [ -n "$CURRENT_STAGE_PATH" ] && [ -d "$CURRENT_STAGE_PATH" ]; then
     echo "CURRENT_STAGE_EXISTS=YES"
-    echo "CURRENT_STAGE_BYTES=$(disk_bytes "$CURRENT_STAGE_PATH")"
-    echo "CURRENT_STAGE_SIZE=$(fmt "$(disk_bytes "$CURRENT_STAGE_PATH")")"
+    echo "CURRENT_STAGE_BYTES=$CURRENT_STAGE_BYTES"
+    echo "CURRENT_STAGE_SIZE=$(fmt "$CURRENT_STAGE_BYTES")"
   else
     echo "CURRENT_STAGE_EXISTS=NO"
   fi
@@ -158,7 +178,7 @@ HOME_BEFORE="$(disk_bytes "$HOME")"
   echo "$TBM/bin"
   echo "$TBM/config"
   echo "$MARKER"
-} | tee "$OUT"
+} | tee -a "$OUT"
 
 if [ "$MODE" != "--apply" ]; then
   {
@@ -209,7 +229,9 @@ fi
   done
 } > "$MANIFEST"
 
+status "Compuertas superadas. Comenzando poda conservadora..."
 for p in "${CANDIDATES[@]}"; do
+  status "Eliminando: $p"
   case "$p" in
     "$TMP"/tbm-home-probe-*|"$TMP"/tbm-panel-smoke-*|"$TMP"/tbm-restore-payload-staging-*)
       rm -rf -- "$p"
@@ -221,8 +243,12 @@ for p in "${CANDIDATES[@]}"; do
   esac
 done
 
+status "Poda terminada. Midiendo ~/.tbm después..."
 TBM_AFTER="$(disk_bytes "$TBM")"
+status "~/.tbm después: $(fmt "$TBM_AFTER")"
+status "Midiendo HOME después..."
 HOME_AFTER="$(disk_bytes "$HOME")"
+status "HOME después: $(fmt "$HOME_AFTER")"
 FREED="$(awk -v a="$TBM_BEFORE" -v b="$TBM_AFTER" 'BEGIN{x=a-b;if(x<0)x=0;printf "%.0f\n",x}')"
 
 {
