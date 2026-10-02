@@ -656,7 +656,7 @@ public final class NativeBackupManager {
     private static File resolveLogicalRoot(JSONObject root) throws Exception {
         String scope = root.getString("scope");
         String rel = root.optString("relative", "");
-        BackupArchivePolicy.relativePath(rel, true);
+        BackupArchivePolicy.logicalPath(rel, true);
         File base;
         if ("home".equals(scope)) base = TermuxConstants.TERMUX_HOME_DIR;
         else if ("prefix".equals(scope)) base = TermuxConstants.TERMUX_PREFIX_DIR;
@@ -871,7 +871,7 @@ public final class NativeBackupManager {
             throw new IllegalArgumentException("Raíz inválida para " + component);
         File base = roots.get(root);
         String rel = meta.optString("path", "");
-        BackupArchivePolicy.relativePath(rel, true);
+        BackupArchivePolicy.logicalPath(rel, true);
         File target = rel.isEmpty() ? base : new File(base, rel);
         ensureInside(target, base);
         return target;

@@ -29,6 +29,24 @@ public final class BackupArchivePolicyTest {
         if (!"data/proot_debian/0/rootfs/bin/sh".equals(
                 BackupArchivePolicy.dataEntryName("proot:debian", 0, "rootfs/bin/sh")))
             throw new AssertionError("v1 compatibility broken");
-        System.out.println("PASS: " + checks + " unsafe archive cases rejected; valid v1 paths and budget accepted");
+
+        // Android/Linux permits backslash as a literal filename character. It remains
+        // forbidden in ZIP entry names but must be representable through metadata.
+        BackupArchivePolicy.logicalPath("usr/share/test/foo\\bar", false);
+        String escapedBackslash = BackupArchivePolicy.dataEntryName(
+                "proot:debian", 0, "usr/share/test/foo\\bar");
+        if (!"data/proot_debian/0/usr/share/test/foo%5Cbar".equals(escapedBackslash))
+            throw new AssertionError("backslash filename was not escaped safely");
+
+        String literalPercent = BackupArchivePolicy.dataEntryName(
+                "proot:debian", 0, "usr/share/test/foo%5Cbar");
+        if (!"data/proot_debian/0/usr/share/test/foo%255Cbar".equals(literalPercent)
+                || literalPercent.equals(escapedBackslash))
+            throw new AssertionError("archive path escaping is not collision-free");
+
+        BackupArchivePolicy unusual = new BackupArchivePolicy(10);
+        unusual.destination("proot:debian", 0, "usr/share/test/foo\\bar", "file", escapedBackslash);
+
+        System.out.println("PASS: " + checks + " unsafe archive cases rejected; valid v1 and Android filename paths accepted");
     }
 }

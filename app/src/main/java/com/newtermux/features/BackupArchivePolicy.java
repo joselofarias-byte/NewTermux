@@ -27,7 +27,7 @@ public final class BackupArchivePolicy {
     }
 
     public void destination(String component, int root, String path, String type, String zipEntry) {
-        relativePath(path, true);
+        logicalPath(path, true);
         if (path.endsWith("/")) throw new IllegalArgumentException("Ruta de metadata ambigua");
         if (root < 0) throw new IllegalArgumentException("Raíz inválida");
         if (!"file".equals(type) && !"dir".equals(type) && !"symlink".equals(type)
@@ -48,20 +48,49 @@ public final class BackupArchivePolicy {
     }
 
     public static String dataEntryName(String component, int root, String path) {
-        relativePath(path, true);
-        return "data/" + componentToken(component) + "/" + root + "/" + path;
+        logicalPath(path, true);
+        return "data/" + componentToken(component) + "/" + root + "/" + archivePath(path);
     }
 
+    /**
+     * Validate paths used inside the ZIP container. Backslash is rejected here because
+     * ZIP readers on some platforms treat it as a path separator.
+     */
     public static void relativePath(String path, boolean allowEmpty) {
         if (path == null || (path.isEmpty() && !allowEmpty) || path.startsWith("/")
                 || path.indexOf('\\') >= 0 || path.indexOf('\0') >= 0)
             throw new IllegalArgumentException("Ruta de respaldo inválida");
+        validateSegments(path);
+    }
+
+    /**
+     * Validate a real Android/Linux relative path stored in metadata. On Android a
+     * backslash is a legal filename character, not a path separator, so it must be
+     * preserved instead of rejecting the backup midway.
+     */
+    public static void logicalPath(String path, boolean allowEmpty) {
+        if (path == null || (path.isEmpty() && !allowEmpty) || path.startsWith("/")
+                || path.indexOf('\0') >= 0)
+            throw new IllegalArgumentException("Ruta de respaldo inválida");
+        validateSegments(path);
+    }
+
+    private static void validateSegments(String path) {
         if (path.isEmpty()) return;
-        // A directory ZIP entry may end in '/', but aliases within the path are rejected.
+        // A directory path may end in '/', but aliases within the path are rejected.
         String normalized = path.endsWith("/") ? path.substring(0, path.length() - 1) : path;
         for (String part : normalized.split("/", -1)) {
             if (part.isEmpty() || ".".equals(part) || "..".equals(part))
                 throw new IllegalArgumentException("Ruta de respaldo ambigua");
         }
+    }
+
+    /**
+     * Encode characters that are legal in Android filenames but unsafe/ambiguous in a
+     * portable ZIP entry. Escape '%' first so the mapping remains collision-free.
+     * Ordinary v1 paths are unchanged.
+     */
+    private static String archivePath(String path) {
+        return path.replace("%", "%25").replace("\\", "%5C");
     }
 }
