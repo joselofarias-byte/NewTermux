@@ -1083,6 +1083,20 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         items.add("Instalar componentes y PRoot");
         actions.add(this::showComponentInstaller);
 
+        boolean promptClockEnabled = new java.io.File(
+            com.termux.shared.termux.TermuxConstants.TERMUX_HOME_DIR,
+            ".newtermux/prompt-clock.enabled").isFile();
+        items.add("Hora en prompt · " + (promptClockEnabled ? "Sí" : "No"));
+        actions.add(() -> {
+            TerminalSession session = getCurrentSession();
+            if (session == null) {
+                showToast("Abrí una sesión primero", false);
+                return;
+            }
+            com.newtermux.features.BundledInstallerLibrary.runPromptClockInstaller(
+                this, session, promptClockEnabled ? "disable" : "enable");
+        });
+
         items.add("Guardar salidas largas · "
             + (NewTermuxSettings.isAutoSaveOutputEnabled(this) ? "Sí" : "No"));
         actions.add(this::configureAutoOutput);

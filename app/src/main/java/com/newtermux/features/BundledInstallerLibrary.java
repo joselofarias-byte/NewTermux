@@ -33,6 +33,10 @@ public final class BundledInstallerLibrary {
         "newtermux/installers/tbm-integration.sh";
     private static final String TBM_FILENAME =
         "tbm-integration.sh";
+    private static final String PROMPT_CLOCK_ASSET =
+        "newtermux/installers/prompt-clock.sh";
+    private static final String PROMPT_CLOCK_FILENAME =
+        "prompt-clock.sh";
 
     private static File installerDirectory(Context context) {
         File dir = new File(TermuxConstants.TERMUX_HOME_DIR, ".newtermux/installers");
@@ -120,5 +124,20 @@ public final class BundledInstallerLibrary {
 
         if (materialize(context, AI_HARNESS_ASSET, AI_HARNESS_FILENAME) == null) return;
         session.write("bash \"$HOME/.newtermux/installers/" + AI_HARNESS_FILENAME + "\" " + action + "\n");
+    }
+
+    public static void runPromptClockInstaller(Context context, TerminalSession session, String action) {
+        if (session == null) {
+            Toast.makeText(context, "Abrí una sesión primero", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (action == null || !action.matches("enable|disable|status")) {
+            Toast.makeText(context, "Acción de reloj de prompt no válida", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        if (materialize(context, PROMPT_CLOCK_ASSET, PROMPT_CLOCK_FILENAME) == null) return;
+        session.write("bash \"$HOME/.newtermux/installers/" + PROMPT_CLOCK_FILENAME + "\" " + action
+            + " && if [ \"" + action + "\" != \"status\" ]; then exec \"$SHELL\" -l; fi\n");
     }
 }
