@@ -582,7 +582,7 @@ private fun StorageScreen(onBack: () -> Unit) {
                     )
                     Text(
                         "NewTermux identificado: ${NativeStorageManager.formatBytes(identified)} · " +
-                            "Otros datos del dispositivo: ${NativeStorageManager.formatBytes(otherDevice)}",
+                            "Otros archivos del dispositivo: ${NativeStorageManager.formatBytes(otherDevice)}",
                         modifier = Modifier.padding(top = 8.dp),
                         style = MaterialTheme.typography.bodyMedium,
                     )
