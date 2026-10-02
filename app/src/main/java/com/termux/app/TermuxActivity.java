@@ -1400,8 +1400,10 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
             wrapper.setOnClickListener(v -> {
                 if (mTermuxTerminalSessionActivityClient != null) {
+                    // setCurrentSession() already rebuilds the miniature row before showing
+                    // the notice. Rebuilding it again here detached the popup anchor and
+                    // made notices for #1/#2/#3 jump to the upper-left corner.
                     mTermuxTerminalSessionActivityClient.setCurrentSession(session);
-                    updateSessionTabs();
                 }
             });
 
@@ -1424,9 +1426,29 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         mSessionNoticeHandler.removeCallbacks(mDismissSessionNotice);
         dismissSessionNotice();
 
+        // The row may have just been rebuilt by setCurrentSession(). Wait until Android has
+        // measured and positioned the new miniature before calculating popup coordinates.
+        if (mSessionPipContainer == null) {
+            showToast(text, longDuration);
+            return;
+        }
+
+        mSessionPipContainer.post(() -> showSessionNoticeAnchored(session, text, longDuration, 0));
+    }
+
+    private void showSessionNoticeAnchored(TerminalSession session, String text,
+                                           boolean longDuration, int attempt) {
+        if (!mIsVisible) return;
+
         View anchor = findSessionNoticeAnchor(session);
-        if (anchor == null || !anchor.isShown()) {
-            // Fallback for a session that disappeared before the notice could be anchored.
+        if (anchor == null || !anchor.isShown() || anchor.getWidth() <= 0 || anchor.getHeight() <= 0) {
+            if (mSessionPipContainer != null && attempt < 4) {
+                mSessionNoticeHandler.postDelayed(
+                    () -> showSessionNoticeAnchored(session, text, longDuration, attempt + 1),
+                    32L);
+                return;
+            }
+            // Last-resort fallback only. Normal session switches should never reach this path.
             showToast(text, longDuration);
             return;
         }
@@ -1456,12 +1478,17 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
 
         int[] anchorLocation = new int[2];
+        int[] decorLocation = new int[2];
         anchor.getLocationOnScreen(anchorLocation);
+        decor.getLocationOnScreen(decorLocation);
+
         int popupWidth = Math.max(1, label.getMeasuredWidth());
         int desiredLeft = anchorLocation[0] + (anchor.getWidth() - popupWidth) / 2;
         int clampedLeft = Math.max(edgeMargin,
             Math.min(desiredLeft, screenWidth - edgeMargin - popupWidth));
-        int xOffset = clampedLeft - anchorLocation[0];
+
+        int popupX = clampedLeft - decorLocation[0];
+        int popupY = anchorLocation[1] + anchor.getHeight() + gap - decorLocation[1];
 
         PopupWindow popup = new PopupWindow(
             label,
@@ -1474,7 +1501,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             popup.setElevation(8 * density);
 
         try {
-            popup.showAsDropDown(anchor, xOffset, gap, Gravity.START);
+            // Absolute window placement is deliberate: unlike showAsDropDown(), it remains
+            // stable even if the HorizontalScrollView relayouts after a session switch.
+            popup.showAtLocation(decor, Gravity.TOP | Gravity.START, popupX, popupY);
             mSessionNoticePopup = popup;
             mSessionNoticeHandler.postDelayed(
                 mDismissSessionNotice,
