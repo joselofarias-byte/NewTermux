@@ -93,9 +93,7 @@ DISCOVERY_ROOTS=("/storage/emulated/0" "$HOME/storage/shared" "$HOME/storage/dow
 for root in "${DISCOVERY_ROOTS[@]}"; do
   [ -d "$root" ] || continue
   while IFS= read -r p; do add_archive "$p"; done < <(
-    find "$root" -maxdepth 7 -type f \(
-      -name "tbm_migration_*.tar" -o -name "tbm-migration-*.tar" -o -name "*tbm*migration*.tar"
-    \) -print 2>/dev/null
+    find "$root" -maxdepth 7 -type f \( -name "tbm_migration_*.tar" -o -name "tbm-migration-*.tar" -o -name "*tbm*migration*.tar" \) -print 2>/dev/null
   )
 done
 
