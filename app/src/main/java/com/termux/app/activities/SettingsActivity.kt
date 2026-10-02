@@ -88,13 +88,17 @@ import com.termux.shared.termux.settings.preferences.TermuxFloatAppSharedPrefere
 import com.termux.shared.termux.settings.preferences.TermuxTaskerAppSharedPreferences
 import com.termux.shared.termux.settings.preferences.TermuxWidgetAppSharedPreferences
 import com.termux.shared.activities.ReportActivity
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
+import java.util.concurrent.CancellationException
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * NewTermux settings, fully rewritten in Jetpack Compose (Phase 5), replacing
@@ -314,21 +318,227 @@ private fun RootScreen(activity: Activity, onBack: () -> Unit, onNav: (Route) ->
 
 // ---------------------------------------------------------------- Native storage
 
+private object NativeStorageSession {
+    private val workerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val cancelRequested = AtomicBoolean(false)
+
+    var snapshot by mutableStateOf<NativeStorageManager.Snapshot?>(null)
+        private set
+    var loading by mutableStateOf(false)
+        private set
+    var scanPhase by mutableStateOf("Preparando inventario…")
+        private set
+    var scanDone by mutableStateOf(0)
+        private set
+    var scanTotal by mutableStateOf(0)
+        private set
+    var scanError by mutableStateOf<String?>(null)
+        private set
+
+    var selected by mutableStateOf<Set<String>>(emptySet())
+    private var selectionInitialized = false
+
+    var backupRunning by mutableStateOf(false)
+        private set
+    var backupCancelling by mutableStateOf(false)
+        private set
+    var backupPhase by mutableStateOf("")
+        private set
+    var backupDone by mutableStateOf(0L)
+        private set
+    var backupTotal by mutableStateOf(0L)
+        private set
+    var backupMessage by mutableStateOf<String?>(null)
+        private set
+    var backupError by mutableStateOf<String?>(null)
+        private set
+
+    private fun onMain(block: () -> Unit) {
+        if (Looper.myLooper() == Looper.getMainLooper()) block()
+        else mainHandler.post(block)
+    }
+
+    fun ensureScan(context: Context, force: Boolean = false) {
+        if (loading) return
+        if (!force && snapshot != null) return
+        if (backupRunning) {
+            scanError = "Esperá a que termine o cancelá el respaldo antes de actualizar tamaños."
+            return
+        }
+
+        loading = true
+        scanError = null
+        scanPhase = "Preparando inventario…"
+        scanDone = 0
+        scanTotal = 0
+        val app = context.applicationContext
+
+        workerScope.launch {
+            val result = runCatching {
+                NativeStorageManager.scan(
+                    app,
+                    NativeStorageManager.Progress { phase, done, total ->
+                        onMain {
+                            scanPhase = phase
+                            scanDone = done.coerceAtLeast(0)
+                            scanTotal = total.coerceAtLeast(0)
+                        }
+                    },
+                )
+            }
+            onMain {
+                result.onSuccess { snap ->
+                    snapshot = snap
+                    val available = snap.items.filter { it.selectable }.map { it.id }.toSet()
+                    selected = if (!selectionInitialized) {
+                        selectionInitialized = true
+                        snap.items
+                            .filter { it.selectable && (it.id == "home" || it.id.startsWith("proot:")) }
+                            .map { it.id }
+                            .toSet()
+                    } else {
+                        selected.intersect(available)
+                    }
+                }.onFailure { t ->
+                    scanError = t.message ?: t.javaClass.simpleName
+                }
+                loading = false
+            }
+        }
+    }
+
+    fun startBackup(context: Context) {
+        if (backupRunning) return
+        val snap = snapshot
+        if (snap == null) {
+            backupError = "Esperá a que termine el análisis de almacenamiento."
+            return
+        }
+        val chosen = snap.items.filter { it.selectable && it.id in selected }
+        if (chosen.isEmpty()) {
+            backupError = "Seleccioná al menos un componente para respaldar."
+            return
+        }
+
+        cancelRequested.set(false)
+        backupRunning = true
+        backupCancelling = false
+        backupError = null
+        backupMessage = null
+        backupPhase = "Preparando respaldo"
+        backupDone = 0L
+        backupTotal = chosen.sumOf { it.bytes }
+        val app = context.applicationContext
+
+        workerScope.launch {
+            val result = runCatching {
+                NativeBackupManager.createBackup(
+                    app,
+                    chosen,
+                    NativeBackupManager.Progress { phase, done, total ->
+                        onMain {
+                            backupPhase = phase
+                            backupDone = done.coerceAtLeast(0L)
+                            backupTotal = total.coerceAtLeast(0L)
+                        }
+                    },
+                    NativeBackupManager.Cancellation { cancelRequested.get() },
+                )
+            }
+
+            onMain {
+                result.onSuccess { backup ->
+                    backupMessage =
+                        "Respaldo creado: ${backup.file.name} · " +
+                            NativeStorageManager.formatBytes(backup.archiveBytes) +
+                            "\nDescargas/NewTermux/Backups"
+                    Toast.makeText(app, "Respaldo terminado", Toast.LENGTH_SHORT).show()
+                }.onFailure { t ->
+                    if (t is CancellationException) {
+                        backupMessage = "Respaldo cancelado. No quedó ningún archivo parcial."
+                    } else {
+                        backupError = "No se pudo crear el respaldo: ${t.message ?: t.javaClass.simpleName}"
+                    }
+                }
+                backupRunning = false
+                backupCancelling = false
+                cancelRequested.set(false)
+            }
+        }
+    }
+
+    fun cancelBackup() {
+        if (!backupRunning || backupCancelling) return
+        backupCancelling = true
+        backupPhase = "Cancelando respaldo…"
+        cancelRequested.set(true)
+    }
+
+    fun clearBackupResult() {
+        backupMessage = null
+        backupError = null
+    }
+}
+
+@Composable
+private fun NativeBackupProgressPanel(compact: Boolean = false) {
+    val phase = NativeStorageSession.backupPhase.ifBlank { "Respaldando…" }
+    val done = NativeStorageSession.backupDone
+    val total = NativeStorageSession.backupTotal
+    val cancelling = NativeStorageSession.backupCancelling
+
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(
+            horizontal = 16.dp,
+            vertical = if (compact) 8.dp else 12.dp,
+        ),
+    ) {
+        Text(
+            if (cancelling) "Cancelando respaldo…" else phase,
+            style = if (compact) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.titleMedium,
+        )
+        if (total > 0L) {
+            val fraction = (done.toDouble() / total.toDouble()).coerceIn(0.0, 1.0).toFloat()
+            LinearProgressIndicator(
+                progress = { fraction },
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            )
+            Text(
+                "${NativeStorageManager.formatBytes(done)} / ${NativeStorageManager.formatBytes(total)} · " +
+                    "${(fraction * 100).toInt()}%",
+                modifier = Modifier.padding(top = 4.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+        }
+        TextButton(
+            onClick = { NativeStorageSession.cancelBackup() },
+            enabled = !cancelling,
+            modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+        ) {
+            Text(if (cancelling) "Cancelando…" else "Cancelar respaldo")
+        }
+    }
+}
+
 @Composable
 private fun StorageScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val activity = context as? Activity
     val scope = rememberCoroutineScope()
 
-    var snapshot by remember { mutableStateOf<NativeStorageManager.Snapshot?>(null) }
-    var loading by remember { mutableStateOf(true) }
-    var scanPhase by remember { mutableStateOf("Preparando inventario…") }
-    var scanDone by remember { mutableStateOf(0) }
-    var scanTotal by remember { mutableStateOf(0) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var selected by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var initializedSelection by remember { mutableStateOf(false) }
+    val snapshot = NativeStorageSession.snapshot
+    val loading = NativeStorageSession.loading
+    val scanPhase = NativeStorageSession.scanPhase
+    val scanDone = NativeStorageSession.scanDone
+    val scanTotal = NativeStorageSession.scanTotal
+    val selected = NativeStorageSession.selected
+    val backupRunning = NativeStorageSession.backupRunning
 
+    var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var operationPhase by remember { mutableStateOf("") }
     var operationDone by remember { mutableStateOf(0L) }
@@ -344,6 +554,8 @@ private fun StorageScreen(onBack: () -> Unit) {
         mutableStateOf(NativeBackupManager.hasPendingRestore(context.applicationContext))
     }
 
+    val uiBusy = busy || backupRunning
+
     fun postProgress(phase: String, done: Long, total: Long) {
         activity?.runOnUiThread {
             operationPhase = phase
@@ -353,85 +565,13 @@ private fun StorageScreen(onBack: () -> Unit) {
     }
 
     fun refresh() {
-        loading = true
-        scanPhase = "Preparando inventario…"
-        scanDone = 0
-        scanTotal = 0
-        error = null
-        scope.launch {
-            val result = runCatching {
-                withContext(Dispatchers.IO) {
-                    NativeStorageManager.scan(
-                        context.applicationContext,
-                        NativeStorageManager.Progress { phase, done, total ->
-                            activity?.runOnUiThread {
-                                scanPhase = phase
-                                scanDone = done.coerceAtLeast(0)
-                                scanTotal = total.coerceAtLeast(0)
-                            }
-                        },
-                    )
-                }
-            }
-            result.onSuccess { snap ->
-                snapshot = snap
-                val available = snap.items.filter { it.selectable }.map { it.id }.toSet()
-                selected = if (!initializedSelection) {
-                    initializedSelection = true
-                    snap.items
-                        .filter { it.selectable && (it.id == "home" || it.id.startsWith("proot:")) }
-                        .map { it.id }
-                        .toSet()
-                } else {
-                    selected.intersect(available)
-                }
-            }.onFailure { t ->
-                error = t.message ?: t.javaClass.simpleName
-            }
-            loading = false
-        }
+        NativeStorageSession.ensureScan(context.applicationContext, force = true)
     }
 
     fun startBackup() {
-        val snap = snapshot ?: return
-        val chosen = snap.items.filter { it.selectable && it.id in selected }
-        if (chosen.isEmpty()) {
-            error = "Seleccioná al menos un componente para respaldar"
-            return
-        }
-
-        busy = true
         error = null
         resultMessage = null
-        operationPhase = "Preparando respaldo"
-        operationDone = 0L
-        operationTotal = chosen.sumOf { it.bytes }
-
-        scope.launch {
-            val result = runCatching {
-                withContext(Dispatchers.IO) {
-                    NativeBackupManager.createBackup(
-                        context.applicationContext,
-                        chosen,
-                        NativeBackupManager.Progress { phase, done, total ->
-                            postProgress(phase, done, total)
-                        },
-                    )
-                }
-            }
-
-            result.onSuccess { backup ->
-                resultMessage =
-                    "Respaldo creado: ${backup.file.name} · " +
-                    NativeStorageManager.formatBytes(backup.archiveBytes) +
-                    "\nDescargas/NewTermux/Backups"
-                Toast.makeText(context, "Respaldo terminado", Toast.LENGTH_SHORT).show()
-                refresh()
-            }.onFailure { t ->
-                error = "No se pudo crear el respaldo: ${t.message ?: t.javaClass.simpleName}"
-            }
-            busy = false
-        }
+        NativeStorageSession.startBackup(context.applicationContext)
     }
 
     fun inspectRestore(uri: Uri) {
@@ -517,7 +657,9 @@ private fun StorageScreen(onBack: () -> Unit) {
         if (uri != null) inspectRestore(uri)
     }
 
-    LaunchedEffect(Unit) { refresh() }
+    LaunchedEffect(Unit) {
+        NativeStorageSession.ensureScan(context.applicationContext)
+    }
 
     SettingsScaffold("Almacenamiento y respaldo", onBack) { mod ->
         Column(modifier = mod) {
@@ -558,6 +700,27 @@ private fun StorageScreen(onBack: () -> Unit) {
                     }
                 }
                 HorizontalDivider()
+            }
+
+            if (backupRunning) {
+                NativeBackupProgressPanel()
+                HorizontalDivider()
+            } else {
+                NativeStorageSession.backupMessage?.let {
+                    Text(
+                        it,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                NativeStorageSession.backupError?.let {
+                    Text(
+                        it,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
             }
 
             val snap = snapshot
@@ -607,9 +770,10 @@ private fun StorageScreen(onBack: () -> Unit) {
                         if (item.selectable) {
                             Checkbox(
                                 checked = checked,
-                                enabled = !busy,
+                                enabled = !uiBusy,
                                 onCheckedChange = { value ->
-                                    selected = if (value) selected + item.id else selected - item.id
+                                    NativeStorageSession.selected =
+                                        if (value) selected + item.id else selected - item.id
                                 },
                             )
                         } else {
@@ -676,28 +840,33 @@ private fun StorageScreen(onBack: () -> Unit) {
                     ) {
                         TextButton(
                             onClick = {
-                                selected = snap.items.filter { it.selectable }.map { it.id }.toSet()
+                                NativeStorageSession.selected =
+                                    snap.items.filter { it.selectable }.map { it.id }.toSet()
                             },
-                            enabled = !busy,
+                            enabled = !uiBusy,
                             modifier = Modifier.weight(1f),
                         ) {
                             Text("Todo")
                         }
                         TextButton(
-                            onClick = { selected = emptySet() },
-                            enabled = !busy,
+                            onClick = { NativeStorageSession.selected = emptySet() },
+                            enabled = !uiBusy,
                             modifier = Modifier.weight(1f),
                         ) {
                             Text("Ninguno")
                         }
                     }
 
-                    Button(
-                        onClick = { startBackup() },
-                        enabled = selected.isNotEmpty() && !busy,
-                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                    ) {
-                        Text("Respaldar seleccionados")
+                    if (backupRunning) {
+                        NativeBackupProgressPanel(compact = true)
+                    } else {
+                        Button(
+                            onClick = { startBackup() },
+                            enabled = selected.isNotEmpty() && !uiBusy,
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        ) {
+                            Text("Respaldar seleccionados")
+                        }
                     }
 
                     Button(
@@ -711,7 +880,7 @@ private fun StorageScreen(onBack: () -> Unit) {
                                 ),
                             )
                         },
-                        enabled = !busy,
+                        enabled = !uiBusy,
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                     ) {
                         Text("Restaurar respaldo")
@@ -719,7 +888,7 @@ private fun StorageScreen(onBack: () -> Unit) {
 
                     TextButton(
                         onClick = { refresh() },
-                        enabled = !busy,
+                        enabled = !uiBusy,
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                     ) {
                         Text("Actualizar tamaños")
@@ -807,6 +976,14 @@ private fun StorageScreen(onBack: () -> Unit) {
                     color = MaterialTheme.colorScheme.error,
                 )
             }
+
+            NativeStorageSession.scanError?.let {
+                Text(
+                    it,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
         }
     }
 
@@ -814,7 +991,7 @@ private fun StorageScreen(onBack: () -> Unit) {
         val info = restoreInfo
         if (info != null) {
             AlertDialog(
-                onDismissRequest = { if (!busy) showRestoreDialog = false },
+                onDismissRequest = { if (!uiBusy) showRestoreDialog = false },
                 title = { Text("Restaurar respaldo") },
                 text = {
                     Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
@@ -838,7 +1015,7 @@ private fun StorageScreen(onBack: () -> Unit) {
                             ) {
                                 Checkbox(
                                     checked = component.id in restoreSelected,
-                                    enabled = component.restorable && !busy,
+                                    enabled = component.restorable && !uiBusy,
                                     onCheckedChange = { value ->
                                         restoreSelected = if (value)
                                             restoreSelected + component.id
@@ -862,7 +1039,7 @@ private fun StorageScreen(onBack: () -> Unit) {
                 confirmButton = {
                     TextButton(
                         onClick = { prepareRestore() },
-                        enabled = restoreSelected.isNotEmpty() && !busy,
+                        enabled = restoreSelected.isNotEmpty() && !uiBusy,
                     ) {
                         Text("Preparar restauración")
                     }
@@ -870,7 +1047,7 @@ private fun StorageScreen(onBack: () -> Unit) {
                 dismissButton = {
                     TextButton(
                         onClick = { showRestoreDialog = false },
-                        enabled = !busy,
+                        enabled = !uiBusy,
                     ) {
                         Text("Cancelar")
                     }

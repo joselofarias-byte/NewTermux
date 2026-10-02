@@ -38,6 +38,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
@@ -62,6 +63,11 @@ public final class NativeBackupManager {
 
     public interface Progress {
         void onProgress(String phase, long doneBytes, long totalBytes);
+    }
+
+    /** Cooperative cancellation for long native backup operations. */
+    public interface Cancellation {
+        boolean isCancelled();
     }
 
     public static final class BackupResult {
@@ -127,9 +133,18 @@ public final class NativeBackupManager {
             Context context,
             List<NativeStorageManager.Item> selectedItems,
             Progress progress) throws Exception {
+        return createBackup(context, selectedItems, progress, null);
+    }
+
+    public static BackupResult createBackup(
+            Context context,
+            List<NativeStorageManager.Item> selectedItems,
+            Progress progress,
+            Cancellation cancellation) throws Exception {
         if (selectedItems == null || selectedItems.isEmpty()) {
             throw new IllegalArgumentException("Seleccioná al menos un componente");
         }
+        throwIfCancelled(cancellation);
 
         long totalBytes = 0;
         for (NativeStorageManager.Item item : selectedItems) {
@@ -172,6 +187,7 @@ public final class NativeBackupManager {
             writeTextEntry(zip, HEADER_ENTRY, header.toString());
 
             for (NativeStorageManager.Item item : selectedItems) {
+                throwIfCancelled(cancellation);
                 if (!item.selectable) continue;
                 List<File> roots = splitRoots(item.path);
                 Set<String> excludes = excludesFor(item.id);
@@ -179,10 +195,11 @@ public final class NativeBackupManager {
                     File root = roots.get(rootIndex);
                     if (!root.exists()) continue;
                     backupTree(zip, metadata, treeDigest, item.id, rootIndex, root, root,
-                        excludes, done, totalBytes, progress);
+                        excludes, done, totalBytes, progress, cancellation);
                 }
             }
 
+            throwIfCancelled(cancellation);
             metadata.flush();
             addFileEntry(zip, METADATA_ENTRY, tmpMeta);
             writeTextEntry(zip, TREE_HASH_ENTRY, hex(treeDigest.digest()) + "\n");
@@ -193,18 +210,28 @@ public final class NativeBackupManager {
             tmpMeta.delete();
         }
 
+        throwIfCancelled(cancellation);
         if (!partial.renameTo(out)) {
             partial.delete();
             throw new IllegalStateException("No se pudo publicar el respaldo terminado");
         }
-        String archiveHash = sha256File(out);
-        File sidecar = new File(out.getAbsolutePath() + ".sha256");
-        try (FileOutputStream fos = new FileOutputStream(sidecar)) {
-            fos.write((archiveHash + "  " + out.getName() + "\n").getBytes(StandardCharsets.UTF_8));
-        }
 
-        if (progress != null) progress.onProgress("Respaldo terminado", totalBytes, totalBytes);
-        return new BackupResult(out, sidecar, totalBytes, out.length(), archiveHash);
+        File sidecar = new File(out.getAbsolutePath() + ".sha256");
+        try {
+            if (progress != null) progress.onProgress("Verificando respaldo", totalBytes, totalBytes);
+            String archiveHash = sha256File(out, cancellation);
+            throwIfCancelled(cancellation);
+            try (FileOutputStream fos = new FileOutputStream(sidecar)) {
+                fos.write((archiveHash + "  " + out.getName() + "\n").getBytes(StandardCharsets.UTF_8));
+            }
+
+            if (progress != null) progress.onProgress("Respaldo terminado", totalBytes, totalBytes);
+            return new BackupResult(out, sidecar, totalBytes, out.length(), archiveHash);
+        } catch (Exception e) {
+            sidecar.delete();
+            out.delete();
+            throw e;
+        }
     }
 
     public static BackupInfo inspect(Context context, Uri uri) throws Exception {
@@ -728,7 +755,9 @@ public final class NativeBackupManager {
             Set<String> excludes,
             long[] done,
             long total,
-            Progress progress) throws Exception {
+            Progress progress,
+            Cancellation cancellation) throws Exception {
+        throwIfCancelled(cancellation);
         String filePath = file.getAbsolutePath();
         StructStat st = Os.lstat(filePath);
         String rel = relativeTo(root.getAbsolutePath(), filePath).replace(File.separatorChar, '/');
@@ -750,7 +779,7 @@ public final class NativeBackupManager {
             if (children == null) return;
             for (File child : children) {
                 backupTree(zip, metadata, treeDigest, component, rootIndex, root, child,
-                    excludes, done, total, progress);
+                    excludes, done, total, progress, cancellation);
             }
             return;
         }
@@ -771,6 +800,7 @@ public final class NativeBackupManager {
             byte[] buf = new byte[1024 * 1024];
             int n;
             while ((n = fis.read(buf)) != -1) {
+                throwIfCancelled(cancellation);
                 zip.write(buf, 0, n);
                 fileDigest.update(buf, 0, n);
                 done[0] += n;
@@ -945,13 +975,26 @@ public final class NativeBackupManager {
     }
 
     private static String sha256File(File file) throws Exception {
+        return sha256File(file, null);
+    }
+
+    private static String sha256File(File file, Cancellation cancellation) throws Exception {
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
         try (FileInputStream in = new FileInputStream(file)) {
             byte[] buf = new byte[1024 * 1024];
             int n;
-            while ((n = in.read(buf)) != -1) digest.update(buf, 0, n);
+            while ((n = in.read(buf)) != -1) {
+                throwIfCancelled(cancellation);
+                digest.update(buf, 0, n);
+            }
         }
+        throwIfCancelled(cancellation);
         return hex(digest.digest());
+    }
+
+    private static void throwIfCancelled(Cancellation cancellation) {
+        if (cancellation != null && cancellation.isCancelled())
+            throw new CancellationException("Respaldo cancelado");
     }
 
     private static String hex(byte[] bytes) {
