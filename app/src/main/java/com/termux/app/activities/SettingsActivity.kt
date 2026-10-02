@@ -11,6 +11,8 @@ import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.os.Process
+import android.provider.DocumentsContract
+import android.provider.OpenableColumns
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -99,6 +101,7 @@ import java.io.FileOutputStream
 import java.io.InputStream
 import java.util.concurrent.CancellationException
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * NewTermux settings, fully rewritten in Jetpack Compose (Phase 5), replacing
@@ -1310,6 +1313,174 @@ private fun ExpansionEditorDialog(
 
 // ---------------------------------------------------------------- Backup
 
+private object LegacyBackupSession {
+    private val workerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val cancelRequested = AtomicBoolean(false)
+
+    @Volatile
+    private var activeProcess: java.lang.Process? = null
+
+    var running by mutableStateOf(false)
+        private set
+    var cancelling by mutableStateOf(false)
+        private set
+    var phase by mutableStateOf("")
+        private set
+    var doneBytes by mutableStateOf(0L)
+        private set
+    var totalBytes by mutableStateOf(0L)
+        private set
+    var outputBytes by mutableStateOf(0L)
+        private set
+    var destination by mutableStateOf("")
+        private set
+    var resultMessage by mutableStateOf<String?>(null)
+        private set
+    var errorMessage by mutableStateOf<String?>(null)
+        private set
+
+    private fun onMain(block: () -> Unit) {
+        if (Looper.myLooper() == Looper.getMainLooper()) block()
+        else mainHandler.post { block() }
+    }
+
+    fun start(context: Context, uri: Uri, full: Boolean) {
+        if (running) return
+
+        val app = context.applicationContext
+        cancelRequested.set(false)
+        running = true
+        cancelling = false
+        phase = "Calculando tamaño del respaldo…"
+        doneBytes = 0L
+        totalBytes = 0L
+        outputBytes = 0L
+        destination = describeDocumentDestination(app, uri)
+        resultMessage = null
+        errorMessage = null
+
+        workerScope.launch {
+            val result = runCatching {
+                val error = runBackupWithProgress(
+                    context = app,
+                    uri = uri,
+                    full = full,
+                    progress = { newPhase, done, total, written ->
+                        onMain {
+                            phase = newPhase
+                            doneBytes = done.coerceAtLeast(0L)
+                            totalBytes = total.coerceAtLeast(0L)
+                            outputBytes = written.coerceAtLeast(0L)
+                        }
+                    },
+                    cancelled = { cancelRequested.get() },
+                    processChanged = { process ->
+                        activeProcess = process
+                    },
+                )
+                if (error != null) error(error)
+            }
+
+            onMain {
+                result.onSuccess {
+                    resultMessage =
+                        "Respaldo terminado · " +
+                            NativeStorageManager.formatBytes(outputBytes) +
+                            "\nDestino: $destination"
+                    Toast.makeText(app, "Respaldo terminado", Toast.LENGTH_SHORT).show()
+                }.onFailure { t ->
+                    if (t is CancellationException) {
+                        resultMessage = "Respaldo cancelado."
+                    } else {
+                        errorMessage = "No se pudo crear el respaldo: ${t.message ?: t.javaClass.simpleName}"
+                    }
+                }
+                running = false
+                cancelling = false
+                cancelRequested.set(false)
+                activeProcess = null
+            }
+        }
+    }
+
+    fun cancel() {
+        if (!running || cancelling) return
+        cancelling = true
+        phase = "Cancelando respaldo…"
+        cancelRequested.set(true)
+        runCatching { activeProcess?.destroy() }
+    }
+}
+
+@Composable
+private fun LegacyBackupProgressDialog() {
+    if (!LegacyBackupSession.running) return
+
+    val phase = LegacyBackupSession.phase
+    val done = LegacyBackupSession.doneBytes
+    val total = LegacyBackupSession.totalBytes
+    val written = LegacyBackupSession.outputBytes
+    val destination = LegacyBackupSession.destination
+    val cancelling = LegacyBackupSession.cancelling
+    val fraction = if (total > 0L) {
+        (done.toDouble() / total.toDouble()).coerceIn(0.0, 0.99).toFloat()
+    } else null
+
+    AlertDialog(
+        onDismissRequest = {},
+        title = { Text(if (cancelling) "Cancelando respaldo…" else "Respaldo en curso") },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(
+                onClick = { LegacyBackupSession.cancel() },
+                enabled = !cancelling,
+            ) {
+                Text(if (cancelling) "Cancelando…" else "Cancelar respaldo")
+            }
+        },
+        text = {
+            Column {
+                Text(phase)
+                if (fraction != null) {
+                    LinearProgressIndicator(
+                        progress = { fraction },
+                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                    )
+                    Text(
+                        "${NativeStorageManager.formatBytes(done)} / " +
+                            "${NativeStorageManager.formatBytes(total)} · " +
+                            "${(fraction * 100).toInt()}%",
+                        modifier = Modifier.padding(top = 6.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                } else {
+                    LinearProgressIndicator(
+                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                    )
+                }
+
+                if (written > 0L) {
+                    Text(
+                        "Archivo generado: ${NativeStorageManager.formatBytes(written)}",
+                        modifier = Modifier.padding(top = 6.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+
+                if (destination.isNotBlank()) {
+                    Text(
+                        "Destino: $destination",
+                        modifier = Modifier.padding(top = 8.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        },
+    )
+}
+
 @Composable
 private fun BackupScreen(onBack: () -> Unit) {
     val context = LocalContext.current
@@ -1319,20 +1490,10 @@ private fun BackupScreen(onBack: () -> Unit) {
     var restoreFull by remember { mutableStateOf<Boolean?>(null) }
 
     val basicSaver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/gzip")) { uri ->
-        if (uri != null) scope.launch {
-            busy = context.getString(R.string.nt_l10n_backup_home_busy)
-            val err = withContext(Dispatchers.IO) { runBackup(context, uri, false) }
-            busy = null
-            toast(context, if (err == null) context.getString(R.string.nt_l10n_backup_complete) else context.getString(R.string.nt_l10n_backup_failed, err))
-        }
+        if (uri != null) LegacyBackupSession.start(context, uri, false)
     }
     val fullSaver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/gzip")) { uri ->
-        if (uri != null) scope.launch {
-            busy = context.getString(R.string.nt_l10n_backup_full_busy)
-            val err = withContext(Dispatchers.IO) { runBackup(context, uri, true) }
-            busy = null
-            toast(context, if (err == null) context.getString(R.string.nt_l10n_backup_complete) else context.getString(R.string.nt_l10n_backup_failed, err))
-        }
+        if (uri != null) LegacyBackupSession.start(context, uri, true)
     }
     val restorePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) { restoreUri = uri; restoreFull = null }
@@ -1340,12 +1501,37 @@ private fun BackupScreen(onBack: () -> Unit) {
 
     SettingsScaffold(context.getString(R.string.nt_l10n_backup_restore), onBack) { mod ->
         Column(modifier = mod) {
-            NavRow(context.getString(R.string.nt_l10n_backup_home), context.getString(R.string.nt_l10n_backup_home_summary)) { basicSaver.launch("termux-home-backup.tar.gz") }
-            NavRow(context.getString(R.string.nt_l10n_backup_full), context.getString(R.string.nt_l10n_backup_full_summary)) { fullSaver.launch("termux-full-backup.tar.gz") }
+            NavRow(context.getString(R.string.nt_l10n_backup_home), context.getString(R.string.nt_l10n_backup_home_summary)) {
+                if (!LegacyBackupSession.running) basicSaver.launch("termux-home-backup.tar.gz")
+            }
+            NavRow(context.getString(R.string.nt_l10n_backup_full), context.getString(R.string.nt_l10n_backup_full_summary)) {
+                if (!LegacyBackupSession.running) fullSaver.launch("termux-full-backup.tar.gz")
+            }
             HorizontalDivider()
-            NavRow(context.getString(R.string.nt_l10n_restore_from), context.getString(R.string.nt_l10n_restore_from_summary)) { restorePicker.launch(arrayOf("*/*")) }
+            NavRow(context.getString(R.string.nt_l10n_restore_from), context.getString(R.string.nt_l10n_restore_from_summary)) {
+                if (!LegacyBackupSession.running) restorePicker.launch(arrayOf("*/*"))
+            }
+
+            LegacyBackupSession.resultMessage?.let {
+                Text(
+                    it,
+                    modifier = Modifier.padding(16.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            LegacyBackupSession.errorMessage?.let {
+                Text(
+                    it,
+                    modifier = Modifier.padding(16.dp),
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
         }
     }
+
+    LegacyBackupProgressDialog()
 
     busy?.let { msg ->
         AlertDialog(
@@ -1361,7 +1547,6 @@ private fun BackupScreen(onBack: () -> Unit) {
         )
     }
 
-    // Restore: choose type
     if (restoreUri != null && restoreFull == null) {
         AlertDialog(
             onDismissRequest = { restoreUri = null },
@@ -1371,7 +1556,6 @@ private fun BackupScreen(onBack: () -> Unit) {
             dismissButton = { TextButton(onClick = { restoreFull = false }) { Text(context.getString(R.string.nt_l10n_basic)) } },
         )
     }
-    // Restore: confirm
     if (restoreUri != null && restoreFull != null) {
         val uri = restoreUri!!
         val full = restoreFull!!
@@ -1521,27 +1705,208 @@ private fun openAbout(context: Context) {
     ReportActivity.startReportActivity(context, reportInfo)
 }
 
-private fun runBackup(context: Context, uri: Uri, full: Boolean): String? {
-    return try {
-        val cmd = if (full) arrayOf(
-            "/data/data/com.termux/files/usr/bin/tar", "-zcf", "-",
-            "-C", "/data/data/com.termux/files", "./home", "./usr",
-        ) else arrayOf(
-            "/data/data/com.termux/files/usr/bin/tar", "-zcf", "-",
-            "-C", "/data/data/com.termux/files/home", ".",
+private fun describeDocumentDestination(context: Context, uri: Uri): String {
+    var displayName: String? = null
+    runCatching {
+        context.contentResolver.query(
+            uri,
+            arrayOf(OpenableColumns.DISPLAY_NAME),
+            null,
+            null,
+            null,
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) displayName = cursor.getString(0)
+        }
+    }
+
+    val documentId = runCatching {
+        if (DocumentsContract.isDocumentUri(context, uri)) DocumentsContract.getDocumentId(uri)
+        else null
+    }.getOrNull()
+
+    val friendlyLocation = documentId
+        ?.removePrefix("primary:")
+        ?.replaceFirst("Download/", "Descargas/")
+        ?.replaceFirst("Downloads/", "Descargas/")
+
+    return when {
+        !friendlyLocation.isNullOrBlank() -> friendlyLocation
+        !displayName.isNullOrBlank() -> displayName!!
+        else -> uri.lastPathSegment ?: uri.toString()
+    }
+}
+
+private fun estimateLegacyBackupBytes(
+    full: Boolean,
+    cancelled: () -> Boolean,
+    processChanged: (java.lang.Process?) -> Unit,
+): Long {
+    if (cancelled()) throw CancellationException("Respaldo cancelado")
+
+    val du = "/data/data/com.termux/files/usr/bin/du"
+    val roots = if (full) {
+        listOf(
+            "/data/data/com.termux/files/home",
+            "/data/data/com.termux/files/usr",
         )
-        val p = Runtime.getRuntime().exec(cmd)
-        p.inputStream.use { input ->
-            context.contentResolver.openOutputStream(uri).use { out ->
-                if (out == null) return context.getString(R.string.nt_l10n_output_unavailable)
-                input.copyTo(out)
+    } else {
+        listOf("/data/data/com.termux/files/home")
+    }
+
+    return runCatching {
+        val command = mutableListOf(du, "--apparent-size", "-s", "-B1")
+        command.addAll(roots)
+        val process = Runtime.getRuntime().exec(command.toTypedArray())
+        processChanged(process)
+        val output = process.inputStream.bufferedReader().readLines()
+        val error = process.errorStream.bufferedReader().readText()
+        val exit = process.waitFor()
+        processChanged(null)
+
+        if (cancelled()) throw CancellationException("Respaldo cancelado")
+        if (exit != 0) {
+            Logger.logWarn("NewTermuxBackup", "du no pudo estimar tamaño: $error")
+            return@runCatching 0L
+        }
+
+        output.sumOf { line ->
+            line.trim()
+                .substringBefore(' ')
+                .substringBefore('\t')
+                .toLongOrNull()
+                ?: 0L
+        }
+    }.getOrElse { t ->
+        processChanged(null)
+        if (t is CancellationException) throw t
+        0L
+    }
+}
+
+private fun runBackupWithProgress(
+    context: Context,
+    uri: Uri,
+    full: Boolean,
+    progress: (String, Long, Long, Long) -> Unit,
+    cancelled: () -> Boolean,
+    processChanged: (java.lang.Process?) -> Unit,
+): String? {
+    var written = 0L
+    var total = 0L
+    var process: java.lang.Process? = null
+
+    try {
+        progress("Calculando tamaño del respaldo…", 0L, 0L, 0L)
+        total = estimateLegacyBackupBytes(full, cancelled, processChanged)
+        if (cancelled()) throw CancellationException("Respaldo cancelado")
+
+        val tar = "/data/data/com.termux/files/usr/bin/tar"
+        val checkpointEvery = 1024L
+        val tarRecordBytes = 10L * 1024L
+        val processed = AtomicLong(0L)
+
+        val command = mutableListOf(
+            tar,
+            "--checkpoint=$checkpointEvery",
+            "--checkpoint-action=echo=NT_PROGRESS:%u",
+            "-zcf",
+            "-",
+        )
+        if (full) {
+            command.addAll(listOf("-C", "/data/data/com.termux/files", "./home", "./usr"))
+        } else {
+            command.addAll(listOf("-C", "/data/data/com.termux/files/home", "."))
+        }
+
+        val out = context.contentResolver.openOutputStream(uri, "w")
+            ?: return context.getString(R.string.nt_l10n_output_unavailable)
+
+        process = Runtime.getRuntime().exec(command.toTypedArray())
+        processChanged(process)
+
+        val stderrText = StringBuilder()
+        val checkpointRegex = Regex("""NT_PROGRESS:(\d+)""")
+        val stderrThread = Thread {
+            runCatching {
+                process!!.errorStream.bufferedReader().useLines { lines ->
+                    lines.forEach { line ->
+                        val match = checkpointRegex.find(line)
+                        if (match != null) {
+                            val number = match.groupValues[1].toLongOrNull() ?: 0L
+                            val approx = number * checkpointEvery * tarRecordBytes
+                            val clamped = if (total > 0L) approx.coerceAtMost(total) else approx
+                            processed.set(clamped)
+                            progress("Comprimiendo respaldo…", clamped, total, written)
+                        } else if (line.isNotBlank()) {
+                            synchronized(stderrText) {
+                                if (stderrText.isNotEmpty()) stderrText.append('\n')
+                                stderrText.append(line)
+                            }
+                        }
+                    }
+                }
+            }
+        }.apply {
+            name = "NewTermux-legacy-backup-stderr"
+            isDaemon = true
+            start()
+        }
+
+        out.use { output ->
+            process!!.inputStream.use { input ->
+                val buffer = ByteArray(1024 * 1024)
+                var lastReport = 0L
+                while (true) {
+                    if (cancelled()) {
+                        runCatching { process!!.destroy() }
+                        throw CancellationException("Respaldo cancelado")
+                    }
+
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    output.write(buffer, 0, count)
+                    written += count
+
+                    val now = System.currentTimeMillis()
+                    if (now - lastReport >= 500L) {
+                        lastReport = now
+                        progress("Comprimiendo respaldo…", processed.get(), total, written)
+                    }
+                }
+                output.flush()
             }
         }
-        val errText = readStream(p.errorStream)
-        val exit = p.waitFor()
-        if (exit != 0) (errText.ifEmpty { context.getString(R.string.nt_l10n_tar_exit, exit) }) else null
+
+        val exit = process!!.waitFor()
+        stderrThread.join(2000L)
+        processChanged(null)
+
+        if (cancelled()) {
+            runCatching { context.contentResolver.delete(uri, null, null) }
+            throw CancellationException("Respaldo cancelado")
+        }
+
+        if (exit != 0) {
+            val err = synchronized(stderrText) { stderrText.toString().trim() }
+            return err.ifEmpty { context.getString(R.string.nt_l10n_tar_exit, exit) }
+        }
+
+        progress(
+            "Respaldo terminado",
+            if (total > 0L) total else processed.get(),
+            total,
+            written,
+        )
+        return null
+    } catch (e: CancellationException) {
+        runCatching { process?.destroy() }
+        runCatching { context.contentResolver.delete(uri, null, null) }
+        throw e
     } catch (e: Exception) {
-        e.message ?: context.getString(R.string.nt_l10n_generic_error)
+        runCatching { process?.destroy() }
+        return e.message ?: context.getString(R.string.nt_l10n_generic_error)
+    } finally {
+        processChanged(null)
     }
 }
 
