@@ -4,8 +4,11 @@ on:
   pull_request:
     branches:
       - fix/clipboard-access-notice-20260929
+      - feat/runtime-task-monitor-20260930
     paths:
       - '.github/workflows/direct_distribution_build.yml'
+      - 'scripts/test-native-backup-policy.sh'
+      - 'scripts/tests/BackupArchivePolicyTest.java'
       - 'app/build.gradle'
       - 'app/src/main/java/com/termux/app/TermuxInstaller.java'
       - 'app/src/main/java/com/termux/app/TermuxActivity.java'
@@ -56,6 +59,9 @@ jobs:
           grep -q 'direct {' termux-shared/build.gradle
           grep -A4 'direct {' termux-shared/build.gradle | grep -q 'TERMUX_APP_PACKAGE.*com.termux'
           ! grep -R --line-number --fixed-strings 'com.android.vending' app terminal-emulator terminal-view termux-shared
+
+      - name: Test native backup archive validation
+        run: bash scripts/test-native-backup-policy.sh
 
       - name: Validate bundled installer scripts
         run: |

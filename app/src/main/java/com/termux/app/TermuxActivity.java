@@ -29,6 +29,7 @@ import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.ProgressBar;
+import android.widget.PopupWindow;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -224,6 +225,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private String mPendingOriginal;
     private ImageButton mBtnSTT;
     private LinearLayout mSessionPipContainer;
+    private PopupWindow mSessionNoticePopup;
+    private final Handler mSessionNoticeHandler = new Handler(Looper.getMainLooper());
+    private final Runnable mDismissSessionNotice = () -> dismissSessionNotice();
 
     // Compact long-task monitor shown between the toolbar and session previews.
     private View mTaskStatusPanel;
@@ -557,6 +561,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         mIsVisible = false;
         mTaskMonitorHandler.removeCallbacks(mTaskMonitorTicker);
+        mSessionNoticeHandler.removeCallbacks(mDismissSessionNotice);
+        dismissSessionNotice();
 
         if (mTermuxTerminalSessionActivityClient != null)
             mTermuxTerminalSessionActivityClient.onStop();
@@ -585,6 +591,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         if (mIsInvalidState) return;
 
         mTaskMonitorHandler.removeCallbacksAndMessages(null);
+        mSessionNoticeHandler.removeCallbacksAndMessages(null);
+        dismissSessionNotice();
         if (mSpeechInputManager != null) { mSpeechInputManager.destroy(); mSpeechInputManager = null; }
         if (mAutoCorrectHandler != null) { mAutoCorrectHandler.destroy(); mAutoCorrectHandler = null; }
 
@@ -1075,6 +1083,20 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         items.add("Instalar componentes y PRoot");
         actions.add(this::showComponentInstaller);
 
+        boolean promptClockEnabled = new java.io.File(
+            com.termux.shared.termux.TermuxConstants.TERMUX_HOME_DIR,
+            ".newtermux/prompt-clock.enabled").isFile();
+        items.add("Hora en prompt · " + (promptClockEnabled ? "Sí" : "No"));
+        actions.add(() -> {
+            TerminalSession session = getCurrentSession();
+            if (session == null) {
+                showToast("Abrí una sesión primero", false);
+                return;
+            }
+            com.newtermux.features.BundledInstallerLibrary.runPromptClockInstaller(
+                this, session, promptClockEnabled ? "disable" : "enable");
+        });
+
         items.add("Guardar salidas largas · "
             + (NewTermuxSettings.isAutoSaveOutputEnabled(this) ? "Sí" : "No"));
         actions.add(this::configureAutoOutput);
@@ -1351,6 +1373,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             LinearLayout.LayoutParams wrapperLp = new LinearLayout.LayoutParams(pipWidthPx, LinearLayout.LayoutParams.WRAP_CONTENT);
             wrapperLp.setMarginEnd(marginPx);
             wrapper.setLayoutParams(wrapperLp);
+            wrapper.setTag(session);
 
             // Session name label
             android.widget.TextView nameLabel = new android.widget.TextView(this);
@@ -1377,8 +1400,10 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
             wrapper.setOnClickListener(v -> {
                 if (mTermuxTerminalSessionActivityClient != null) {
+                    // setCurrentSession() already rebuilds the miniature row before showing
+                    // the notice. Rebuilding it again here detached the popup anchor and
+                    // made notices for #1/#2/#3 jump to the upper-left corner.
                     mTermuxTerminalSessionActivityClient.setCurrentSession(session);
-                    updateSessionTabs();
                 }
             });
 
@@ -1391,6 +1416,122 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         }
     }
 
+    /**
+     * Show a compact transient notice anchored to the session miniature that caused it.
+     * This keeps "[N]" session-change notices away from the main toolbar controls.
+     */
+    public void showSessionNotice(TerminalSession session, String text, boolean longDuration) {
+        if (text == null || text.isEmpty()) return;
+
+        mSessionNoticeHandler.removeCallbacks(mDismissSessionNotice);
+        dismissSessionNotice();
+
+        // The row may have just been rebuilt by setCurrentSession(). Wait until Android has
+        // measured and positioned the new miniature before calculating popup coordinates.
+        if (mSessionPipContainer == null) {
+            showToast(text, longDuration);
+            return;
+        }
+
+        mSessionPipContainer.post(() -> showSessionNoticeAnchored(session, text, longDuration, 0));
+    }
+
+    private void showSessionNoticeAnchored(TerminalSession session, String text,
+                                           boolean longDuration, int attempt) {
+        if (!mIsVisible) return;
+
+        View anchor = findSessionNoticeAnchor(session);
+        if (anchor == null || !anchor.isShown() || anchor.getWidth() <= 0 || anchor.getHeight() <= 0) {
+            if (mSessionPipContainer != null && attempt < 4) {
+                mSessionNoticeHandler.postDelayed(
+                    () -> showSessionNoticeAnchored(session, text, longDuration, attempt + 1),
+                    32L);
+                return;
+            }
+            // Last-resort fallback only. Normal session switches should never reach this path.
+            showToast(text, longDuration);
+            return;
+        }
+
+        float density = getResources().getDisplayMetrics().density;
+        int horizontalPadding = Math.round(12 * density);
+        int verticalPadding = Math.round(7 * density);
+        int edgeMargin = Math.round(8 * density);
+        int gap = Math.round(6 * density);
+
+        TextView label = new TextView(this);
+        label.setText(text);
+        label.setTextColor(androidx.core.content.ContextCompat.getColor(
+            this, com.termux.R.color.nt_on_surface));
+        label.setTextSize(13f);
+        label.setGravity(Gravity.CENTER);
+        label.setMaxLines(2);
+        label.setPadding(horizontalPadding, verticalPadding, horizontalPadding, verticalPadding);
+        label.setBackgroundResource(com.termux.R.drawable.bg_popup_menu);
+
+        View decor = getWindow().getDecorView();
+        int screenWidth = Math.max(decor.getWidth(), getResources().getDisplayMetrics().widthPixels);
+        int maxWidth = Math.max(1, screenWidth - 2 * edgeMargin);
+        label.setMaxWidth(Math.min(maxWidth, Math.round(280 * density)));
+        label.measure(
+            View.MeasureSpec.makeMeasureSpec(maxWidth, View.MeasureSpec.AT_MOST),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+
+        int[] anchorLocation = new int[2];
+        int[] decorLocation = new int[2];
+        anchor.getLocationOnScreen(anchorLocation);
+        decor.getLocationOnScreen(decorLocation);
+
+        int popupWidth = Math.max(1, label.getMeasuredWidth());
+        int desiredLeft = anchorLocation[0] + (anchor.getWidth() - popupWidth) / 2;
+        int clampedLeft = Math.max(edgeMargin,
+            Math.min(desiredLeft, screenWidth - edgeMargin - popupWidth));
+
+        int popupX = clampedLeft - decorLocation[0];
+        int popupY = anchorLocation[1] + anchor.getHeight() + gap - decorLocation[1];
+
+        PopupWindow popup = new PopupWindow(
+            label,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            false);
+        popup.setClippingEnabled(true);
+        popup.setOutsideTouchable(false);
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP)
+            popup.setElevation(8 * density);
+
+        try {
+            // Absolute window placement is deliberate: unlike showAsDropDown(), it remains
+            // stable even if the HorizontalScrollView relayouts after a session switch.
+            popup.showAtLocation(decor, Gravity.TOP | Gravity.START, popupX, popupY);
+            mSessionNoticePopup = popup;
+            mSessionNoticeHandler.postDelayed(
+                mDismissSessionNotice,
+                longDuration ? 2800L : 1600L);
+        } catch (WindowManager.BadTokenException e) {
+            showToast(text, longDuration);
+        }
+    }
+
+    private View findSessionNoticeAnchor(TerminalSession session) {
+        if (session == null || mSessionPipContainer == null) return null;
+        for (int i = 0; i < mSessionPipContainer.getChildCount(); i++) {
+            View child = mSessionPipContainer.getChildAt(i);
+            if (child != null && child.getTag() == session) return child;
+        }
+        return null;
+    }
+
+    private void dismissSessionNotice() {
+        if (mSessionNoticePopup != null) {
+            try {
+                mSessionNoticePopup.dismiss();
+            } catch (Exception ignored) {
+            }
+            mSessionNoticePopup = null;
+        }
+    }
+
     private void showSessionPopupMenu(View anchor, TerminalSession session) {
         // Session-scoped actions live on the miniature itself so cleanup does not get
         // buried in a global menu.
@@ -1399,7 +1540,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 getString(R.string.action_rename),
                 getString(R.string.action_close),
                 getString(R.string.action_close_others),
-                getString(R.string.action_close_finished_others)
+                getString(R.string.action_close_finished_others),
+                getString(R.string.action_close_all)
             }, idx -> {
                 switch (idx) {
                     case 0:
@@ -1415,10 +1557,28 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                     case 3:
                         closeFinishedOtherSessions(session);
                         break;
+                    case 4:
+                        confirmCloseAllSessions();
+                        break;
                     default:
                         break;
                 }
             });
+    }
+
+    private void confirmCloseAllSessions() {
+        if (mTermuxService == null) return;
+        new AlertDialog.Builder(this)
+            .setTitle(R.string.action_close_all)
+            .setMessage(R.string.msg_close_all_sessions)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.action_close_all, (dialog, which) -> {
+                // Stop the service using its normal session/process cleanup path.
+                Intent stop = new Intent(this, TermuxService.class);
+                stop.setAction(TermuxConstants.TERMUX_APP.TERMUX_SERVICE.ACTION_STOP_SERVICE);
+                startService(stop);
+            })
+            .show();
     }
 
     private void confirmCloseOtherSessions(TerminalSession keepSession) {

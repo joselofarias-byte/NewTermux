@@ -24,8 +24,8 @@ ensure_host() {
   fi
 }
 
-guest() {
-  proot-distro login --shared-tmp debian -- /bin/bash -lc "$1"
+guest_script() {
+  proot-distro login --shared-tmp debian -- /bin/bash -s
 }
 
 prepare_guest() {
@@ -35,53 +35,57 @@ prepare_guest() {
 
   ensure_host
   say "Preparando Debian para coding harnesses"
-  guest 'set -euo pipefail
+  guest_script <<'GUEST'
+set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y ca-certificates curl git jq nodejs npm
 mkdir -p "$HOME/.local/bin" "$HOME/.opencode/bin"
 touch "$HOME/.profile"
-PATH_LINE='''export PATH="$HOME/.local/bin:$HOME/.opencode/bin:$PATH"'''
+PATH_LINE='export PATH="$HOME/.local/bin:$HOME/.opencode/bin:$PATH"'
 grep -Fqx "$PATH_LINE" "$HOME/.profile" || printf "\n%s\n" "$PATH_LINE" >> "$HOME/.profile"
 npm config set prefix "$HOME/.local"
 printf "Node: "; node --version
 printf "npm: "; npm --version
-'
+GUEST
   PREPARED=1
 }
 
 install_antigravity() {
   prepare_guest
   say "Instalando/actualizando Antigravity CLI"
-  guest 'set -euo pipefail
+  guest_script <<'GUEST'
+set -euo pipefail
 tmp="$(mktemp)"
-trap '''rm -f "$tmp"''' EXIT
+trap 'rm -f "$tmp"' EXIT
 curl -fsSL https://antigravity.google/cli/install.sh -o "$tmp"
 bash "$tmp"
 export PATH="$HOME/.local/bin:$HOME/.opencode/bin:$PATH"
 command -v agy >/dev/null
 agy --version || true
-'
+GUEST
 }
 
 install_codex() {
   prepare_guest
   say "Instalando/actualizando Codex CLI"
-  guest 'set -euo pipefail
+  guest_script <<'GUEST'
+set -euo pipefail
 export PATH="$HOME/.local/bin:$HOME/.opencode/bin:$PATH"
 npm config set prefix "$HOME/.local"
 npm install -g @openai/codex@latest
 command -v codex >/dev/null
 codex --version
-'
+GUEST
 }
 
 install_opencode() {
   prepare_guest
   say "Instalando/actualizando OpenCode"
-  guest 'set -euo pipefail
+  guest_script <<'GUEST'
+set -euo pipefail
 tmp="$(mktemp)"
-trap '''rm -f "$tmp"''' EXIT
+trap 'rm -f "$tmp"' EXIT
 curl -fsSL https://opencode.ai/v2/install -o "$tmp"
 bash "$tmp"
 export PATH="$HOME/.local/bin:$HOME/.opencode/bin:$PATH"
@@ -93,7 +97,7 @@ else
   echo "OpenCode terminó el instalador pero no quedó visible en PATH." >&2
   exit 1
 fi
-'
+GUEST
 }
 
 configure_opencode_router() {
@@ -103,7 +107,8 @@ configure_opencode_router() {
   fi
 
   say "Configurando OpenCode para 9router-go / free-best"
-  guest 'set -euo pipefail
+  guest_script <<'GUEST'
+set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 if ! command -v jq >/dev/null 2>&1; then
   apt-get update
@@ -121,7 +126,7 @@ fi
 
 [ -s "$cfg" ] || printf "{}\n" > "$cfg"
 tmp="$(mktemp)"
-jq '''
+jq '
   .["$schema"] = (.["$schema"] // "https://opencode.ai/config.json")
   | .provider = (.provider // {})
   | (.provider["9router"] // {}) as $old
@@ -137,18 +142,19 @@ jq '''
       })
     })
   | .model = "9router/free-best"
-''' "$cfg" > "$tmp"
+' "$cfg" > "$tmp"
 chmod 600 "$tmp"
 mv "$tmp" "$cfg"
 echo "OpenCode configurado: $cfg"
 echo "Modelo predeterminado: 9router/free-best"
-'
+GUEST
 }
 
 show_status() {
   ensure_host
   say "Estado de coding harnesses en Debian"
-  guest 'export PATH="$HOME/.local/bin:$HOME/.opencode/bin:$PATH"
+  guest_script <<'GUEST'
+export PATH="$HOME/.local/bin:$HOME/.opencode/bin:$PATH"
 for cmd in agy codex opencode opencode2; do
   if command -v "$cmd" >/dev/null 2>&1; then
     printf "%-12s " "$cmd"
@@ -157,7 +163,7 @@ for cmd in agy codex opencode opencode2; do
     printf "%-12s no instalado\n" "$cmd"
   fi
 done
-'
+GUEST
 }
 
 case "$ACTION" in

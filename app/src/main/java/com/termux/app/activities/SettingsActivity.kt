@@ -11,6 +11,8 @@ import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.os.Process
+import android.provider.DocumentsContract
+import android.provider.OpenableColumns
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -88,13 +90,18 @@ import com.termux.shared.termux.settings.preferences.TermuxFloatAppSharedPrefere
 import com.termux.shared.termux.settings.preferences.TermuxTaskerAppSharedPreferences
 import com.termux.shared.termux.settings.preferences.TermuxWidgetAppSharedPreferences
 import com.termux.shared.activities.ReportActivity
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
+import java.util.concurrent.CancellationException
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * NewTermux settings, fully rewritten in Jetpack Compose (Phase 5), replacing
@@ -314,21 +321,227 @@ private fun RootScreen(activity: Activity, onBack: () -> Unit, onNav: (Route) ->
 
 // ---------------------------------------------------------------- Native storage
 
+private object NativeStorageSession {
+    private val workerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val cancelRequested = AtomicBoolean(false)
+
+    var snapshot by mutableStateOf<NativeStorageManager.Snapshot?>(null)
+        private set
+    var loading by mutableStateOf(false)
+        private set
+    var scanPhase by mutableStateOf("Preparando inventario…")
+        private set
+    var scanDone by mutableStateOf(0)
+        private set
+    var scanTotal by mutableStateOf(0)
+        private set
+    var scanError by mutableStateOf<String?>(null)
+        private set
+
+    var selected by mutableStateOf<Set<String>>(emptySet())
+    private var selectionInitialized = false
+
+    var backupRunning by mutableStateOf(false)
+        private set
+    var backupCancelling by mutableStateOf(false)
+        private set
+    var backupPhase by mutableStateOf("")
+        private set
+    var backupDone by mutableStateOf(0L)
+        private set
+    var backupTotal by mutableStateOf(0L)
+        private set
+    var backupMessage by mutableStateOf<String?>(null)
+        private set
+    var backupError by mutableStateOf<String?>(null)
+        private set
+
+    private fun onMain(block: () -> Unit) {
+        if (Looper.myLooper() == Looper.getMainLooper()) block()
+        else mainHandler.post { block() }
+    }
+
+    fun ensureScan(context: Context, force: Boolean = false) {
+        if (loading) return
+        if (!force && snapshot != null) return
+        if (backupRunning) {
+            scanError = "Esperá a que termine o cancelá el respaldo antes de actualizar tamaños."
+            return
+        }
+
+        loading = true
+        scanError = null
+        scanPhase = "Preparando inventario…"
+        scanDone = 0
+        scanTotal = 0
+        val app = context.applicationContext
+
+        workerScope.launch {
+            val result = runCatching {
+                NativeStorageManager.scan(
+                    app,
+                    NativeStorageManager.Progress { phase, done, total ->
+                        onMain {
+                            scanPhase = phase
+                            scanDone = done.coerceAtLeast(0)
+                            scanTotal = total.coerceAtLeast(0)
+                        }
+                    },
+                )
+            }
+            onMain {
+                result.onSuccess { snap ->
+                    snapshot = snap
+                    val available = snap.items.filter { it.selectable }.map { it.id }.toSet()
+                    selected = if (!selectionInitialized) {
+                        selectionInitialized = true
+                        snap.items
+                            .filter { it.selectable && (it.id == "home" || it.id.startsWith("proot:")) }
+                            .map { it.id }
+                            .toSet()
+                    } else {
+                        selected.intersect(available)
+                    }
+                }.onFailure { t ->
+                    scanError = t.message ?: t.javaClass.simpleName
+                }
+                loading = false
+            }
+        }
+    }
+
+    fun startBackup(context: Context) {
+        if (backupRunning) return
+        val snap = snapshot
+        if (snap == null) {
+            backupError = "Esperá a que termine el análisis de almacenamiento."
+            return
+        }
+        val chosen = snap.items.filter { it.selectable && it.id in selected }
+        if (chosen.isEmpty()) {
+            backupError = "Seleccioná al menos un componente para respaldar."
+            return
+        }
+
+        cancelRequested.set(false)
+        backupRunning = true
+        backupCancelling = false
+        backupError = null
+        backupMessage = null
+        backupPhase = "Preparando respaldo"
+        backupDone = 0L
+        backupTotal = chosen.sumOf { it.bytes }
+        val app = context.applicationContext
+
+        workerScope.launch {
+            val result = runCatching {
+                NativeBackupManager.createBackup(
+                    app,
+                    chosen,
+                    NativeBackupManager.Progress { phase, done, total ->
+                        onMain {
+                            backupPhase = phase
+                            backupDone = done.coerceAtLeast(0L)
+                            backupTotal = total.coerceAtLeast(0L)
+                        }
+                    },
+                    NativeBackupManager.Cancellation { cancelRequested.get() },
+                )
+            }
+
+            onMain {
+                result.onSuccess { backup ->
+                    backupMessage =
+                        "Respaldo creado: ${backup.file.name} · " +
+                            NativeStorageManager.formatBytes(backup.archiveBytes) +
+                            "\nDescargas/NewTermux/Backups"
+                    Toast.makeText(app, "Respaldo terminado", Toast.LENGTH_SHORT).show()
+                }.onFailure { t ->
+                    if (t is CancellationException) {
+                        backupMessage = "Respaldo cancelado. No quedó ningún archivo parcial."
+                    } else {
+                        backupError = "No se pudo crear el respaldo: ${t.message ?: t.javaClass.simpleName}"
+                    }
+                }
+                backupRunning = false
+                backupCancelling = false
+                cancelRequested.set(false)
+            }
+        }
+    }
+
+    fun cancelBackup() {
+        if (!backupRunning || backupCancelling) return
+        backupCancelling = true
+        backupPhase = "Cancelando respaldo…"
+        cancelRequested.set(true)
+    }
+
+    fun clearBackupResult() {
+        backupMessage = null
+        backupError = null
+    }
+}
+
+@Composable
+private fun NativeBackupProgressPanel(compact: Boolean = false) {
+    val phase = NativeStorageSession.backupPhase.ifBlank { "Respaldando…" }
+    val done = NativeStorageSession.backupDone
+    val total = NativeStorageSession.backupTotal
+    val cancelling = NativeStorageSession.backupCancelling
+
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(
+            horizontal = 16.dp,
+            vertical = if (compact) 8.dp else 12.dp,
+        ),
+    ) {
+        Text(
+            if (cancelling) "Cancelando respaldo…" else phase,
+            style = if (compact) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.titleMedium,
+        )
+        if (total > 0L) {
+            val fraction = (done.toDouble() / total.toDouble()).coerceIn(0.0, 1.0).toFloat()
+            LinearProgressIndicator(
+                progress = { fraction },
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            )
+            Text(
+                "${NativeStorageManager.formatBytes(done)} / ${NativeStorageManager.formatBytes(total)} · " +
+                    "${(fraction * 100).toInt()}%",
+                modifier = Modifier.padding(top = 4.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+        }
+        TextButton(
+            onClick = { NativeStorageSession.cancelBackup() },
+            enabled = !cancelling,
+            modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+        ) {
+            Text(if (cancelling) "Cancelando…" else "Cancelar respaldo")
+        }
+    }
+}
+
 @Composable
 private fun StorageScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val activity = context as? Activity
     val scope = rememberCoroutineScope()
 
-    var snapshot by remember { mutableStateOf<NativeStorageManager.Snapshot?>(null) }
-    var loading by remember { mutableStateOf(true) }
-    var scanPhase by remember { mutableStateOf("Preparando inventario…") }
-    var scanDone by remember { mutableStateOf(0) }
-    var scanTotal by remember { mutableStateOf(0) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var selected by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var initializedSelection by remember { mutableStateOf(false) }
+    val snapshot = NativeStorageSession.snapshot
+    val loading = NativeStorageSession.loading
+    val scanPhase = NativeStorageSession.scanPhase
+    val scanDone = NativeStorageSession.scanDone
+    val scanTotal = NativeStorageSession.scanTotal
+    val selected = NativeStorageSession.selected
+    val backupRunning = NativeStorageSession.backupRunning
 
+    var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var operationPhase by remember { mutableStateOf("") }
     var operationDone by remember { mutableStateOf(0L) }
@@ -344,6 +557,8 @@ private fun StorageScreen(onBack: () -> Unit) {
         mutableStateOf(NativeBackupManager.hasPendingRestore(context.applicationContext))
     }
 
+    val uiBusy = busy || backupRunning
+
     fun postProgress(phase: String, done: Long, total: Long) {
         activity?.runOnUiThread {
             operationPhase = phase
@@ -353,85 +568,13 @@ private fun StorageScreen(onBack: () -> Unit) {
     }
 
     fun refresh() {
-        loading = true
-        scanPhase = "Preparando inventario…"
-        scanDone = 0
-        scanTotal = 0
-        error = null
-        scope.launch {
-            val result = runCatching {
-                withContext(Dispatchers.IO) {
-                    NativeStorageManager.scan(
-                        context.applicationContext,
-                        NativeStorageManager.Progress { phase, done, total ->
-                            activity?.runOnUiThread {
-                                scanPhase = phase
-                                scanDone = done.coerceAtLeast(0)
-                                scanTotal = total.coerceAtLeast(0)
-                            }
-                        },
-                    )
-                }
-            }
-            result.onSuccess { snap ->
-                snapshot = snap
-                val available = snap.items.filter { it.selectable }.map { it.id }.toSet()
-                selected = if (!initializedSelection) {
-                    initializedSelection = true
-                    snap.items
-                        .filter { it.selectable && (it.id == "home" || it.id.startsWith("proot:")) }
-                        .map { it.id }
-                        .toSet()
-                } else {
-                    selected.intersect(available)
-                }
-            }.onFailure { t ->
-                error = t.message ?: t.javaClass.simpleName
-            }
-            loading = false
-        }
+        NativeStorageSession.ensureScan(context.applicationContext, force = true)
     }
 
     fun startBackup() {
-        val snap = snapshot ?: return
-        val chosen = snap.items.filter { it.selectable && it.id in selected }
-        if (chosen.isEmpty()) {
-            error = "Seleccioná al menos un componente para respaldar"
-            return
-        }
-
-        busy = true
         error = null
         resultMessage = null
-        operationPhase = "Preparando respaldo"
-        operationDone = 0L
-        operationTotal = chosen.sumOf { it.bytes }
-
-        scope.launch {
-            val result = runCatching {
-                withContext(Dispatchers.IO) {
-                    NativeBackupManager.createBackup(
-                        context.applicationContext,
-                        chosen,
-                        NativeBackupManager.Progress { phase, done, total ->
-                            postProgress(phase, done, total)
-                        },
-                    )
-                }
-            }
-
-            result.onSuccess { backup ->
-                resultMessage =
-                    "Respaldo creado: ${backup.file.name} · " +
-                    NativeStorageManager.formatBytes(backup.archiveBytes) +
-                    "\nDescargas/NewTermux/Backups"
-                Toast.makeText(context, "Respaldo terminado", Toast.LENGTH_SHORT).show()
-                refresh()
-            }.onFailure { t ->
-                error = "No se pudo crear el respaldo: ${t.message ?: t.javaClass.simpleName}"
-            }
-            busy = false
-        }
+        NativeStorageSession.startBackup(context.applicationContext)
     }
 
     fun inspectRestore(uri: Uri) {
@@ -517,7 +660,9 @@ private fun StorageScreen(onBack: () -> Unit) {
         if (uri != null) inspectRestore(uri)
     }
 
-    LaunchedEffect(Unit) { refresh() }
+    LaunchedEffect(Unit) {
+        NativeStorageSession.ensureScan(context.applicationContext)
+    }
 
     SettingsScaffold("Almacenamiento y respaldo", onBack) { mod ->
         Column(modifier = mod) {
@@ -560,12 +705,36 @@ private fun StorageScreen(onBack: () -> Unit) {
                 HorizontalDivider()
             }
 
+            if (backupRunning) {
+                NativeBackupProgressPanel()
+                HorizontalDivider()
+            } else {
+                NativeStorageSession.backupMessage?.let {
+                    Text(
+                        it,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                NativeStorageSession.backupError?.let {
+                    Text(
+                        it,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+
             val snap = snapshot
             if (snap != null) {
                 val used = (snap.totalBytes - snap.freeBytes).coerceAtLeast(0L)
                 val usedFraction = if (snap.totalBytes > 0)
                     (used.toFloat() / snap.totalBytes.toFloat()).coerceIn(0f, 1f)
                 else 0f
+
+                val identified = snap.measuredBytes.coerceAtLeast(0L).coerceAtMost(used)
+                val otherDevice = (used - identified).coerceAtLeast(0L)
 
                 Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
                     Text(
@@ -578,9 +747,15 @@ private fun StorageScreen(onBack: () -> Unit) {
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                     )
                     Text(
-                        "Las barras muestran qué ocupa espacio. PRoot, modelos, cachés y respaldos " +
-                            "se separan para no contarlos dos veces.",
+                        "NewTermux identificado: ${NativeStorageManager.formatBytes(identified)} · " +
+                            "Otros archivos del dispositivo: ${NativeStorageManager.formatBytes(otherDevice)}",
                         modifier = Modifier.padding(top = 8.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        "Los tamaños de cada componente son espacio realmente asignado en disco. " +
+                            "HOME, PRoot, modelos, cachés, staging TBM y respaldos se separan para no contarlos dos veces.",
+                        modifier = Modifier.padding(top = 6.dp),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -588,7 +763,7 @@ private fun StorageScreen(onBack: () -> Unit) {
 
                 HorizontalDivider()
 
-                val maxItem = snap.items.maxOfOrNull { it.bytes }?.coerceAtLeast(1L) ?: 1L
+                val maxItem = snap.items.maxOfOrNull { it.allocatedBytes }?.coerceAtLeast(1L) ?: 1L
                 snap.items.forEach { item ->
                     val checked = item.id in selected
                     Row(
@@ -598,9 +773,10 @@ private fun StorageScreen(onBack: () -> Unit) {
                         if (item.selectable) {
                             Checkbox(
                                 checked = checked,
-                                enabled = !busy,
+                                enabled = !uiBusy,
                                 onCheckedChange = { value ->
-                                    selected = if (value) selected + item.id else selected - item.id
+                                    NativeStorageSession.selected =
+                                        if (value) selected + item.id else selected - item.id
                                 },
                             )
                         } else {
@@ -618,14 +794,14 @@ private fun StorageScreen(onBack: () -> Unit) {
                                     style = MaterialTheme.typography.bodyLarge,
                                 )
                                 Text(
-                                    NativeStorageManager.formatBytes(item.bytes),
+                                    NativeStorageManager.formatBytes(item.allocatedBytes),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
                             LinearProgressIndicator(
                                 progress = {
-                                    (item.bytes.toFloat() / maxItem.toFloat()).coerceIn(0f, 1f)
+                                    (item.allocatedBytes.toFloat() / maxItem.toFloat()).coerceIn(0f, 1f)
                                 },
                                 modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
                             )
@@ -645,11 +821,20 @@ private fun StorageScreen(onBack: () -> Unit) {
                 val selectedBytes = snap.items
                     .filter { it.id in selected }
                     .sumOf { it.bytes }
+                val selectedDiskBytes = snap.items
+                    .filter { it.id in selected }
+                    .sumOf { it.allocatedBytes }
 
                 Column(Modifier.fillMaxWidth().padding(16.dp)) {
                     Text(
-                        "Seleccionado: ${NativeStorageManager.formatBytes(selectedBytes)}",
+                        "Seleccionado para respaldo: ${NativeStorageManager.formatBytes(selectedBytes)}",
                         style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        "${NativeStorageManager.formatBytes(selectedDiskBytes)} ocupados actualmente en disco",
+                        modifier = Modifier.padding(top = 2.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
 
                     Row(
@@ -658,28 +843,33 @@ private fun StorageScreen(onBack: () -> Unit) {
                     ) {
                         TextButton(
                             onClick = {
-                                selected = snap.items.filter { it.selectable }.map { it.id }.toSet()
+                                NativeStorageSession.selected =
+                                    snap.items.filter { it.selectable }.map { it.id }.toSet()
                             },
-                            enabled = !busy,
+                            enabled = !uiBusy,
                             modifier = Modifier.weight(1f),
                         ) {
                             Text("Todo")
                         }
                         TextButton(
-                            onClick = { selected = emptySet() },
-                            enabled = !busy,
+                            onClick = { NativeStorageSession.selected = emptySet() },
+                            enabled = !uiBusy,
                             modifier = Modifier.weight(1f),
                         ) {
                             Text("Ninguno")
                         }
                     }
 
-                    Button(
-                        onClick = { startBackup() },
-                        enabled = selected.isNotEmpty() && !busy,
-                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                    ) {
-                        Text("Respaldar seleccionados")
+                    if (backupRunning) {
+                        NativeBackupProgressPanel(compact = true)
+                    } else {
+                        Button(
+                            onClick = { startBackup() },
+                            enabled = selected.isNotEmpty() && !uiBusy,
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        ) {
+                            Text("Respaldar seleccionados")
+                        }
                     }
 
                     Button(
@@ -693,7 +883,7 @@ private fun StorageScreen(onBack: () -> Unit) {
                                 ),
                             )
                         },
-                        enabled = !busy,
+                        enabled = !uiBusy,
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                     ) {
                         Text("Restaurar respaldo")
@@ -701,7 +891,7 @@ private fun StorageScreen(onBack: () -> Unit) {
 
                     TextButton(
                         onClick = { refresh() },
-                        enabled = !busy,
+                        enabled = !uiBusy,
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                     ) {
                         Text("Actualizar tamaños")
@@ -789,6 +979,14 @@ private fun StorageScreen(onBack: () -> Unit) {
                     color = MaterialTheme.colorScheme.error,
                 )
             }
+
+            NativeStorageSession.scanError?.let {
+                Text(
+                    it,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
         }
     }
 
@@ -796,7 +994,7 @@ private fun StorageScreen(onBack: () -> Unit) {
         val info = restoreInfo
         if (info != null) {
             AlertDialog(
-                onDismissRequest = { if (!busy) showRestoreDialog = false },
+                onDismissRequest = { if (!uiBusy) showRestoreDialog = false },
                 title = { Text("Restaurar respaldo") },
                 text = {
                     Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
@@ -820,7 +1018,7 @@ private fun StorageScreen(onBack: () -> Unit) {
                             ) {
                                 Checkbox(
                                     checked = component.id in restoreSelected,
-                                    enabled = component.restorable && !busy,
+                                    enabled = component.restorable && !uiBusy,
                                     onCheckedChange = { value ->
                                         restoreSelected = if (value)
                                             restoreSelected + component.id
@@ -844,7 +1042,7 @@ private fun StorageScreen(onBack: () -> Unit) {
                 confirmButton = {
                     TextButton(
                         onClick = { prepareRestore() },
-                        enabled = restoreSelected.isNotEmpty() && !busy,
+                        enabled = restoreSelected.isNotEmpty() && !uiBusy,
                     ) {
                         Text("Preparar restauración")
                     }
@@ -852,7 +1050,7 @@ private fun StorageScreen(onBack: () -> Unit) {
                 dismissButton = {
                     TextButton(
                         onClick = { showRestoreDialog = false },
-                        enabled = !busy,
+                        enabled = !uiBusy,
                     ) {
                         Text("Cancelar")
                     }
@@ -1115,6 +1313,209 @@ private fun ExpansionEditorDialog(
 
 // ---------------------------------------------------------------- Backup
 
+private object LegacyBackupSession {
+    private val workerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val cancelRequested = AtomicBoolean(false)
+
+    @Volatile
+    private var activeProcess: java.lang.Process? = null
+
+    var running by mutableStateOf(false)
+        private set
+    var cancelling by mutableStateOf(false)
+        private set
+    var phase by mutableStateOf("")
+        private set
+    var doneBytes by mutableStateOf(0L)
+        private set
+    var totalBytes by mutableStateOf(0L)
+        private set
+    var outputBytes by mutableStateOf(0L)
+        private set
+    var destination by mutableStateOf("")
+        private set
+    var resultMessage by mutableStateOf<String?>(null)
+        private set
+    var errorMessage by mutableStateOf<String?>(null)
+        private set
+
+    private fun onMain(block: () -> Unit) {
+        if (Looper.myLooper() == Looper.getMainLooper()) block()
+        else mainHandler.post { block() }
+    }
+
+    fun start(context: Context, uri: Uri, full: Boolean) {
+        if (running) return
+
+        val app = context.applicationContext
+        cancelRequested.set(false)
+        running = true
+        cancelling = false
+        phase = "Calculando tamaño del respaldo…"
+        doneBytes = 0L
+        totalBytes = 0L
+        outputBytes = 0L
+        destination = describeDocumentDestination(app, uri)
+        resultMessage = null
+        errorMessage = null
+
+        workerScope.launch {
+            val result = runCatching {
+                val error = runBackupWithProgress(
+                    context = app,
+                    uri = uri,
+                    full = full,
+                    progress = { newPhase, done, total, written ->
+                        onMain {
+                            phase = newPhase
+                            doneBytes = done.coerceAtLeast(0L)
+                            totalBytes = total.coerceAtLeast(0L)
+                            outputBytes = written.coerceAtLeast(0L)
+                        }
+                    },
+                    cancelled = { cancelRequested.get() },
+                    processChanged = { process ->
+                        activeProcess = process
+                    },
+                )
+                if (error != null) error(error)
+            }
+
+            onMain {
+                result.onSuccess {
+                    resultMessage =
+                        "Respaldo terminado · " +
+                            NativeStorageManager.formatBytes(outputBytes) +
+                            "\nDestino: $destination"
+                    Toast.makeText(app, "Respaldo terminado", Toast.LENGTH_SHORT).show()
+                }.onFailure { t ->
+                    if (t is CancellationException) {
+                        resultMessage = "Respaldo cancelado."
+                    } else {
+                        errorMessage = "No se pudo crear el respaldo: ${t.message ?: t.javaClass.simpleName}"
+                    }
+                }
+                running = false
+                cancelling = false
+                cancelRequested.set(false)
+                activeProcess = null
+            }
+        }
+    }
+
+    fun cancel() {
+        if (!running || cancelling) return
+        cancelling = true
+        phase = "Cancelando respaldo…"
+        cancelRequested.set(true)
+        runCatching { activeProcess?.destroy() }
+    }
+}
+
+@Composable
+private fun LegacyBackupProgressDialog() {
+    if (!LegacyBackupSession.running) return
+
+    var showCancelConfirmation by remember { mutableStateOf(false) }
+
+    val phase = LegacyBackupSession.phase
+    val done = LegacyBackupSession.doneBytes
+    val total = LegacyBackupSession.totalBytes
+    val written = LegacyBackupSession.outputBytes
+    val destination = LegacyBackupSession.destination
+    val cancelling = LegacyBackupSession.cancelling
+    val fraction = if (total > 0L) {
+        (done.toDouble() / total.toDouble()).coerceIn(0.0, 0.99).toFloat()
+    } else null
+
+    if (showCancelConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showCancelConfirmation = false },
+            title = { Text("Cancelar respaldo") },
+            text = {
+                Text(
+                    "¿Seguro que querés cancelar el respaldo? " +
+                        "El archivo parcial se eliminará y no podrá usarse para restaurar.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showCancelConfirmation = false
+                        LegacyBackupSession.cancel()
+                    },
+                    enabled = !cancelling,
+                ) {
+                    Text("Sí, cancelar")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showCancelConfirmation = false },
+                    enabled = !cancelling,
+                ) {
+                    Text("Continuar respaldo")
+                }
+            },
+        )
+        return
+    }
+
+    AlertDialog(
+        onDismissRequest = {},
+        title = { Text(if (cancelling) "Cancelando respaldo…" else "Respaldo en curso") },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(
+                onClick = { showCancelConfirmation = true },
+                enabled = !cancelling,
+            ) {
+                Text(if (cancelling) "Cancelando…" else "Cancelar respaldo")
+            }
+        },
+        text = {
+            Column {
+                Text(phase)
+                if (fraction != null) {
+                    LinearProgressIndicator(
+                        progress = { fraction },
+                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                    )
+                    Text(
+                        "${NativeStorageManager.formatBytes(done)} / " +
+                            "${NativeStorageManager.formatBytes(total)} · " +
+                            "${(fraction * 100).toInt()}%",
+                        modifier = Modifier.padding(top = 6.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                } else {
+                    LinearProgressIndicator(
+                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                    )
+                }
+
+                if (written > 0L) {
+                    Text(
+                        "Archivo generado: ${NativeStorageManager.formatBytes(written)}",
+                        modifier = Modifier.padding(top = 6.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+
+                if (destination.isNotBlank()) {
+                    Text(
+                        "Destino: $destination",
+                        modifier = Modifier.padding(top = 8.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        },
+    )
+}
+
 @Composable
 private fun BackupScreen(onBack: () -> Unit) {
     val context = LocalContext.current
@@ -1124,20 +1525,10 @@ private fun BackupScreen(onBack: () -> Unit) {
     var restoreFull by remember { mutableStateOf<Boolean?>(null) }
 
     val basicSaver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/gzip")) { uri ->
-        if (uri != null) scope.launch {
-            busy = context.getString(R.string.nt_l10n_backup_home_busy)
-            val err = withContext(Dispatchers.IO) { runBackup(context, uri, false) }
-            busy = null
-            toast(context, if (err == null) context.getString(R.string.nt_l10n_backup_complete) else context.getString(R.string.nt_l10n_backup_failed, err))
-        }
+        if (uri != null) LegacyBackupSession.start(context, uri, false)
     }
     val fullSaver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/gzip")) { uri ->
-        if (uri != null) scope.launch {
-            busy = context.getString(R.string.nt_l10n_backup_full_busy)
-            val err = withContext(Dispatchers.IO) { runBackup(context, uri, true) }
-            busy = null
-            toast(context, if (err == null) context.getString(R.string.nt_l10n_backup_complete) else context.getString(R.string.nt_l10n_backup_failed, err))
-        }
+        if (uri != null) LegacyBackupSession.start(context, uri, true)
     }
     val restorePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) { restoreUri = uri; restoreFull = null }
@@ -1145,12 +1536,37 @@ private fun BackupScreen(onBack: () -> Unit) {
 
     SettingsScaffold(context.getString(R.string.nt_l10n_backup_restore), onBack) { mod ->
         Column(modifier = mod) {
-            NavRow(context.getString(R.string.nt_l10n_backup_home), context.getString(R.string.nt_l10n_backup_home_summary)) { basicSaver.launch("termux-home-backup.tar.gz") }
-            NavRow(context.getString(R.string.nt_l10n_backup_full), context.getString(R.string.nt_l10n_backup_full_summary)) { fullSaver.launch("termux-full-backup.tar.gz") }
+            NavRow(context.getString(R.string.nt_l10n_backup_home), context.getString(R.string.nt_l10n_backup_home_summary)) {
+                if (!LegacyBackupSession.running) basicSaver.launch("termux-home-backup.tar.gz")
+            }
+            NavRow(context.getString(R.string.nt_l10n_backup_full), context.getString(R.string.nt_l10n_backup_full_summary)) {
+                if (!LegacyBackupSession.running) fullSaver.launch("termux-full-backup.tar.gz")
+            }
             HorizontalDivider()
-            NavRow(context.getString(R.string.nt_l10n_restore_from), context.getString(R.string.nt_l10n_restore_from_summary)) { restorePicker.launch(arrayOf("*/*")) }
+            NavRow(context.getString(R.string.nt_l10n_restore_from), context.getString(R.string.nt_l10n_restore_from_summary)) {
+                if (!LegacyBackupSession.running) restorePicker.launch(arrayOf("*/*"))
+            }
+
+            LegacyBackupSession.resultMessage?.let {
+                Text(
+                    it,
+                    modifier = Modifier.padding(16.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            LegacyBackupSession.errorMessage?.let {
+                Text(
+                    it,
+                    modifier = Modifier.padding(16.dp),
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
         }
     }
+
+    LegacyBackupProgressDialog()
 
     busy?.let { msg ->
         AlertDialog(
@@ -1166,7 +1582,6 @@ private fun BackupScreen(onBack: () -> Unit) {
         )
     }
 
-    // Restore: choose type
     if (restoreUri != null && restoreFull == null) {
         AlertDialog(
             onDismissRequest = { restoreUri = null },
@@ -1176,7 +1591,6 @@ private fun BackupScreen(onBack: () -> Unit) {
             dismissButton = { TextButton(onClick = { restoreFull = false }) { Text(context.getString(R.string.nt_l10n_basic)) } },
         )
     }
-    // Restore: confirm
     if (restoreUri != null && restoreFull != null) {
         val uri = restoreUri!!
         val full = restoreFull!!
@@ -1326,27 +1740,208 @@ private fun openAbout(context: Context) {
     ReportActivity.startReportActivity(context, reportInfo)
 }
 
-private fun runBackup(context: Context, uri: Uri, full: Boolean): String? {
-    return try {
-        val cmd = if (full) arrayOf(
-            "/data/data/com.termux/files/usr/bin/tar", "-zcf", "-",
-            "-C", "/data/data/com.termux/files", "./home", "./usr",
-        ) else arrayOf(
-            "/data/data/com.termux/files/usr/bin/tar", "-zcf", "-",
-            "-C", "/data/data/com.termux/files/home", ".",
+private fun describeDocumentDestination(context: Context, uri: Uri): String {
+    var displayName: String? = null
+    runCatching {
+        context.contentResolver.query(
+            uri,
+            arrayOf(OpenableColumns.DISPLAY_NAME),
+            null,
+            null,
+            null,
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) displayName = cursor.getString(0)
+        }
+    }
+
+    val documentId = runCatching {
+        if (DocumentsContract.isDocumentUri(context, uri)) DocumentsContract.getDocumentId(uri)
+        else null
+    }.getOrNull()
+
+    val friendlyLocation = documentId
+        ?.removePrefix("primary:")
+        ?.replaceFirst("Download/", "Descargas/")
+        ?.replaceFirst("Downloads/", "Descargas/")
+
+    return when {
+        !friendlyLocation.isNullOrBlank() -> friendlyLocation
+        !displayName.isNullOrBlank() -> displayName!!
+        else -> uri.lastPathSegment ?: uri.toString()
+    }
+}
+
+private fun estimateLegacyBackupBytes(
+    full: Boolean,
+    cancelled: () -> Boolean,
+    processChanged: (java.lang.Process?) -> Unit,
+): Long {
+    if (cancelled()) throw CancellationException("Respaldo cancelado")
+
+    val du = "/data/data/com.termux/files/usr/bin/du"
+    val roots = if (full) {
+        listOf(
+            "/data/data/com.termux/files/home",
+            "/data/data/com.termux/files/usr",
         )
-        val p = Runtime.getRuntime().exec(cmd)
-        p.inputStream.use { input ->
-            context.contentResolver.openOutputStream(uri).use { out ->
-                if (out == null) return context.getString(R.string.nt_l10n_output_unavailable)
-                input.copyTo(out)
+    } else {
+        listOf("/data/data/com.termux/files/home")
+    }
+
+    return runCatching {
+        val command = mutableListOf(du, "--apparent-size", "-s", "-B1")
+        command.addAll(roots)
+        val process = Runtime.getRuntime().exec(command.toTypedArray())
+        processChanged(process)
+        val output = process.inputStream.bufferedReader().readLines()
+        val error = process.errorStream.bufferedReader().readText()
+        val exit = process.waitFor()
+        processChanged(null)
+
+        if (cancelled()) throw CancellationException("Respaldo cancelado")
+        if (exit != 0) {
+            Logger.logWarn("NewTermuxBackup", "du no pudo estimar tamaño: $error")
+            return@runCatching 0L
+        }
+
+        output.sumOf { line ->
+            line.trim()
+                .substringBefore(' ')
+                .substringBefore('\t')
+                .toLongOrNull()
+                ?: 0L
+        }
+    }.getOrElse { t ->
+        processChanged(null)
+        if (t is CancellationException) throw t
+        0L
+    }
+}
+
+private fun runBackupWithProgress(
+    context: Context,
+    uri: Uri,
+    full: Boolean,
+    progress: (String, Long, Long, Long) -> Unit,
+    cancelled: () -> Boolean,
+    processChanged: (java.lang.Process?) -> Unit,
+): String? {
+    var written = 0L
+    var total = 0L
+    var process: java.lang.Process? = null
+
+    try {
+        progress("Calculando tamaño del respaldo…", 0L, 0L, 0L)
+        total = estimateLegacyBackupBytes(full, cancelled, processChanged)
+        if (cancelled()) throw CancellationException("Respaldo cancelado")
+
+        val tar = "/data/data/com.termux/files/usr/bin/tar"
+        val checkpointEvery = 1024L
+        val tarRecordBytes = 10L * 1024L
+        val processed = AtomicLong(0L)
+
+        val command = mutableListOf(
+            tar,
+            "--checkpoint=$checkpointEvery",
+            "--checkpoint-action=echo=NT_PROGRESS:%u",
+            "-zcf",
+            "-",
+        )
+        if (full) {
+            command.addAll(listOf("-C", "/data/data/com.termux/files", "./home", "./usr"))
+        } else {
+            command.addAll(listOf("-C", "/data/data/com.termux/files/home", "."))
+        }
+
+        val out = context.contentResolver.openOutputStream(uri, "w")
+            ?: return context.getString(R.string.nt_l10n_output_unavailable)
+
+        process = Runtime.getRuntime().exec(command.toTypedArray())
+        processChanged(process)
+
+        val stderrText = StringBuilder()
+        val checkpointRegex = Regex("""NT_PROGRESS:(\d+)""")
+        val stderrThread = Thread {
+            runCatching {
+                process!!.errorStream.bufferedReader().useLines { lines ->
+                    lines.forEach { line ->
+                        val match = checkpointRegex.find(line)
+                        if (match != null) {
+                            val number = match.groupValues[1].toLongOrNull() ?: 0L
+                            val approx = number * checkpointEvery * tarRecordBytes
+                            val clamped = if (total > 0L) approx.coerceAtMost(total) else approx
+                            processed.set(clamped)
+                            progress("Comprimiendo respaldo…", clamped, total, written)
+                        } else if (line.isNotBlank()) {
+                            synchronized(stderrText) {
+                                if (stderrText.isNotEmpty()) stderrText.append('\n')
+                                stderrText.append(line)
+                            }
+                        }
+                    }
+                }
+            }
+        }.apply {
+            name = "NewTermux-legacy-backup-stderr"
+            isDaemon = true
+            start()
+        }
+
+        out.use { output ->
+            process!!.inputStream.use { input ->
+                val buffer = ByteArray(1024 * 1024)
+                var lastReport = 0L
+                while (true) {
+                    if (cancelled()) {
+                        runCatching { process!!.destroy() }
+                        throw CancellationException("Respaldo cancelado")
+                    }
+
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    output.write(buffer, 0, count)
+                    written += count
+
+                    val now = System.currentTimeMillis()
+                    if (now - lastReport >= 500L) {
+                        lastReport = now
+                        progress("Comprimiendo respaldo…", processed.get(), total, written)
+                    }
+                }
+                output.flush()
             }
         }
-        val errText = readStream(p.errorStream)
-        val exit = p.waitFor()
-        if (exit != 0) (errText.ifEmpty { context.getString(R.string.nt_l10n_tar_exit, exit) }) else null
+
+        val exit = process!!.waitFor()
+        stderrThread.join(2000L)
+        processChanged(null)
+
+        if (cancelled()) {
+            runCatching { context.contentResolver.delete(uri, null, null) }
+            throw CancellationException("Respaldo cancelado")
+        }
+
+        if (exit != 0) {
+            val err = synchronized(stderrText) { stderrText.toString().trim() }
+            return err.ifEmpty { context.getString(R.string.nt_l10n_tar_exit, exit) }
+        }
+
+        progress(
+            "Respaldo terminado",
+            if (total > 0L) total else processed.get(),
+            total,
+            written,
+        )
+        return null
+    } catch (e: CancellationException) {
+        runCatching { process?.destroy() }
+        runCatching { context.contentResolver.delete(uri, null, null) }
+        throw e
     } catch (e: Exception) {
-        e.message ?: context.getString(R.string.nt_l10n_generic_error)
+        runCatching { process?.destroy() }
+        return e.message ?: context.getString(R.string.nt_l10n_generic_error)
+    } finally {
+        processChanged(null)
     }
 }
 

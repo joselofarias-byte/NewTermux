@@ -3,6 +3,7 @@ package com.newtermux.features;
 import android.content.Context;
 import android.os.Environment;
 import android.os.StatFs;
+import android.os.SystemClock;
 import android.system.Os;
 import android.system.OsConstants;
 import android.system.StructStat;
@@ -32,17 +33,21 @@ public final class NativeStorageManager {
         public final String id;
         public final String label;
         public final String path;
+        /** Logical payload bytes, used for backup planning and metadata. */
         public final long bytes;
+        /** Blocks actually allocated on disk, used for storage accounting UI. */
+        public final long allocatedBytes;
         public final boolean selectable;
         public final boolean restorable;
         public final String detail;
 
-        public Item(String id, String label, String path, long bytes,
+        public Item(String id, String label, String path, long bytes, long allocatedBytes,
                     boolean selectable, boolean restorable, String detail) {
             this.id = id;
             this.label = label;
             this.path = path;
             this.bytes = bytes;
+            this.allocatedBytes = allocatedBytes;
             this.selectable = selectable;
             this.restorable = restorable;
             this.detail = detail;
@@ -86,12 +91,23 @@ public final class NativeStorageManager {
             new File(home, ".cache/llama.cpp")
         );
 
+        File downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+        File sharedStorage = Environment.getExternalStorageDirectory();
+
         List<File> backupRoots = existingUnique(
             new File(home, "tbm_backups"),
             new File(home, ".tbm/backups"),
-            new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-                "NewTermux/Backups")
+            new File(downloads, "NewTermux/Backups"),
+            new File(downloads, "tbm_backups"),
+            new File(sharedStorage, "Download-Folders/tbm_backups")
         );
+
+        // TBM keeps large recovery workspaces under ~/.tbm. The entire workspace is
+        // separate from active HOME, then split into useful categories below.
+        File tbmRoot = new File(home, ".tbm");
+        File tbmTmpRoot = new File(tbmRoot, "tmp");
+        File tbmCutoverSourceRoot = new File(tbmRoot, "cutover-source");
+        List<File> tbmStageRoots = discoverTbmStageRoots(home);
 
         List<File> cacheRoots = existingUnique(
             context.getCacheDir(),
@@ -101,8 +117,16 @@ public final class NativeStorageManager {
 
         Set<String> homeExcludes = canonicalSet(modelRoots);
         addAll(homeExcludes, backupRoots);
+        // Exclude ALL of ~/.tbm from active HOME. Individual TBM categories are measured below.
+        addIfInside(homeExcludes, tbmRoot, home);
         // HOME cache is presented separately. Never exclude app cache because it is not inside HOME.
         addIfInside(homeExcludes, new File(home, ".cache"), home);
+
+        Set<String> tbmOtherExcludes = new LinkedHashSet<>();
+        addIfInside(tbmOtherExcludes, tbmTmpRoot, tbmRoot);
+        addIfInside(tbmOtherExcludes, tbmCutoverSourceRoot, tbmRoot);
+        for (File stageRoot : tbmStageRoots) addIfInside(tbmOtherExcludes, stageRoot, tbmRoot);
+        for (File backupRoot : backupRoots) addIfInside(tbmOtherExcludes, backupRoot, tbmRoot);
 
         Set<String> prefixExcludes = new LinkedHashSet<>();
         addIfInside(prefixExcludes, prootBase, prefix);
@@ -111,59 +135,107 @@ public final class NativeStorageManager {
         List<Item> items = new ArrayList<>();
         Set<String> globalSeen = new HashSet<>();
         List<ProotRoot> proots = discoverProots(prootBase);
-        final int totalPhases = 6 + proots.size();
+        final int totalPhases = 10 + proots.size();
         int phase = 0;
 
         report(progress, "Calculando HOME", phase, totalPhases);
-        long homeBytes = sizeTree(home, homeExcludes, globalSeen);
+        Usage homeUsage = sizeTree(home, homeExcludes, globalSeen, progress, "Calculando HOME", phase, totalPhases);
         items.add(new Item(
-            "home", "HOME", home.getAbsolutePath(), homeBytes,
-            true, true, "Archivos personales y proyectos; modelos, cachés y respaldos se muestran aparte."
+            "home", "HOME", home.getAbsolutePath(), homeUsage.logicalBytes, homeUsage.allocatedBytes,
+            true, true, "HOME activo; modelos, cachés, respaldos y todo el espacio de trabajo TBM se muestran aparte."
         ));
         report(progress, "HOME listo", ++phase, totalPhases);
 
         report(progress, "Calculando paquetes / PREFIX", phase, totalPhases);
-        long prefixBytes = sizeTree(prefix, prefixExcludes, globalSeen);
+        Usage prefixUsage = sizeTree(prefix, prefixExcludes, globalSeen, progress, "Calculando paquetes / PREFIX", phase, totalPhases);
         items.add(new Item(
-            "prefix", "Paquetes / PREFIX", prefix.getAbsolutePath(), prefixBytes,
+            "prefix", "Paquetes / PREFIX", prefix.getAbsolutePath(), prefixUsage.logicalBytes, prefixUsage.allocatedBytes,
             true, false, "Paquetes y herramientas de NewTermux. Restauración requiere compatibilidad exacta."
         ));
         report(progress, "PREFIX listo", ++phase, totalPhases);
 
         for (ProotRoot p : proots) {
             report(progress, "Calculando PRoot · " + p.name, phase, totalPhases);
-            long bytes = sizeTree(p.root, Collections.emptySet(), globalSeen);
+            Usage usage = sizeTree(p.root, Collections.emptySet(), globalSeen, progress, "Calculando PRoot · " + p.name, phase, totalPhases);
             items.add(new Item(
-                "proot:" + p.name, "PRoot · " + p.name, p.root.getAbsolutePath(), bytes,
+                "proot:" + p.name, "PRoot · " + p.name, p.root.getAbsolutePath(), usage.logicalBytes, usage.allocatedBytes,
                 true, true, "Contenedor completo administrado por proot-distro (rootfs y metadata)."
             ));
             report(progress, "PRoot · " + p.name + " listo", ++phase, totalPhases);
         }
 
         report(progress, "Calculando modelos LLM", phase, totalPhases);
-        long modelBytes = sizeRoots(modelRoots, Collections.emptySet(), globalSeen);
-        if (modelBytes > 0 || !modelRoots.isEmpty()) {
+        Usage modelUsage = sizeRoots(modelRoots, Collections.emptySet(), globalSeen, progress, "Calculando modelos LLM", phase, totalPhases);
+        if (modelUsage.logicalBytes > 0 || modelUsage.allocatedBytes > 0 || !modelRoots.isEmpty()) {
             items.add(new Item(
-                "models", "Modelos LLM", joinPaths(modelRoots), modelBytes,
-                true, true, "Modelos detectados en rutas conocidas de HOME."
+                "models", "Modelos LLM", joinPaths(modelRoots), modelUsage.logicalBytes, modelUsage.allocatedBytes,
+                true, true, "Modelos activos detectados en rutas conocidas de HOME."
             ));
         }
         report(progress, "Modelos listos", ++phase, totalPhases);
 
         // Cache roots may contain model roots; exclude those so models are never counted twice.
         report(progress, "Calculando cachés y temporales", phase, totalPhases);
-        long cacheBytes = sizeRoots(cacheRoots, canonicalSet(modelRoots), globalSeen);
+        Usage cacheUsage = sizeRoots(cacheRoots, canonicalSet(modelRoots), globalSeen, progress, "Calculando cachés y temporales", phase, totalPhases);
         items.add(new Item(
-            "cache", "Cachés y temporales", joinPaths(cacheRoots), cacheBytes,
+            "cache", "Cachés y temporales", joinPaths(cacheRoots), cacheUsage.logicalBytes, cacheUsage.allocatedBytes,
             false, false, "Contenido regenerable. No se incluye en respaldos."
         ));
         report(progress, "Cachés listas", ++phase, totalPhases);
 
+        report(progress, "Calculando temporales de TBM", phase, totalPhases);
+        Usage tbmTmpUsage = sizeTree(tbmTmpRoot, Collections.emptySet(), globalSeen, progress,
+            "Calculando temporales de TBM", phase, totalPhases);
+        if (tbmTmpUsage.logicalBytes > 0 || tbmTmpUsage.allocatedBytes > 0 || tbmTmpRoot.exists()) {
+            items.add(new Item(
+                "tbm-tmp", "TBM · temporales / probes", tbmTmpRoot.getAbsolutePath(),
+                tbmTmpUsage.logicalBytes, tbmTmpUsage.allocatedBytes,
+                false, false, "Área temporal de probes, resume y staging transitorio de TBM. No forma parte del HOME activo."
+            ));
+        }
+        report(progress, "Temporales de TBM listos", ++phase, totalPhases);
+
+        report(progress, "Calculando fuente cutover de TBM", phase, totalPhases);
+        Usage tbmCutoverUsage = sizeTree(tbmCutoverSourceRoot, Collections.emptySet(), globalSeen, progress,
+            "Calculando fuente cutover de TBM", phase, totalPhases);
+        if (tbmCutoverUsage.logicalBytes > 0 || tbmCutoverUsage.allocatedBytes > 0 || tbmCutoverSourceRoot.exists()) {
+            items.add(new Item(
+                "tbm-cutover-source", "TBM · fuente cutover", tbmCutoverSourceRoot.getAbsolutePath(),
+                tbmCutoverUsage.logicalBytes, tbmCutoverUsage.allocatedBytes,
+                false, false, "Archivo/fuente de migración y manifest de TBM. Se conserva separado del HOME activo."
+            ));
+        }
+        report(progress, "Fuente cutover de TBM lista", ++phase, totalPhases);
+
+        report(progress, "Calculando staging de TBM", phase, totalPhases);
+        Usage tbmStageUsage = sizeRoots(tbmStageRoots, Collections.emptySet(), globalSeen, progress,
+            "Calculando staging de TBM", phase, totalPhases);
+        if (tbmStageUsage.logicalBytes > 0 || tbmStageUsage.allocatedBytes > 0 || !tbmStageRoots.isEmpty()) {
+            items.add(new Item(
+                "tbm-staging", "TBM · staging / recuperación", joinPaths(tbmStageRoots),
+                tbmStageUsage.logicalBytes, tbmStageUsage.allocatedBytes,
+                false, false, "Copias históricas de cutover/restauración. Se separan de HOME y no entran al respaldo nativo."
+            ));
+        }
+        report(progress, "Staging de TBM listo", ++phase, totalPhases);
+
+        report(progress, "Calculando metadatos de TBM", phase, totalPhases);
+        Usage tbmOtherUsage = sizeTree(tbmRoot, tbmOtherExcludes, globalSeen, progress,
+            "Calculando metadatos de TBM", phase, totalPhases);
+        if (tbmOtherUsage.logicalBytes > 0 || tbmOtherUsage.allocatedBytes > 0 || tbmRoot.exists()) {
+            items.add(new Item(
+                "tbm-other", "TBM · metadatos / otros", tbmRoot.getAbsolutePath(),
+                tbmOtherUsage.logicalBytes, tbmOtherUsage.allocatedBytes,
+                false, false, "Estado, rollback, binarios y metadatos TBM fuera de temporales, cutover, staging y respaldos."
+            ));
+        }
+        report(progress, "Metadatos de TBM listos", ++phase, totalPhases);
+
         report(progress, "Calculando respaldos", phase, totalPhases);
-        long backupBytes = sizeRoots(backupRoots, Collections.emptySet(), globalSeen);
+        Usage backupUsage = sizeRoots(backupRoots, Collections.emptySet(), globalSeen, progress, "Calculando respaldos", phase, totalPhases);
         items.add(new Item(
-            "backups", "Respaldos", joinPaths(backupRoots), backupBytes,
-            false, false, "Los respaldos existentes nunca se incluyen dentro de otro respaldo."
+            "backups", "Respaldos", joinPaths(backupRoots), backupUsage.logicalBytes, backupUsage.allocatedBytes,
+            false, false, "Incluye respaldos NewTermux/TBM detectados; nunca se incluyen dentro de otro respaldo."
         ));
         report(progress, "Respaldos listos", ++phase, totalPhases);
 
@@ -173,10 +245,11 @@ public final class NativeStorageManager {
         );
         report(progress, "Calculando salidas y registros", phase, totalPhases);
         Set<String> logExcludes = canonicalSet(backupRoots);
-        long outputBytes = sizeTree(sharedLogs, logExcludes, globalSeen);
-        if (outputBytes > 0) {
+        Usage outputUsage = sizeTree(sharedLogs, logExcludes, globalSeen, progress, "Calculando salidas y registros", phase, totalPhases);
+        if (outputUsage.logicalBytes > 0 || outputUsage.allocatedBytes > 0) {
             items.add(new Item(
-                "outputs", "Salidas y registros", sharedLogs.getAbsolutePath(), outputBytes,
+                "outputs", "Salidas y registros", sharedLogs.getAbsolutePath(),
+                outputUsage.logicalBytes, outputUsage.allocatedBytes,
                 false, false, "Archivos exportados y registros comprimidos de NewTermux."
             ));
         }
@@ -186,7 +259,7 @@ public final class NativeStorageManager {
         long total = stat.getTotalBytes();
         long free = stat.getAvailableBytes();
         long measured = 0;
-        for (Item item : items) measured += Math.max(0, item.bytes);
+        for (Item item : items) measured += Math.max(0, item.allocatedBytes);
 
         return new Snapshot(items, total, free, measured);
     }
@@ -231,49 +304,146 @@ public final class NativeStorageManager {
         return out;
     }
 
-    private static long sizeRoots(List<File> roots, Set<String> excludes, Set<String> seen) {
-        long total = 0;
-        for (File root : roots) total += sizeTree(root, excludes, seen);
+    private static List<File> discoverTbmStageRoots(File home) {
+        File tbm = new File(home, ".tbm");
+        File[] children = safeList(tbm);
+        if (children == null) return Collections.emptyList();
+
+        List<File> out = new ArrayList<>();
+        for (File child : children) {
+            String name = child.getName();
+            if (name.startsWith("direct-cutover-stage-") && isDirectoryNoFollow(child)) {
+                out.add(child);
+            }
+        }
+        out.sort((a, b) -> a.getName().compareToIgnoreCase(b.getName()));
+        return out;
+    }
+
+    private static final class Usage {
+        long logicalBytes;
+        long allocatedBytes;
+
+        void add(Usage other) {
+            if (other == null) return;
+            logicalBytes = safeAdd(logicalBytes, other.logicalBytes);
+            allocatedBytes = safeAdd(allocatedBytes, other.allocatedBytes);
+        }
+    }
+
+    private static final class ScanProgressState {
+        long visited;
+        long logicalBytes;
+        long allocatedBytes;
+        long lastReportMs;
+    }
+
+    private static Usage sizeRoots(List<File> roots, Set<String> excludes, Set<String> seen,
+                                   Progress progress, String phase, int completed, int totalPhases) {
+        ScanProgressState state = new ScanProgressState();
+        Usage total = new Usage();
+        for (File root : roots) {
+            total.add(sizeTreeInternal(root, excludes, seen, progress, phase, completed, totalPhases, state));
+        }
         return total;
     }
 
-    private static long sizeTree(File root, Set<String> excludes, Set<String> seen) {
-        if (root == null || !root.exists()) return 0;
+    private static Usage sizeTree(File root, Set<String> excludes, Set<String> seen,
+                                  Progress progress, String phase, int completed, int totalPhases) {
+        return sizeTreeInternal(root, excludes, seen, progress, phase, completed, totalPhases,
+            new ScanProgressState());
+    }
 
-        long sum = 0;
+    private static Usage sizeTreeInternal(File root, Set<String> excludes, Set<String> seen,
+                                          Progress progress, String phase, int completed, int totalPhases,
+                                          ScanProgressState state) {
+        Usage usage = new Usage();
+        if (root == null || !root.exists()) return usage;
+
         ArrayDeque<File> pending = new ArrayDeque<>();
         pending.push(root);
 
         while (!pending.isEmpty()) {
             File current = pending.pop();
+            state.visited++;
             String path = current.getAbsolutePath();
-            if (isExcluded(path, excludes)) continue;
+            if (isExcluded(path, excludes)) {
+                maybeReportTreeProgress(progress, phase, completed, totalPhases, state);
+                continue;
+            }
 
             StructStat st;
             try {
                 st = Os.lstat(path);
             } catch (Exception e) {
+                maybeReportTreeProgress(progress, phase, completed, totalPhases, state);
                 continue;
             }
 
             // Never follow symlinks. This also keeps ~/storage from exploding the scan.
-            if (OsConstants.S_ISLNK(st.st_mode)) continue;
-
-            String inode = st.st_dev + ":" + st.st_ino;
-            if (!seen.add(inode)) continue;
-
-            if (OsConstants.S_ISREG(st.st_mode)) {
-                sum += Math.max(0, st.st_size);
+            if (OsConstants.S_ISLNK(st.st_mode)) {
+                maybeReportTreeProgress(progress, phase, completed, totalPhases, state);
                 continue;
             }
-            if (!OsConstants.S_ISDIR(st.st_mode)) continue;
+
+            String inode = st.st_dev + ":" + st.st_ino;
+            if (!seen.add(inode)) {
+                maybeReportTreeProgress(progress, phase, completed, totalPhases, state);
+                continue;
+            }
+
+            long allocated = allocatedBytes(st);
+            usage.allocatedBytes = safeAdd(usage.allocatedBytes, allocated);
+            state.allocatedBytes = safeAdd(state.allocatedBytes, allocated);
+
+            if (OsConstants.S_ISREG(st.st_mode)) {
+                long logical = Math.max(0, st.st_size);
+                usage.logicalBytes = safeAdd(usage.logicalBytes, logical);
+                state.logicalBytes = safeAdd(state.logicalBytes, logical);
+                maybeReportTreeProgress(progress, phase, completed, totalPhases, state);
+                continue;
+            }
+            if (!OsConstants.S_ISDIR(st.st_mode)) {
+                maybeReportTreeProgress(progress, phase, completed, totalPhases, state);
+                continue;
+            }
 
             File[] children = safeList(current);
-            if (children == null) continue;
-            for (File child : children) pending.push(child);
+            if (children != null) {
+                for (File child : children) pending.push(child);
+            }
+            maybeReportTreeProgress(progress, phase, completed, totalPhases, state);
         }
 
-        return sum;
+        return usage;
+    }
+
+    private static long allocatedBytes(StructStat st) {
+        long blocks = Math.max(0L, st.st_blocks);
+        if (blocks > Long.MAX_VALUE / 512L) return Math.max(0L, st.st_size);
+        return blocks * 512L;
+    }
+
+    private static long safeAdd(long a, long b) {
+        if (b <= 0) return a;
+        if (a > Long.MAX_VALUE - b) return Long.MAX_VALUE;
+        return a + b;
+    }
+
+    private static void maybeReportTreeProgress(Progress progress, String phase, int completed,
+                                                int totalPhases, ScanProgressState state) {
+        if (progress == null) return;
+        long now = SystemClock.elapsedRealtime();
+        if (state.lastReportMs != 0 && now - state.lastReportMs < 750) return;
+        state.lastReportMs = now;
+        String detail = String.format(
+            Locale.getDefault(),
+            "%s · %,d elementos · %s en disco",
+            phase,
+            state.visited,
+            formatBytes(state.allocatedBytes)
+        );
+        report(progress, detail, completed, totalPhases);
     }
 
     private static boolean isExcluded(String path, Set<String> excludes) {

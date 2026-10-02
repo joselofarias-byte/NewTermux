@@ -141,7 +141,7 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
             // Only show toast for other sessions than the current one, since the user
             // probably consciously caused the title change to change in the current session
             // and don't want an annoying toast for that.
-            mActivity.showToast(toToastTitle(updatedSession), true);
+            mActivity.showSessionNotice(updatedSession, toToastTitle(updatedSession), true);
         }
 
         termuxSessionListNotifyUpdated();
@@ -177,7 +177,7 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
             // Show toast for non-current sessions that exit.
             // Verify that session was not removed before we got told about it finishing:
             if (index >= 0)
-                mActivity.showToast(toToastTitle(finishedSession) + " - exited", true);
+                mActivity.showSessionNotice(finishedSession, toToastTitle(finishedSession) + " - exited", true);
         }
 
         if (mActivity.getPackageManager().hasSystemFeature(PackageManager.FEATURE_LEANBACK)) {
@@ -312,17 +312,20 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
     public void setCurrentSession(TerminalSession session) {
         if (session == null) return;
 
-        if (mActivity.getTerminalView().attachSession(session)) {
-            // notify about switched session if not already displaying the session
-            notifyOfSessionChange();
-        }
+        boolean changed = mActivity.getTerminalView().attachSession(session);
 
         // We call the following even when the session is already being displayed since config may
         // be stale, like current session not selected or scrolled to.
         checkAndScrollToSession(session);
         updateBackgroundColor();
+        // Rebuild the session row first so the change notice can anchor to the selected miniature.
         mActivity.updateSessionTabs();
         mActivity.refreshTaskMonitor();
+
+        if (changed) {
+            // notify about switched session if not already displaying the session
+            notifyOfSessionChange();
+        }
     }
 
     void notifyOfSessionChange() {
@@ -330,7 +333,7 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
 
         if (!mActivity.getProperties().areTerminalSessionChangeToastsDisabled()) {
             TerminalSession session = mActivity.getCurrentSession();
-            mActivity.showToast(toToastTitle(session), false);
+            mActivity.showSessionNotice(session, toToastTitle(session), false);
         }
     }
 
