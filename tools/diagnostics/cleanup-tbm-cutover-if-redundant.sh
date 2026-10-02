@@ -97,6 +97,16 @@ for root in "${DISCOVERY_ROOTS[@]}"; do
   )
 done
 
+# Fallback promised by the diagnostic flow: locate large files by SIZE, not name.
+# The historical migration tar was ~46 GiB, so inspect 30-70 GiB files even if moved/renamed.
+status "Buscando también archivos grandes por tamaño (30-70 GiB)..."
+for root in "${DISCOVERY_ROOTS[@]}"; do
+  [ -d "$root" ] || continue
+  while IFS= read -r p; do add_archive "$p"; done < <(
+    find "$root" -maxdepth 8 -type f -size +32212254720c -size -75161927680c -print 2>/dev/null
+  )
+done
+
 status "Candidatos de backup externo encontrados: ${#ARCHIVES[@]}"
 for p in "${ARCHIVES[@]}"; do status "Candidato: $p ($(fmt "$(disk_bytes "$p")"))"; done
 
