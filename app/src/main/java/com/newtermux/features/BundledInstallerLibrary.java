@@ -29,6 +29,10 @@ public final class BundledInstallerLibrary {
         "newtermux/installers/one-touch-ai-stack.sh";
     private static final String ONE_TOUCH_FILENAME =
         "one-touch-ai-stack.sh";
+    private static final String OPEN_AI_WORKSPACE_ASSET =
+        "newtermux/installers/open-ai-workspace.sh";
+    private static final String OPEN_AI_WORKSPACE_FILENAME =
+        "open-ai-workspace.sh";
     private static final String TBM_ASSET =
         "newtermux/installers/tbm-integration.sh";
     private static final String TBM_FILENAME =
@@ -82,6 +86,19 @@ public final class BundledInstallerLibrary {
         if (materialize(context, ONE_TOUCH_ASSET, ONE_TOUCH_FILENAME) == null) return;
 
         session.write("bash \"$HOME/.newtermux/installers/" + ONE_TOUCH_FILENAME + "\"\n");
+    }
+
+    public static void runOpenCodeWorkspace(Context context, TerminalSession session) {
+        if (session == null) {
+            Toast.makeText(context, "No se pudo abrir la sesión de OpenCode", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        if (materialize(context, NINE_ROUTER_ASSET, NINE_ROUTER_FILENAME) == null) return;
+        if (materialize(context, AI_HARNESS_ASSET, AI_HARNESS_FILENAME) == null) return;
+        if (materialize(context, OPEN_AI_WORKSPACE_ASSET, OPEN_AI_WORKSPACE_FILENAME) == null) return;
+
+        session.write("bash \"$HOME/.newtermux/installers/" + OPEN_AI_WORKSPACE_FILENAME + "\"\n");
     }
 
     public static void runTbmInstaller(Context context, TerminalSession session, String action) {
