@@ -25,8 +25,16 @@ need_termux() {
 }
 
 health() {
-  command -v curl >/dev/null 2>&1 || return 1
-  curl -fsS --max-time 3 "http://127.0.0.1:$PORT/health" >/dev/null 2>&1
+  # Keep Start/Status independent from Termux package state. A broken curl/libcurl
+  # must not make a healthy local 9router look dead.
+  local response
+  response="$(
+    exec 3<>"/dev/tcp/127.0.0.1/$PORT" || exit 1
+    printf 'GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n' >&3
+    cat <&3
+  )" 2>/dev/null || return 1
+
+  printf '%s' "$response" | grep -qE '^HTTP/1\.[01] 200([[:space:]]|$)'
 }
 
 load_token_saver() {
@@ -170,8 +178,6 @@ start_router() {
   local router_bin
   router_bin="$(resolve_router_bin || true)"
   [ -n "$router_bin" ] || die "9router-go no está instalado. Elegí 'Instalar / actualizar 9router-go' primero."
-  command -v curl >/dev/null 2>&1 || die "Falta curl. Elegí 'Instalar / actualizar 9router-go' una vez."
-
   mkdir -p "$STATE_DIR" "$DATA_DIR"
   if health; then
     say "9router-go ya está activo en http://127.0.0.1:$PORT"
@@ -216,9 +222,7 @@ status_router() {
     say "Binario: no instalado"
   fi
 
-  if ! command -v curl >/dev/null 2>&1; then
-    say "Servicio: no verificado (falta curl; usá Instalar / actualizar 9router-go una vez)"
-  elif health; then
+  if health; then
     say "Servicio: ACTIVO en http://127.0.0.1:$PORT"
   else
     say "Servicio: detenido o sin respuesta"
