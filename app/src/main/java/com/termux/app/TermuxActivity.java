@@ -1170,6 +1170,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         items.add("TBM · respaldo y restauración  ›");
         actions.add(this::showTbmMenu);
 
+        items.add("9router-go · router local  ›");
+        actions.add(this::showRouterInstaller);
+
         items.add("Entornos y herramientas  ›");
         actions.add(this::showDetectedEnvironments);
 
@@ -1288,10 +1291,20 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
     private File findHostTool(File prefixDir, File homeDir, String command) {
-        return firstExistingFile(
+        File direct = firstExistingFile(
             new File(prefixDir, "bin/" + command),
             new File(homeDir, ".local/bin/" + command),
+            new File(homeDir, ".opencode/bin/" + command),
             new File(homeDir, "bin/" + command));
+        if (direct != null) return direct;
+
+        // OpenCode's installer may expose the executable as opencode2.
+        if ("opencode".equals(command)) {
+            return firstExistingFile(
+                new File(homeDir, ".opencode/bin/opencode2"),
+                new File(homeDir, ".local/bin/opencode2"));
+        }
+        return null;
     }
 
     private File firstExistingFile(File... files) {
@@ -1305,6 +1318,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private String findDistroTool(File rootfs, String command) {
         String[] candidates = {
             "root/.local/bin/" + command,
+            "root/.opencode/bin/" + command,
             "root/bin/" + command,
             "usr/local/bin/" + command,
             "usr/bin/" + command,
@@ -1313,6 +1327,21 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         for (String relative : candidates) {
             File candidate = new File(rootfs, relative);
             if (candidate.exists() && candidate.isFile()) return "/" + relative;
+        }
+
+        // Our OpenCode installer uses ~/.opencode/bin and may name the binary
+        // opencode2, so treat it as the same launchable tool.
+        if ("opencode".equals(command)) {
+            String[] aliases = {
+                "root/.opencode/bin/opencode2",
+                "root/.local/bin/opencode2",
+                "usr/local/bin/opencode2",
+                "usr/bin/opencode2"
+            };
+            for (String relative : aliases) {
+                File candidate = new File(rootfs, relative);
+                if (candidate.exists() && candidate.isFile()) return "/" + relative;
+            }
         }
         return null;
     }
