@@ -23,6 +23,9 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Validate NewTermux AI stack
+        run: bash scripts/test-newtermux-ai-stack.sh
+
       - name: Build direct ARM64 APK
         env:
           TERMUX_ABIS: arm64-v8a
