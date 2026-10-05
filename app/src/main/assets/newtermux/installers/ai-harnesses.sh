@@ -13,8 +13,22 @@ die() {
   exit 1
 }
 
+repair_termux_packages_if_needed() {
+  if command -v curl >/dev/null 2>&1 && ! curl --version >/dev/null 2>&1; then
+    say "Detectado runtime Termux desalineado (curl no puede iniciar)"
+    say "Sincronizando paquetes antes de continuar"
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update
+    apt-get -o Dpkg::Options::="--force-confold" -y full-upgrade
+    hash -r
+    curl --version >/dev/null 2>&1 || die "curl sigue roto después de apt full-upgrade."
+  fi
+}
+
 ensure_host() {
   command -v pkg >/dev/null 2>&1 || die "Este instalador debe ejecutarse dentro de NewTermux."
+  command -v apt-get >/dev/null 2>&1 || die "apt-get no está disponible en NewTermux."
+  repair_termux_packages_if_needed
   say "Comprobando proot-distro"
   pkg install -y proot-distro
 
