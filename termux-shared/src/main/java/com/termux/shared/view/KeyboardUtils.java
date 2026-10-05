@@ -12,7 +12,9 @@ import android.view.inputmethod.InputMethodManager;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
+import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 
 import com.termux.shared.logger.Logger;
 
@@ -49,6 +51,31 @@ public class KeyboardUtils {
     }
 
     /**
+     * Toggle the soft keyboard for a concrete editor view.
+     *
+     * Android 14+ and several OEM IMEs no longer reliably honor toggleSoftInput()
+     * when a custom text editor (TerminalView) is already focused. Prefer the
+     * WindowInsets controller and fall back to InputMethodManager only when the
+     * current IME visibility cannot be observed.
+     */
+    public static void toggleSoftKeyboard(final Context context, final View view) {
+        if (context == null || view == null) return;
+
+        WindowInsetsCompat insets = ViewCompat.getRootWindowInsets(view);
+        if (insets != null) {
+            if (insets.isVisible(WindowInsetsCompat.Type.ime()))
+                hideSoftKeyboard(context, view);
+            else
+                showSoftKeyboard(context, view);
+            return;
+        }
+
+        InputMethodManager inputMethodManager = (InputMethodManager) context.getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (inputMethodManager != null)
+            inputMethodManager.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0);
+    }
+
+    /**
      * Show the soft keyboard. The {@code 0} value is passed as {@code flags} so that keyboard is
      * forcefully shown.
      *
@@ -66,13 +93,42 @@ public class KeyboardUtils {
      */
     public static void showSoftKeyboard(final Context context, final View view) {
         if (context == null || view == null) return;
-        InputMethodManager inputMethodManager = (InputMethodManager) context.getSystemService(Context.INPUT_METHOD_SERVICE);
-        if (inputMethodManager != null)
-            inputMethodManager.showSoftInput(view, 0);
+
+        // A custom editor must own focus before Android 14+/OEM IMEs will accept
+        // an explicit show request. The old code called showSoftInput() directly,
+        // which is a no-op on the HONOR 200 when a TUI already owns the terminal.
+        view.setFocusableInTouchMode(true);
+        view.requestFocus();
+
+        final Runnable showRequest = () -> {
+            if (!view.isAttachedToWindow()) return;
+
+            InputMethodManager inputMethodManager =
+                (InputMethodManager) context.getSystemService(Context.INPUT_METHOD_SERVICE);
+            if (inputMethodManager != null) {
+                inputMethodManager.restartInput(view);
+                inputMethodManager.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT);
+            }
+
+            WindowInsetsControllerCompat controller = ViewCompat.getWindowInsetsController(view);
+            if (controller != null)
+                controller.show(WindowInsetsCompat.Type.ime());
+        };
+
+        // Run once after focus/layout settles and retry shortly afterwards.
+        // The second request is important on MagicOS where the first request can
+        // race the terminal's alternate-screen focus transition.
+        view.post(showRequest);
+        view.postDelayed(showRequest, 120);
     }
 
     public static void hideSoftKeyboard(final Context context, final View view) {
         if (context == null || view == null) return;
+
+        WindowInsetsControllerCompat controller = ViewCompat.getWindowInsetsController(view);
+        if (controller != null)
+            controller.hide(WindowInsetsCompat.Type.ime());
+
         InputMethodManager inputMethodManager = (InputMethodManager) context.getSystemService(Context.INPUT_METHOD_SERVICE);
         if (inputMethodManager != null)
             inputMethodManager.hideSoftInputFromWindow(view.getWindowToken(), 0);
