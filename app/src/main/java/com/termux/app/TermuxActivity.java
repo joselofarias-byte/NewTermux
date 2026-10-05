@@ -1113,7 +1113,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         items.add(openCodeReady ? "OpenCode · Abrir" : "OpenCode · Preparar");
         actions.add(this::openOpenCodeWorkspace);
 
-        items.add("9router-go · router local  ›");
+        items.add("9router-go · panel y control  ›");
         actions.add(this::showRouterInstaller);
 
         items.add("Ahorro de tokens · RTK  ›");
@@ -1631,16 +1631,18 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     private void showRouterInstaller() {
         String[] labels = {
-            "Instalar / actualizar 9router-go",
+            "Abrir panel 9router-go",
             "Iniciar 9router-go",
             "Estado de 9router-go",
+            "Instalar / actualizar 9router-go",
             "Detener 9router-go",
             "Ahorro de tokens  ›"
         };
         String[] actions = {
-            "install",
+            "panel",
             "start",
             "status",
+            "install",
             "stop"
         };
 
