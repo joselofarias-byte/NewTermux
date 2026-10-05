@@ -25,12 +25,16 @@ repair_termux_packages_if_needed() {
   fi
 }
 
+host_install() {
+  DEBIAN_FRONTEND=noninteractive apt-get install -y "$@"
+}
+
 ensure_host() {
   command -v pkg >/dev/null 2>&1 || die "Este instalador debe ejecutarse dentro de NewTermux."
   command -v apt-get >/dev/null 2>&1 || die "apt-get no está disponible en NewTermux."
   repair_termux_packages_if_needed
   say "Comprobando proot-distro"
-  pkg install -y proot-distro
+  host_install proot-distro
 
   if ! proot-distro login debian -- /bin/true >/dev/null 2>&1; then
     say "Debian no está instalado; instalándolo"
