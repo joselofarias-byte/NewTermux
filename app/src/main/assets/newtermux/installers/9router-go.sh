@@ -153,8 +153,8 @@ install_router() {
 
 start_router() {
   need_termux
-  pkg install -y curl
   command -v 9router-go >/dev/null 2>&1 || install_router
+  command -v curl >/dev/null 2>&1 || die "Falta curl. Ejecutá 'Instalar / actualizar 9router-go' una vez."
 
   mkdir -p "$STATE_DIR" "$DATA_DIR"
   if health; then
@@ -190,7 +190,6 @@ start_router() {
 
 status_router() {
   need_termux
-  pkg install -y curl
   if command -v 9router-go >/dev/null 2>&1; then
     say "Binario: $(command -v 9router-go)"
     9router-go version 2>/dev/null || true
@@ -198,7 +197,9 @@ status_router() {
     say "Binario: no instalado"
   fi
 
-  if health; then
+  if ! command -v curl >/dev/null 2>&1; then
+    say "Servicio: no verificado (falta curl; usá Instalar / actualizar 9router-go una vez)"
+  elif health; then
     say "Servicio: ACTIVO en http://127.0.0.1:$PORT"
   else
     say "Servicio: detenido o sin respuesta"
