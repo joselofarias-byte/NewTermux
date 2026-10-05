@@ -73,4 +73,4 @@ jobs:
           path: |
             ${{ runner.temp }}/NewTermux-IME-OPENCODE-HONOR200-arm64.apk
             ${{ runner.temp }}/NewTermux-IME-OPENCODE-HONOR200-arm64.sha256
-            app/build/outputs/apk/playcompat/debug/output-metadata.json
+            app/build/outputs/apk/direct/debug/output-metadata.json
