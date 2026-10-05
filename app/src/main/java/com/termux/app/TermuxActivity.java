@@ -1173,6 +1173,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         items.add("Entornos y herramientas  ›");
         actions.add(this::showDetectedEnvironments);
 
+        items.add("Ahorro de tokens · 9router-go  ›");
+        actions.add(this::showTokenSaverMenu);
+
         items.add("Instalar componentes y PRoot");
         actions.add(this::showComponentInstaller);
 
@@ -1473,7 +1476,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             "Instalar / actualizar 9router-go",
             "Iniciar 9router-go",
             "Estado de 9router-go",
-            "Detener 9router-go"
+            "Detener 9router-go",
+            "Ahorro de tokens  ›"
         };
         String[] actions = {
             "install",
@@ -1484,7 +1488,12 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         new AlertDialog.Builder(this)
             .setTitle("9router-go · router local")
-            .setItems(labels, (dialog, index) ->
+            .setItems(labels, (dialog, index) -> {
+                if (index == labels.length - 1) {
+                    showTokenSaverMenu();
+                    return;
+                }
+
                 new AlertDialog.Builder(this)
                     .setTitle(labels[index])
                     .setMessage(
@@ -1492,20 +1501,72 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                         + "Puerto local predeterminado: 20128\n"
                         + "Rutas gratuitas: free-best / free\n\n"
                         + "Acción: " + actions[index])
-                    .setPositiveButton("Ejecutar", (d, w) -> {
-                        TerminalSession session = getCurrentSession();
-                        if (session == null) {
-                            showToast("Abrí una sesión primero", false);
-                            return;
-                        }
-                        com.newtermux.features.BundledInstallerLibrary.runNineRouterInstaller(
-                            this, session, actions[index]);
-                    })
+                    .setPositiveButton("Ejecutar", (d, w) -> runNineRouterMenuAction(actions[index]))
                     .setNegativeButton("Cancelar", null)
-                    .show()
-            )
+                    .show();
+            })
             .setNegativeButton("Volver", (d, w) -> showHarnessInstaller())
             .show();
+    }
+
+    private void showTokenSaverMenu() {
+        String[] labels = {
+            "Estado actual",
+            "Recomendado · RTK",
+            "Medio · RTK + respuestas breves",
+            "Máximo · RTK + breves + código mínimo",
+            "Desactivado"
+        };
+        String[] actions = {
+            "saver-status",
+            "saver-safe",
+            "saver-medium",
+            "saver-max",
+            "saver-off"
+        };
+        String[] details = {
+            "Muestra el perfil guardado y qué capas están activas.",
+            "Sólo RTK. Comprime resultados de herramientas grandes sin pedirle al modelo que cambie su estilo de respuesta. Es la opción recomendada.",
+            "RTK + Caveman. Además de comprimir resultados de herramientas, pide respuestas más breves. Puede cambiar el estilo del modelo.",
+            "RTK + Caveman + Ponytail. Máximo ahorro: respuestas breves y preferencia por código mínimo/YAGNI. Útil cuando querés exprimir cuota, pero puede ser demasiado agresivo para diseño o explicación detallada.",
+            "Desactiva RTK, Caveman y Ponytail. 9router-go sigue funcionando como router normal."
+        };
+
+        new AlertDialog.Builder(this)
+            .setTitle("Ahorro de tokens · 9router-go")
+            .setMessage(
+                "El perfil se guarda en NewTermux y se aplica a los clientes que pasan por 9router-go. "
+                + "Si el router fue iniciado por NewTermux, se reinicia automáticamente al cambiar el perfil.")
+            .setItems(labels, (dialog, index) -> {
+                if (index == 0) {
+                    runNineRouterMenuAction(actions[index]);
+                    return;
+                }
+
+                new AlertDialog.Builder(this)
+                    .setTitle(labels[index])
+                    .setMessage(details[index])
+                    .setPositiveButton("Aplicar", (d, w) -> runNineRouterMenuAction(actions[index]))
+                    .setNegativeButton("Cancelar", null)
+                    .show();
+            })
+            .setNegativeButton("Volver", (d, w) -> showRouterInstaller())
+            .show();
+    }
+
+    private void runNineRouterMenuAction(String action) {
+        TerminalSession session = getCurrentSession();
+        if (session == null && mTermuxTerminalSessionActivityClient != null) {
+            mTermuxTerminalSessionActivityClient.addNewSession(false, "9router-go");
+            session = getCurrentSession();
+        }
+        if (session == null) {
+            showToast("No se pudo abrir una sesión para 9router-go", false);
+            return;
+        }
+
+        com.newtermux.features.BundledInstallerLibrary.runNineRouterInstaller(
+            this, session, action);
     }
 
     private void showTbmMenu() {
