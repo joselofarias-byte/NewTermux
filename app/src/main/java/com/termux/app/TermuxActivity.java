@@ -1170,6 +1170,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         items.add("TBM · respaldo y restauración  ›");
         actions.add(this::showTbmMenu);
 
+        items.add("Entornos y herramientas  ›");
+        actions.add(this::showDetectedEnvironments);
+
         items.add("Instalar componentes y PRoot");
         actions.add(this::showComponentInstaller);
 
@@ -1200,6 +1203,148 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 if (idx >= 0 && idx < actions.size()) actions.get(idx).run();
             }
         );
+    }
+
+    /**
+     * Discover installed development environments at the moment the menu is opened.
+     *
+     * No manual registry is required: NewTermux scans the native prefix/home plus
+     * installed proot-distro root filesystems and only offers launchable entries.
+     */
+    private void showDetectedEnvironments() {
+        List<String> labels = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+
+        File dataDir = new File(getApplicationInfo().dataDir);
+        File prefixDir = new File(dataDir, "files/usr");
+        File homeDir = new File(dataDir, "files/home");
+        File prootDistro = firstExistingFile(
+            new File(prefixDir, "bin/proot-distro"),
+            new File(prefixDir, "bin/proot-distro.sh"));
+
+        String[][] toolSpecs = {
+            {"opencode", "OpenCode"},
+            {"agy", "Antigravity (agy)"},
+            {"claude", "Claude Code"},
+            {"gemini", "Gemini CLI"},
+            {"codex", "Codex"},
+            {"aider", "Aider"},
+            {"9router-go", "9router-go"}
+        };
+
+        // Native NewTermux tools.
+        for (String[] spec : toolSpecs) {
+            File tool = findHostTool(prefixDir, homeDir, spec[0]);
+            if (tool != null) {
+                String command = shellQuote(tool.getAbsolutePath());
+                labels.add(spec[1] + " · NewTermux");
+                actions.add(() -> launchDetectedEnvironment(spec[1], command));
+            }
+        }
+
+        // Every installed proot-distro environment is discovered from its rootfs directory.
+        File rootfsBase = new File(prefixDir, "var/lib/proot-distro/installed-rootfs");
+        File[] distros = rootfsBase.listFiles(File::isDirectory);
+        if (prootDistro != null && distros != null) {
+            Arrays.sort(distros, (a, b) -> a.getName().compareToIgnoreCase(b.getName()));
+            for (File rootfs : distros) {
+                final String alias = rootfs.getName();
+                final String distroLabel = friendlyEnvironmentName(alias);
+
+                String shellCommand = shellQuote(prootDistro.getAbsolutePath())
+                    + " login " + shellQuote(alias);
+                labels.add(distroLabel + " · shell");
+                actions.add(() -> launchDetectedEnvironment(distroLabel, shellCommand));
+
+                for (String[] spec : toolSpecs) {
+                    String insidePath = findDistroTool(rootfs, spec[0]);
+                    if (insidePath == null) continue;
+
+                    String inner = "exec " + shellQuote(insidePath);
+                    String command = shellQuote(prootDistro.getAbsolutePath())
+                        + " login " + shellQuote(alias)
+                        + " -- sh -lc " + shellQuote(inner);
+                    labels.add(distroLabel + " · " + spec[1]);
+                    actions.add(() -> launchDetectedEnvironment(
+                        distroLabel + " · " + spec[1], command));
+                }
+            }
+        }
+
+        // Always keep installation/setup reachable from the same place.
+        labels.add("Instalar o agregar componentes…");
+        actions.add(this::showComponentInstaller);
+
+        new AlertDialog.Builder(this)
+            .setTitle("Entornos detectados")
+            .setItems(labels.toArray(new String[0]), (dialog, which) -> {
+                if (which >= 0 && which < actions.size()) actions.get(which).run();
+            })
+            .setNegativeButton(android.R.string.cancel, null)
+            .show();
+    }
+
+    private File findHostTool(File prefixDir, File homeDir, String command) {
+        return firstExistingFile(
+            new File(prefixDir, "bin/" + command),
+            new File(homeDir, ".local/bin/" + command),
+            new File(homeDir, "bin/" + command));
+    }
+
+    private File firstExistingFile(File... files) {
+        if (files == null) return null;
+        for (File file : files) {
+            if (file != null && file.exists() && file.isFile()) return file;
+        }
+        return null;
+    }
+
+    private String findDistroTool(File rootfs, String command) {
+        String[] candidates = {
+            "root/.local/bin/" + command,
+            "root/bin/" + command,
+            "usr/local/bin/" + command,
+            "usr/bin/" + command,
+            "bin/" + command
+        };
+        for (String relative : candidates) {
+            File candidate = new File(rootfs, relative);
+            if (candidate.exists() && candidate.isFile()) return "/" + relative;
+        }
+        return null;
+    }
+
+    private String friendlyEnvironmentName(String alias) {
+        if (alias == null || alias.isEmpty()) return "PRoot";
+        String lower = alias.toLowerCase(java.util.Locale.ROOT);
+        if ("debian".equals(lower)) return "Debian";
+        if ("ubuntu".equals(lower)) return "Ubuntu";
+        if ("archlinux".equals(lower) || "arch".equals(lower)) return "Arch Linux";
+        if ("alpine".equals(lower)) return "Alpine";
+        if ("fedora".equals(lower)) return "Fedora";
+        return Character.toUpperCase(alias.charAt(0)) + alias.substring(1);
+    }
+
+    private void launchDetectedEnvironment(String sessionName, String command) {
+        if (mTermuxTerminalSessionActivityClient == null) {
+            showToast("No hay servicio de terminal disponible", false);
+            return;
+        }
+
+        mTermuxTerminalSessionActivityClient.addNewSession(false, sessionName);
+        TerminalSession session = getCurrentSession();
+        if (session == null) {
+            showToast("No se pudo crear la sesión", false);
+            return;
+        }
+
+        String line = command + "\n";
+        session.write(line.getBytes(), 0, line.length());
+    }
+
+    private String shellQuote(String value) {
+        if (value == null) return "''";
+        return "'" + value.replace("'", "'\\''") + "'";
     }
 
     private void showComponentInstaller() {
