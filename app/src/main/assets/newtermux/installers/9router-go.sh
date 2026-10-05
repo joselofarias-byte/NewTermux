@@ -163,6 +163,10 @@ start_router() {
   fi
 
   load_token_saver
+  if [ ! -r "$SAVER_FILE" ]; then
+    write_token_saver recommended true false false
+    load_token_saver
+  fi
   say "Iniciando 9router-go · ahorro=$SAVER_PROFILE"
   nohup env PORT="$PORT" DATA_DIR="$DATA_DIR" \
     RTK_ENABLED="$RTK_ENABLED" \
