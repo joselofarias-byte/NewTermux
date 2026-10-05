@@ -287,6 +287,19 @@ status_router() {
   show_token_saver
 }
 
+open_panel() {
+  start_router
+  local url="http://127.0.0.1:$PORT"
+  say "Abriendo panel: $url"
+  if command -v termux-open-url >/dev/null 2>&1; then
+    termux-open-url "$url"
+  elif command -v am >/dev/null 2>&1; then
+    am start -a android.intent.action.VIEW -d "$url" >/dev/null 2>&1 || true
+  else
+    say "Abrí manualmente: $url"
+  fi
+}
+
 stop_router() {
   if [ ! -r "$PID_FILE" ]; then
     say "No hay PID administrado por NewTermux; no se mata ningún proceso por nombre."
@@ -306,6 +319,7 @@ stop_router() {
 case "$ACTION" in
   install) install_router ;;
   start) start_router ;;
+  panel) open_panel ;;
   status) status_router ;;
   stop) stop_router ;;
   saver-status) show_token_saver ;;
@@ -313,5 +327,5 @@ case "$ACTION" in
   saver-medium) apply_token_saver medium ;;
   saver-max) apply_token_saver maximum ;;
   saver-off) apply_token_saver off ;;
-  *) die "Uso: 9router-go.sh install|start|status|stop|saver-status|saver-safe|saver-medium|saver-max|saver-off" ;;
+  *) die "Uso: 9router-go.sh install|start|panel|status|stop|saver-status|saver-safe|saver-medium|saver-max|saver-off" ;;
 esac
