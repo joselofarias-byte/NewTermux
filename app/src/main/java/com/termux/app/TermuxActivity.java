@@ -445,6 +445,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             if (vp != null) {
                 vp.setVisibility(com.newtermux.features.NewTermuxSettings.isExtraKeysVisible(this)
                     ? View.VISIBLE : View.GONE);
+                scheduleTerminalGeometryRefresh();
             }
         }
 
@@ -461,6 +462,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         mIsOnResumeAfterOnCreate = false;
         applyAccentColor();
         applyFeatureSettings();
+        applyOrientationLayoutPolicy();
         startTaskMonitorTicker();
         if (mTermuxTerminalSessionActivityClient != null)
             mTermuxTerminalSessionActivityClient.checkForFontAndColors();
@@ -479,6 +481,24 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 byte[] bytes = pendingCmd.getBytes();
                 session.write(bytes, 0, bytes.length);
             }
+        }
+    }
+
+    @Override
+    public void onConfigurationChanged(@NonNull android.content.res.Configuration newConfig) {
+        // TermuxActivity handles orientation itself via configChanges, so Android does not
+        // reinflate the layout on rotation. Capture IME state before applying the new
+        // compact landscape policy, then restore it after the terminal has usable space.
+        boolean restoreIme = isSoftKeyboardVisible();
+        super.onConfigurationChanged(newConfig);
+
+        setMargins();
+        applyOrientationLayoutPolicy();
+        scheduleTerminalGeometryRefresh();
+
+        if (restoreIme && mTerminalView != null) {
+            mTerminalView.postDelayed(() ->
+                com.termux.shared.view.KeyboardUtils.showSoftKeyboard(this, mTerminalView), 180L);
         }
     }
 
@@ -539,16 +559,84 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         setVisible(R.id.btn_stt, NewTermuxSettings.isShowSttButton(this));
         setVisible(R.id.btn_packages_menu, NewTermuxSettings.isShowPackagesButton(this));
         setVisible(R.id.btn_clear_terminal, NewTermuxSettings.isShowClearButton(this));
-        // Hide/show the whole scroll container (chip group lives inside it)
-        setVisible(R.id.session_tabs_scroll, NewTermuxSettings.isSessionTabsEnabled(this));
+        // Session previews are useful in portrait but consume most of the HONOR 200 height
+        // in landscape, especially while the software keyboard is visible.
+        setVisible(R.id.session_tabs_scroll,
+            NewTermuxSettings.isSessionTabsEnabled(this) && !isLandscapeMode());
         // Autocorrect initial enabled state
         if (mAutoCorrectHandler != null)
             mAutoCorrectHandler.setEnabled(NewTermuxSettings.isAutocorrectEnabled(this));
     }
 
+    private boolean isLandscapeMode() {
+        return getResources().getConfiguration().orientation
+            == android.content.res.Configuration.ORIENTATION_LANDSCAPE;
+    }
+
+    private boolean isSoftKeyboardVisible() {
+        if (mTerminalView == null) return false;
+        androidx.core.view.WindowInsetsCompat insets =
+            androidx.core.view.ViewCompat.getRootWindowInsets(mTerminalView);
+        return insets != null
+            && insets.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime());
+    }
+
+    /**
+     * Keep the terminal usable on short landscape displays.
+     *
+     * The activity opts into handling orientation changes itself. Without an explicit
+     * policy, the 80dp session previews plus multi-row extra keys can consume almost
+     * the entire landscape height before TerminalView is measured.
+     */
+    private void applyOrientationLayoutPolicy() {
+        final boolean landscape = isLandscapeMode();
+
+        setVisible(R.id.session_tabs_scroll,
+            NewTermuxSettings.isSessionTabsEnabled(this) && !landscape);
+
+        if (!mExtraKeysInDrawerModeAtCreation) {
+            ViewPager terminalToolbarViewPager = getTerminalToolbarViewPager();
+            if (terminalToolbarViewPager != null) {
+                boolean showExtraKeys =
+                    NewTermuxSettings.isExtraKeysVisible(this) && !landscape;
+                terminalToolbarViewPager.setVisibility(
+                    showExtraKeys ? View.VISIBLE : View.GONE);
+            }
+        }
+
+        // The long-task card can cost another ~58dp. Keep status available in portrait,
+        // but prioritize a readable terminal viewport in landscape.
+        if (landscape) {
+            if (mTaskStatusPanel != null) mTaskStatusPanel.setVisibility(View.GONE);
+        } else {
+            refreshTaskMonitor();
+        }
+
+        scheduleTerminalGeometryRefresh();
+    }
+
     private void setVisible(int id, boolean visible) {
         View v = findViewById(id);
-        if (v != null) v.setVisibility(visible ? View.VISIBLE : View.GONE);
+        if (v != null) {
+            int targetVisibility = visible ? View.VISIBLE : View.GONE;
+            if (v.getVisibility() != targetVisibility) {
+                v.setVisibility(targetVisibility);
+                if (id == R.id.session_tabs_scroll)
+                    scheduleTerminalGeometryRefresh();
+            }
+        }
+    }
+
+    private void scheduleTerminalGeometryRefresh() {
+        if (mTermuxTerminalViewClient != null) {
+            mTermuxTerminalViewClient.scheduleTerminalGeometryRefresh();
+        } else if (mTerminalView != null) {
+            mTerminalView.post(() -> {
+                mTerminalView.requestLayout();
+                mTerminalView.updateSize();
+                mTerminalView.invalidate();
+            });
+        }
     }
 
     @Override
@@ -821,6 +909,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         final boolean showNow = mPreferences.toogleShowTerminalToolbar();
         Logger.showToast(this, (showNow ? getString(R.string.msg_enabling_terminal_toolbar) : getString(R.string.msg_disabling_terminal_toolbar)), true);
         terminalToolbarViewPager.setVisibility(showNow ? View.VISIBLE : View.GONE);
+        scheduleTerminalGeometryRefresh();
         if (showNow && isTerminalToolbarTextInputViewSelected()) {
             // Focus the text input view if just revealed.
             findViewById(R.id.terminal_toolbar_text_input).requestFocus();
@@ -1062,7 +1151,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             if (mTerminalView != null) mTerminalView.scrollToBottom();
         });
 
-        items.add(getString(R.string.more_keyboard));
+        boolean imeVisible = isSoftKeyboardVisible();
+        items.add(getString(imeVisible ? R.string.more_keyboard_hide : R.string.more_keyboard_show));
         actions.add(() -> {
             if (mTermuxTerminalViewClient != null)
                 mTermuxTerminalViewClient.onToggleSoftKeyboardRequest();
@@ -1675,6 +1765,10 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     public void refreshTaskMonitor() {
         if (mTaskStatusPanel == null) return;
+        if (isLandscapeMode()) {
+            mTaskStatusPanel.setVisibility(View.GONE);
+            return;
+        }
         TerminalSession session = getCurrentSession();
         TerminalTaskMonitor.Snapshot snapshot = TerminalTaskMonitor.snapshot(session, true);
         long now = System.currentTimeMillis();
