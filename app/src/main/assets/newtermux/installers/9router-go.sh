@@ -7,6 +7,7 @@ SRC_DIR="$HOME/.newtermux/sources/9router-go"
 STATE_DIR="$HOME/.config/9router-go"
 PID_FILE="$STATE_DIR/newtermux.pid"
 LOG_FILE="$STATE_DIR/newtermux-router.log"
+SAVER_FILE="$STATE_DIR/token-saver.env"
 PORT="${ROUTER_PORT:-20128}"
 DATA_DIR="${ROUTER_DATA_DIR:-$HOME/.9router}"
 
@@ -26,6 +27,101 @@ need_termux() {
 health() {
   command -v curl >/dev/null 2>&1 || return 1
   curl -fsS --max-time 3 "http://127.0.0.1:$PORT/health" >/dev/null 2>&1
+}
+
+load_token_saver() {
+  RTK_ENABLED=true
+  CAVEMAN_ENABLED=false
+  PONYTAIL_ENABLED=false
+  SAVER_PROFILE="recommended"
+
+  if [ -r "$SAVER_FILE" ]; then
+    while IFS='=' read -r key value; do
+      case "$key" in
+        SAVER_PROFILE) SAVER_PROFILE="$value" ;;
+        RTK_ENABLED) RTK_ENABLED="$value" ;;
+        CAVEMAN_ENABLED) CAVEMAN_ENABLED="$value" ;;
+        PONYTAIL_ENABLED) PONYTAIL_ENABLED="$value" ;;
+      esac
+    done <"$SAVER_FILE"
+  fi
+
+  case "$SAVER_PROFILE" in
+    recommended|medium|maximum|off) ;;
+    *) SAVER_PROFILE="recommended" ;;
+  esac
+  case "$RTK_ENABLED" in true|false) ;; *) RTK_ENABLED=true ;; esac
+  case "$CAVEMAN_ENABLED" in true|false) ;; *) CAVEMAN_ENABLED=false ;; esac
+  case "$PONYTAIL_ENABLED" in true|false) ;; *) PONYTAIL_ENABLED=false ;; esac
+
+  export RTK_ENABLED CAVEMAN_ENABLED PONYTAIL_ENABLED SAVER_PROFILE
+}
+
+write_token_saver() {
+  local profile="$1"
+  local rtk="$2"
+  local caveman="$3"
+  local ponytail="$4"
+
+  mkdir -p "$STATE_DIR"
+  cat >"$SAVER_FILE" <<EOF
+# Managed by NewTermux. Safe to edit while 9router-go is stopped.
+SAVER_PROFILE=$profile
+RTK_ENABLED=$rtk
+CAVEMAN_ENABLED=$caveman
+PONYTAIL_ENABLED=$ponytail
+EOF
+  chmod 600 "$SAVER_FILE" 2>/dev/null || true
+}
+
+managed_router_running() {
+  [ -r "$PID_FILE" ] || return 1
+  local pid
+  pid="$(cat "$PID_FILE" 2>/dev/null || true)"
+  [ -n "$pid" ] && kill -0 "$pid" >/dev/null 2>&1
+}
+
+show_token_saver() {
+  load_token_saver
+  say "Perfil de ahorro: $SAVER_PROFILE"
+  say "RTK (comprime tool_result): $RTK_ENABLED"
+  say "Respuestas breves / Caveman: $CAVEMAN_ENABLED"
+  say "Código mínimo / Ponytail: $PONYTAIL_ENABLED"
+  say "Configuración: $SAVER_FILE"
+}
+
+apply_token_saver() {
+  local profile="$1"
+  case "$profile" in
+    recommended)
+      write_token_saver recommended true false false
+      ;;
+    medium)
+      write_token_saver medium true true false
+      ;;
+    maximum)
+      write_token_saver maximum true true true
+      ;;
+    off)
+      write_token_saver off false false false
+      ;;
+    *)
+      die "Perfil de ahorro desconocido: $profile"
+      ;;
+  esac
+
+  show_token_saver
+
+  if managed_router_running; then
+    say "Reiniciando 9router-go administrado para aplicar el perfil"
+    stop_router
+    start_router
+  elif health; then
+    say "9router-go está activo pero no fue iniciado por NewTermux."
+    say "Perfil guardado; se aplicará en el próximo inicio administrado."
+  else
+    say "Perfil guardado; se aplicará al iniciar 9router-go."
+  fi
 }
 
 install_router() {
@@ -66,8 +162,17 @@ start_router() {
     return 0
   fi
 
-  say "Iniciando 9router-go"
-  nohup env PORT="$PORT" DATA_DIR="$DATA_DIR" RTK_ENABLED=true     "$PREFIX/bin/9router-go" >"$LOG_FILE" 2>&1 &
+  load_token_saver
+  if [ ! -r "$SAVER_FILE" ]; then
+    write_token_saver recommended true false false
+    load_token_saver
+  fi
+  say "Iniciando 9router-go · ahorro=$SAVER_PROFILE"
+  nohup env PORT="$PORT" DATA_DIR="$DATA_DIR" \
+    RTK_ENABLED="$RTK_ENABLED" \
+    CAVEMAN_ENABLED="$CAVEMAN_ENABLED" \
+    PONYTAIL_ENABLED="$PONYTAIL_ENABLED" \
+    "$PREFIX/bin/9router-go" >"$LOG_FILE" 2>&1 &
   echo "$!" >"$PID_FILE"
 
   for _ in 1 2 3 4 5 6 7 8 9 10; do
@@ -103,6 +208,7 @@ status_router() {
     say "PID administrado: $(cat "$PID_FILE" 2>/dev/null || true)"
   fi
   say "Log: $LOG_FILE"
+  show_token_saver
 }
 
 stop_router() {
@@ -126,5 +232,10 @@ case "$ACTION" in
   start) start_router ;;
   status) status_router ;;
   stop) stop_router ;;
-  *) die "Uso: 9router-go.sh install|start|status|stop" ;;
+  saver-status) show_token_saver ;;
+  saver-safe) apply_token_saver recommended ;;
+  saver-medium) apply_token_saver medium ;;
+  saver-max) apply_token_saver maximum ;;
+  saver-off) apply_token_saver off ;;
+  *) die "Uso: 9router-go.sh install|start|status|stop|saver-status|saver-safe|saver-medium|saver-max|saver-off" ;;
 esac

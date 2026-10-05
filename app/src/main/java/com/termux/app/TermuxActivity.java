@@ -1106,6 +1106,24 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         List<String> items = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
 
+        // NewTermux is used primarily as an AI coding environment, so the
+        // primary launch path must not be buried behind setup submenus.
+        final String preferredOpenCode = findPreferredOpenCodeCommand();
+        items.add(preferredOpenCode != null ? "OpenCode · Abrir" : "OpenCode · Instalar");
+        actions.add(() -> {
+            if (preferredOpenCode != null) {
+                launchDetectedEnvironment("OpenCode", preferredOpenCode);
+            } else {
+                showOpenCodeSetupDialog();
+            }
+        });
+
+        items.add("9router-go · router local  ›");
+        actions.add(this::showRouterInstaller);
+
+        items.add("Ahorro de tokens · RTK  ›");
+        actions.add(this::showTokenSaverMenu);
+
         // Hidden toolbar favorites automatically move into More.
         if (!NewTermuxSettings.isShowPackagesButton(this)) {
             items.add(getString(R.string.newtermux_toolbar_packages));
@@ -1284,11 +1302,90 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             .show();
     }
 
+    private String findPreferredOpenCodeCommand() {
+        File dataDir = new File(getApplicationInfo().dataDir);
+        File prefixDir = new File(dataDir, "files/usr");
+        File homeDir = new File(dataDir, "files/home");
+        File prootDistro = firstExistingFile(
+            new File(prefixDir, "bin/proot-distro"),
+            new File(prefixDir, "bin/proot-distro.sh"));
+
+        // Prefer Debian because that is the environment prepared by NewTermux's
+        // AI harness installer and where OpenCode is configured for 9router-go.
+        if (prootDistro != null) {
+            File rootfsBase = new File(prefixDir, "var/lib/proot-distro/installed-rootfs");
+            File debian = new File(rootfsBase, "debian");
+            if (debian.isDirectory()) {
+                String insidePath = findDistroTool(debian, "opencode");
+                if (insidePath != null) {
+                    String inner = "exec " + shellQuote(insidePath);
+                    return shellQuote(prootDistro.getAbsolutePath())
+                        + " login debian -- sh -lc " + shellQuote(inner);
+                }
+            }
+
+            File[] distros = rootfsBase.listFiles(File::isDirectory);
+            if (distros != null) {
+                Arrays.sort(distros, (a, b) -> a.getName().compareToIgnoreCase(b.getName()));
+                for (File rootfs : distros) {
+                    if ("debian".equalsIgnoreCase(rootfs.getName())) continue;
+                    String insidePath = findDistroTool(rootfs, "opencode");
+                    if (insidePath == null) continue;
+                    String inner = "exec " + shellQuote(insidePath);
+                    return shellQuote(prootDistro.getAbsolutePath())
+                        + " login " + shellQuote(rootfs.getName())
+                        + " -- sh -lc " + shellQuote(inner);
+                }
+            }
+        }
+
+        File hostTool = findHostTool(prefixDir, homeDir, "opencode");
+        return hostTool == null ? null : shellQuote(hostTool.getAbsolutePath());
+    }
+
+    private void showOpenCodeSetupDialog() {
+        new AlertDialog.Builder(this)
+            .setTitle("OpenCode")
+            .setMessage(
+                "OpenCode no está instalado en un entorno detectado. "
+                + "NewTermux puede instalarlo dentro de Debian PRoot.")
+            .setPositiveButton("Instalar", (dialog, which) -> {
+                TerminalSession session = getCurrentSession();
+                if (session == null) {
+                    showToast("Abrí una sesión primero", false);
+                    return;
+                }
+                com.newtermux.features.BundledInstallerLibrary.runAiHarnessInstaller(
+                    this, session, "opencode");
+            })
+            .setNeutralButton("Preparar IA completo", (dialog, which) -> {
+                TerminalSession session = getCurrentSession();
+                if (session == null) {
+                    showToast("Abrí una sesión primero", false);
+                    return;
+                }
+                com.newtermux.features.BundledInstallerLibrary.runOneTouchAiStack(
+                    this, session);
+            })
+            .setNegativeButton(android.R.string.cancel, null)
+            .show();
+    }
+
     private File findHostTool(File prefixDir, File homeDir, String command) {
-        return firstExistingFile(
+        File direct = firstExistingFile(
             new File(prefixDir, "bin/" + command),
             new File(homeDir, ".local/bin/" + command),
+            new File(homeDir, ".opencode/bin/" + command),
             new File(homeDir, "bin/" + command));
+        if (direct != null) return direct;
+
+        // OpenCode's installer may expose the executable as opencode2.
+        if ("opencode".equals(command)) {
+            return firstExistingFile(
+                new File(homeDir, ".opencode/bin/opencode2"),
+                new File(homeDir, ".local/bin/opencode2"));
+        }
+        return null;
     }
 
     private File firstExistingFile(File... files) {
@@ -1302,6 +1399,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private String findDistroTool(File rootfs, String command) {
         String[] candidates = {
             "root/.local/bin/" + command,
+            "root/.opencode/bin/" + command,
             "root/bin/" + command,
             "usr/local/bin/" + command,
             "usr/bin/" + command,
@@ -1310,6 +1408,21 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         for (String relative : candidates) {
             File candidate = new File(rootfs, relative);
             if (candidate.exists() && candidate.isFile()) return "/" + relative;
+        }
+
+        // Our OpenCode installer uses ~/.opencode/bin and may name the binary
+        // opencode2, so treat it as the same launchable tool.
+        if ("opencode".equals(command)) {
+            String[] aliases = {
+                "root/.opencode/bin/opencode2",
+                "root/.local/bin/opencode2",
+                "usr/local/bin/opencode2",
+                "usr/bin/opencode2"
+            };
+            for (String relative : aliases) {
+                File candidate = new File(rootfs, relative);
+                if (candidate.exists() && candidate.isFile()) return "/" + relative;
+            }
         }
         return null;
     }
@@ -1473,7 +1586,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             "Instalar / actualizar 9router-go",
             "Iniciar 9router-go",
             "Estado de 9router-go",
-            "Detener 9router-go"
+            "Detener 9router-go",
+            "Ahorro de tokens  ›"
         };
         String[] actions = {
             "install",
@@ -1484,7 +1598,12 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         new AlertDialog.Builder(this)
             .setTitle("9router-go · router local")
-            .setItems(labels, (dialog, index) ->
+            .setItems(labels, (dialog, index) -> {
+                if (index == labels.length - 1) {
+                    showTokenSaverMenu();
+                    return;
+                }
+
                 new AlertDialog.Builder(this)
                     .setTitle(labels[index])
                     .setMessage(
@@ -1492,20 +1611,72 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                         + "Puerto local predeterminado: 20128\n"
                         + "Rutas gratuitas: free-best / free\n\n"
                         + "Acción: " + actions[index])
-                    .setPositiveButton("Ejecutar", (d, w) -> {
-                        TerminalSession session = getCurrentSession();
-                        if (session == null) {
-                            showToast("Abrí una sesión primero", false);
-                            return;
-                        }
-                        com.newtermux.features.BundledInstallerLibrary.runNineRouterInstaller(
-                            this, session, actions[index]);
-                    })
+                    .setPositiveButton("Ejecutar", (d, w) -> runNineRouterMenuAction(actions[index]))
                     .setNegativeButton("Cancelar", null)
-                    .show()
-            )
+                    .show();
+            })
             .setNegativeButton("Volver", (d, w) -> showHarnessInstaller())
             .show();
+    }
+
+    private void showTokenSaverMenu() {
+        String[] labels = {
+            "Estado actual",
+            "Predeterminado · RTK",
+            "Medio · RTK + respuestas breves",
+            "Máximo · RTK + breves + código mínimo",
+            "Desactivado"
+        };
+        String[] actions = {
+            "saver-status",
+            "saver-safe",
+            "saver-medium",
+            "saver-max",
+            "saver-off"
+        };
+        String[] details = {
+            "Muestra el perfil guardado y qué capas están activas.",
+            "Sólo RTK. Comprime resultados de herramientas grandes sin pedirle al modelo que cambie su estilo de respuesta. Es la opción recomendada.",
+            "RTK + Caveman. Además de comprimir resultados de herramientas, pide respuestas más breves. Puede cambiar el estilo del modelo.",
+            "RTK + Caveman + Ponytail. Máximo ahorro: respuestas breves y preferencia por código mínimo/YAGNI. Útil cuando querés exprimir cuota, pero puede ser demasiado agresivo para diseño o explicación detallada.",
+            "Desactiva RTK, Caveman y Ponytail. 9router-go sigue funcionando como router normal."
+        };
+
+        new AlertDialog.Builder(this)
+            .setTitle("Ahorro de tokens · 9router-go")
+            .setMessage(
+                "El perfil se guarda en NewTermux y se aplica a los clientes que pasan por 9router-go. "
+                + "Si el router fue iniciado por NewTermux, se reinicia automáticamente al cambiar el perfil.")
+            .setItems(labels, (dialog, index) -> {
+                if (index == 0) {
+                    runNineRouterMenuAction(actions[index]);
+                    return;
+                }
+
+                new AlertDialog.Builder(this)
+                    .setTitle(labels[index])
+                    .setMessage(details[index])
+                    .setPositiveButton("Aplicar", (d, w) -> runNineRouterMenuAction(actions[index]))
+                    .setNegativeButton("Cancelar", null)
+                    .show();
+            })
+            .setNegativeButton("Volver", (d, w) -> showRouterInstaller())
+            .show();
+    }
+
+    private void runNineRouterMenuAction(String action) {
+        TerminalSession session = getCurrentSession();
+        if (session == null && mTermuxTerminalSessionActivityClient != null) {
+            mTermuxTerminalSessionActivityClient.addNewSession(false, "9router-go");
+            session = getCurrentSession();
+        }
+        if (session == null) {
+            showToast("No se pudo abrir una sesión para 9router-go", false);
+            return;
+        }
+
+        com.newtermux.features.BundledInstallerLibrary.runNineRouterInstaller(
+            this, session, action);
     }
 
     private void showTbmMenu() {
