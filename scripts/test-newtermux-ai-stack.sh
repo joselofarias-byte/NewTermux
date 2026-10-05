@@ -238,9 +238,88 @@ run_rtk_default_test() {
   rm -rf "$base"
 }
 
+
+run_workspace_self_heal_test() {
+  local base dir bin
+  base="$(mktemp -d)"
+  dir="$base/installers"
+  bin="$base/bin"
+  mkdir -p "$dir" "$bin"
+  cp "$WORKSPACE" "$dir/open-ai-workspace.sh"
+  : > "$base/log"
+
+  cat > "$dir/9router-go.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "ROUTER $*" >> "$WS_LOG"
+exit 0
+EOF
+
+  cat > "$dir/ai-harnesses.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "HARNESS $*" >> "$WS_LOG"
+case "${1:-}" in
+  prepare) : > "$WS_DEBIAN" ;;
+  opencode) : > "$WS_OPENCODE" ;;
+  opencode-router) : > "$WS_CONFIG" ;;
+esac
+exit 0
+EOF
+
+  cat > "$bin/proot-distro" <<'EOF'
+#!/usr/bin/env bash
+echo "PROOT $*" >> "$WS_LOG"
+
+if [[ " $* " == *" login debian -- /bin/true "* ]]; then
+  [[ -f "$WS_DEBIAN" ]]
+  exit $?
+fi
+
+if [[ " $* " == *" login debian -- sh -lc "* ]]; then
+  payload="${*: -1}"
+  if [[ "$payload" == *"command -v opencode"* ]]; then
+    [[ -f "$WS_OPENCODE" ]]
+    exit $?
+  fi
+  if [[ "$payload" == *"127.0.0.1:20128/v1"* ]]; then
+    [[ -f "$WS_CONFIG" ]]
+    exit $?
+  fi
+  # Final OpenCode exec after all preparation.
+  [[ -f "$WS_DEBIAN" && -f "$WS_OPENCODE" && -f "$WS_CONFIG" ]]
+  exit $?
+fi
+
+exit 0
+EOF
+
+  chmod +x "$dir/"*.sh "$bin/proot-distro"
+
+  WS_LOG="$base/log" \
+  WS_DEBIAN="$base/debian" \
+  WS_OPENCODE="$base/opencode" \
+  WS_CONFIG="$base/config" \
+  PATH="$bin:/usr/bin:/bin" \
+    bash "$dir/open-ai-workspace.sh" >/tmp/newtermux-workspace-test.out 2>&1 ||
+      { cat /tmp/newtermux-workspace-test.out; fail "one-tap workspace self-heal smoke failed"; }
+
+  grep -Fq 'ROUTER install' "$base/log" ||
+    fail "workspace did not install missing router"
+  grep -Fq 'ROUTER start' "$base/log" ||
+    fail "workspace did not start router"
+  grep -Fq 'HARNESS prepare' "$base/log" ||
+    fail "workspace did not prepare missing Debian"
+  grep -Fq 'HARNESS opencode' "$base/log" ||
+    fail "workspace did not install missing OpenCode"
+  grep -Fq 'HARNESS opencode-router' "$base/log" ||
+    fail "workspace did not configure OpenCode for 9router"
+  pass "one-tap workspace self-heals router + Debian + OpenCode + config"
+  rm -rf "$base"
+}
+
 run_router_repair_test
 run_harness_repair_test
 run_rtk_default_test
+run_workspace_self_heal_test
 
 echo
 echo "ALL_NEWTERMUX_AI_STACK_TESTS=PASS"
