@@ -5,6 +5,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ROUTER="$ROOT/app/src/main/assets/newtermux/installers/9router-go.sh"
 HARNESS="$ROOT/app/src/main/assets/newtermux/installers/ai-harnesses.sh"
 ONE_TOUCH="$ROOT/app/src/main/assets/newtermux/installers/one-touch-ai-stack.sh"
+WORKSPACE="$ROOT/app/src/main/assets/newtermux/installers/open-ai-workspace.sh"
 ACTIVITY="$ROOT/app/src/main/java/com/termux/app/TermuxActivity.java"
 CLOCK="$ROOT/app/src/main/assets/newtermux/installers/prompt-clock.sh"
 WORKFLOW="$ROOT/.github/workflows/tmp_ime_opencode_honor200.yml"
@@ -21,6 +22,7 @@ pass() {
 bash -n "$ROUTER"
 bash -n "$HARNESS"
 bash -n "$ONE_TOUCH"
+bash -n "$WORKSPACE"
 bash -n "$CLOCK"
 pass "bundled installer scripts parse with bash -n"
 
@@ -29,6 +31,15 @@ if grep -Eq '^[[:space:]]*pkg[[:space:]]+install' "$ROUTER" "$HARNESS"; then
 fi
 pass "AI installers bypass pkg wrapper"
 
+if grep -Eq '"pkg install ' "$ACTIVITY"; then
+  fail "component menu still exposes pkg install commands"
+fi
+pass "component menu avoids broken pkg wrapper too"
+
+grep -Fq 'install_router_from_ci' "$ROUTER" ||
+  fail "router installer does not prefer validated CI artifact"
+grep -Fq '9router-go-termux-arm64' "$ROUTER" ||
+  fail "router installer does not search for ARM64 CI artifact"
 grep -Fq 'host_install git golang make curl' "$ROUTER" ||
   fail "router dependencies are not installed through host_install"
 grep -Fq 'host_install proot-distro' "$HARNESS" ||
@@ -43,8 +54,10 @@ pass "broken curl self-heal is present"
 
 grep -Fq 'OpenCode · Abrir' "$ACTIVITY" ||
   fail "OpenCode is not promoted to primary menu"
-grep -Fq 'OpenCode · Instalar' "$ACTIVITY" ||
-  fail "OpenCode install fallback is not promoted to primary menu"
+grep -Fq 'OpenCode · Preparar' "$ACTIVITY" ||
+  fail "OpenCode self-healing setup state is not promoted to primary menu"
+grep -Fq 'runOpenCodeWorkspace' "$ACTIVITY" ||
+  fail "primary OpenCode action does not use workspace launcher"
 grep -Fq '9router-go · router local  ›' "$ACTIVITY" ||
   fail "9router-go is not visible in primary menu"
 grep -Fq 'Ahorro de tokens · RTK  ›' "$ACTIVITY" ||
@@ -58,6 +71,16 @@ grep -Fq '.model = "9router/free-best"' "$HARNESS" ||
 grep -Fq '"baseURL": "http://127.0.0.1:20128/v1"' "$HARNESS" ||
   fail "OpenCode 9router baseURL is missing"
 pass "OpenCode -> 9router configuration is embedded"
+
+grep -Fq 'bash "$ROUTER" start' "$WORKSPACE" ||
+  fail "workspace launcher does not ensure 9router is running"
+grep -Fq 'bash "$HARNESS" opencode' "$WORKSPACE" ||
+  fail "workspace launcher does not install missing OpenCode"
+grep -Fq 'bash "$HARNESS" opencode-router' "$WORKSPACE" ||
+  fail "workspace launcher does not repair missing OpenCode->9router config"
+grep -Fq 'exec proot-distro login debian' "$WORKSPACE" ||
+  fail "workspace launcher does not enter Debian/OpenCode"
+pass "primary OpenCode launcher is self-healing end-to-end"
 
 grep -Fq 'bash "$ROUTER" install' "$ONE_TOUCH" ||
   fail "one-touch does not install router"
