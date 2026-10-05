@@ -36,9 +36,23 @@ load_token_saver() {
   SAVER_PROFILE="recommended"
 
   if [ -r "$SAVER_FILE" ]; then
-    # shellcheck disable=SC1090
-    . "$SAVER_FILE"
+    while IFS='=' read -r key value; do
+      case "$key" in
+        SAVER_PROFILE) SAVER_PROFILE="$value" ;;
+        RTK_ENABLED) RTK_ENABLED="$value" ;;
+        CAVEMAN_ENABLED) CAVEMAN_ENABLED="$value" ;;
+        PONYTAIL_ENABLED) PONYTAIL_ENABLED="$value" ;;
+      esac
+    done <"$SAVER_FILE"
   fi
+
+  case "$SAVER_PROFILE" in
+    recommended|medium|maximum|off) ;;
+    *) SAVER_PROFILE="recommended" ;;
+  esac
+  case "$RTK_ENABLED" in true|false) ;; *) RTK_ENABLED=true ;; esac
+  case "$CAVEMAN_ENABLED" in true|false) ;; *) CAVEMAN_ENABLED=false ;; esac
+  case "$PONYTAIL_ENABLED" in true|false) ;; *) PONYTAIL_ENABLED=false ;; esac
 
   export RTK_ENABLED CAVEMAN_ENABLED PONYTAIL_ENABLED SAVER_PROFILE
 }
