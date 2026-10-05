@@ -1106,17 +1106,12 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         List<String> items = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
 
-        // NewTermux is used primarily as an AI coding environment, so the
-        // primary launch path must not be buried behind setup submenus.
-        final String preferredOpenCode = findPreferredOpenCodeCommand();
-        items.add(preferredOpenCode != null ? "OpenCode · Abrir" : "OpenCode · Instalar");
-        actions.add(() -> {
-            if (preferredOpenCode != null) {
-                launchDetectedEnvironment("OpenCode", preferredOpenCode);
-            } else {
-                showOpenCodeSetupDialog();
-            }
-        });
+        // NewTermux is used primarily as an AI coding environment. The first
+        // action is a self-healing workspace launcher: it starts 9router, creates
+        // Debian/OpenCode/config only when missing, then opens OpenCode.
+        final boolean openCodeReady = isOpenCodeWorkspaceReady();
+        items.add(openCodeReady ? "OpenCode · Abrir" : "OpenCode · Preparar");
+        actions.add(this::openOpenCodeWorkspace);
 
         items.add("9router-go · router local  ›");
         actions.add(this::showRouterInstaller);
@@ -1302,6 +1297,59 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             .show();
     }
 
+    private boolean isOpenCodeWorkspaceReady() {
+        File dataDir = new File(getApplicationInfo().dataDir);
+        File prefixDir = new File(dataDir, "files/usr");
+        File rootfs = new File(prefixDir, "var/lib/proot-distro/installed-rootfs/debian");
+
+        if (!new File(prefixDir, "bin/9router-go").isFile()) return false;
+        if (!rootfs.isDirectory()) return false;
+        if (findDistroTool(rootfs, "opencode") == null) return false;
+
+        File cfg = new File(rootfs, "root/.config/opencode/opencode.json");
+        return fileContainsAll(cfg,
+            "127.0.0.1:20128/v1",
+            "9router/free-best");
+    }
+
+    private boolean fileContainsAll(File file, String... needles) {
+        if (file == null || !file.isFile()) return false;
+        boolean[] found = new boolean[needles.length];
+        int remaining = needles.length;
+        try (java.io.BufferedReader reader =
+                 new java.io.BufferedReader(new java.io.FileReader(file))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                for (int i = 0; i < needles.length; i++) {
+                    if (!found[i] && line.contains(needles[i])) {
+                        found[i] = true;
+                        remaining--;
+                    }
+                }
+                if (remaining == 0) return true;
+            }
+        } catch (Exception ignored) {
+            return false;
+        }
+        return remaining == 0;
+    }
+
+    private void openOpenCodeWorkspace() {
+        if (mTermuxTerminalSessionActivityClient == null) {
+            showToast("No hay servicio de terminal disponible", false);
+            return;
+        }
+
+        mTermuxTerminalSessionActivityClient.addNewSession(false, "OpenCode · 9router");
+        TerminalSession session = getCurrentSession();
+        if (session == null) {
+            showToast("No se pudo abrir la sesión de OpenCode", false);
+            return;
+        }
+
+        com.newtermux.features.BundledInstallerLibrary.runOpenCodeWorkspace(this, session);
+    }
+
     private String findPreferredOpenCodeCommand() {
         File dataDir = new File(getApplicationInfo().dataDir);
         File prefixDir = new File(dataDir, "files/usr");
@@ -1472,13 +1520,13 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             "Harness IA  ›"
         };
         String[] commands = {
-            "pkg install proot-distro",
-            "proot-distro install debian",
-            "pkg install git openssh",
-            "pkg install python",
-            "pkg install nodejs",
-            "pkg install golang",
-            "pkg install clang make cmake",
+            "apt-get update && apt-get install -y proot-distro",
+            "apt-get update && apt-get install -y proot-distro && proot-distro install debian",
+            "apt-get update && apt-get install -y git openssh",
+            "apt-get update && apt-get install -y python",
+            "apt-get update && apt-get install -y nodejs",
+            "apt-get update && apt-get install -y golang",
+            "apt-get update && apt-get install -y clang make cmake",
             null
         };
 
