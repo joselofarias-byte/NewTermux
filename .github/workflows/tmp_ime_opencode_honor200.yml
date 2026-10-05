@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - fix/ime-tui-resize-honor200-20261005
+      - feat/smart-environments-menu-20261005
 
 permissions:
   contents: read
