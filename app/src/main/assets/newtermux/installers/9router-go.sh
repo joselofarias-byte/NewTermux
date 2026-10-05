@@ -28,10 +28,15 @@ repair_termux_packages_if_needed() {
     say "Detectado runtime Termux desalineado (curl no puede iniciar)"
     say "Sincronizando paquetes antes de continuar"
     export DEBIAN_FRONTEND=noninteractive
+    dpkg --configure -a || true
+    apt-get -f install -y || true
     apt-get update
-    apt-get -o Dpkg::Options::="--force-confold" -y full-upgrade
+    apt-get \
+      -o Dpkg::Options::="--force-confdef" \
+      -o Dpkg::Options::="--force-confold" \
+      -y full-upgrade
     hash -r
-    curl --version >/dev/null 2>&1 || die "curl sigue roto después de apt full-upgrade."
+    curl --version >/dev/null 2>&1 || die "curl sigue roto después de reparar y actualizar paquetes."
   fi
 }
 
