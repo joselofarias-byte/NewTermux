@@ -41,6 +41,12 @@ need_termux() {
   repair_termux_packages_if_needed
 }
 
+host_install() {
+  # Do not use the Termux pkg wrapper here. If libcurl is partially upgraded,
+  # pkg itself can fail before apt gets a chance to repair the installation.
+  DEBIAN_FRONTEND=noninteractive apt-get install -y "$@"
+}
+
 health() {
   command -v curl >/dev/null 2>&1 || return 1
   curl -fsS --max-time 3 "http://127.0.0.1:$PORT/health" >/dev/null 2>&1
@@ -144,7 +150,7 @@ apply_token_saver() {
 install_router() {
   need_termux
   say "Instalando dependencias de compilación"
-  pkg install -y git golang make curl
+  host_install git golang make curl
 
   mkdir -p "$(dirname "$SRC_DIR")" "$STATE_DIR"
   if [ -d "$SRC_DIR/.git" ]; then
@@ -170,7 +176,7 @@ install_router() {
 
 start_router() {
   need_termux
-  pkg install -y curl
+  host_install curl
   command -v 9router-go >/dev/null 2>&1 || install_router
 
   mkdir -p "$STATE_DIR" "$DATA_DIR"
@@ -207,7 +213,7 @@ start_router() {
 
 status_router() {
   need_termux
-  pkg install -y curl
+  host_install curl
   if command -v 9router-go >/dev/null 2>&1; then
     say "Binario: $(command -v 9router-go)"
     9router-go version 2>/dev/null || true
