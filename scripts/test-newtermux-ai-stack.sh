@@ -173,7 +173,6 @@ EOF
 run_router_repair_test() {
   local base
   base="$(mktemp -d)"
-  trap 'rm -rf "$base"' RETURN
   make_fake_env "$base"
 
   FAKE_LOG="$base/log" \
@@ -191,12 +190,12 @@ run_router_repair_test() {
   grep -Fq 'install -y git golang make curl' "$base/log" ||
     fail "router dependencies were not installed with apt-get"
   pass "router recovers simulated broken curl and installs without pkg"
+  rm -rf "$base"
 }
 
 run_harness_repair_test() {
   local base
   base="$(mktemp -d)"
-  trap 'rm -rf "$base"' RETURN
   make_fake_env "$base"
 
   FAKE_LOG="$base/log" \
@@ -212,12 +211,12 @@ run_harness_repair_test() {
   grep -Fq 'install -y proot-distro' "$base/log" ||
     fail "AI harness did not install proot-distro through apt-get"
   pass "AI harness recovers simulated broken curl and reaches Debian preparation"
+  rm -rf "$base"
 }
 
 run_rtk_default_test() {
   local base
   base="$(mktemp -d)"
-  trap 'rm -rf "$base"' RETURN
   make_fake_env "$base"
 
   # saver-safe does not need a working network; curl health is allowed to fail.
@@ -236,6 +235,7 @@ run_rtk_default_test() {
   grep -Fxq 'CAVEMAN_ENABLED=false' "$cfg" || fail "Caveman should stay opt-in"
   grep -Fxq 'PONYTAIL_ENABLED=false' "$cfg" || fail "Ponytail should stay opt-in"
   pass "RTK is default-on while aggressive modes stay opt-in"
+  rm -rf "$base"
 }
 
 run_router_repair_test
