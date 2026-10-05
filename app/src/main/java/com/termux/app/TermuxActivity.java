@@ -445,6 +445,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             if (vp != null) {
                 vp.setVisibility(com.newtermux.features.NewTermuxSettings.isExtraKeysVisible(this)
                     ? View.VISIBLE : View.GONE);
+                scheduleTerminalGeometryRefresh();
             }
         }
 
@@ -548,7 +549,26 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     private void setVisible(int id, boolean visible) {
         View v = findViewById(id);
-        if (v != null) v.setVisibility(visible ? View.VISIBLE : View.GONE);
+        if (v != null) {
+            int targetVisibility = visible ? View.VISIBLE : View.GONE;
+            if (v.getVisibility() != targetVisibility) {
+                v.setVisibility(targetVisibility);
+                if (id == R.id.session_tabs_scroll)
+                    scheduleTerminalGeometryRefresh();
+            }
+        }
+    }
+
+    private void scheduleTerminalGeometryRefresh() {
+        if (mTermuxTerminalViewClient != null) {
+            mTermuxTerminalViewClient.scheduleTerminalGeometryRefresh();
+        } else if (mTerminalView != null) {
+            mTerminalView.post(() -> {
+                mTerminalView.requestLayout();
+                mTerminalView.updateSize();
+                mTerminalView.invalidate();
+            });
+        }
     }
 
     @Override
@@ -821,6 +841,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         final boolean showNow = mPreferences.toogleShowTerminalToolbar();
         Logger.showToast(this, (showNow ? getString(R.string.msg_enabling_terminal_toolbar) : getString(R.string.msg_disabling_terminal_toolbar)), true);
         terminalToolbarViewPager.setVisibility(showNow ? View.VISIBLE : View.GONE);
+        scheduleTerminalGeometryRefresh();
         if (showNow && isTerminalToolbarTextInputViewSelected()) {
             // Focus the text input view if just revealed.
             findViewById(R.id.terminal_toolbar_text_input).requestFocus();
