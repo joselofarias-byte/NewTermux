@@ -147,8 +147,56 @@ apply_token_saver() {
   fi
 }
 
+install_router_from_ci() {
+  command -v gh >/dev/null 2>&1 || return 1
+  gh auth status >/dev/null 2>&1 || return 1
+
+  local run_id artifact_id tmp zip bin
+  run_id="$(gh api     "repos/joselofarias-byte/9router-go/actions/runs?branch=main&status=success&per_page=20"     --jq '.workflow_runs[] | select(.name=="CI") | .id' 2>/dev/null | head -n 1)"
+  [ -n "$run_id" ] || return 1
+
+  artifact_id="$(gh api     "repos/joselofarias-byte/9router-go/actions/runs/$run_id/artifacts"     --jq '.artifacts[] | select(.expired==false) | select(.name|startswith("9router-go-termux-arm64")) | .id'     2>/dev/null | head -n 1)"
+  [ -n "$artifact_id" ] || return 1
+
+  say "Usando binario ARM64 validado por GitHub Actions (run $run_id)"
+  host_install unzip
+  tmp="$(mktemp -d)"
+  zip="$tmp/9router.zip"
+
+  if ! gh api       -H "Accept: application/vnd.github+json"       "repos/joselofarias-byte/9router-go/actions/artifacts/$artifact_id/zip"       > "$zip"; then
+    rm -rf "$tmp"
+    return 1
+  fi
+
+  if ! unzip -oq "$zip" -d "$tmp/unpacked"; then
+    rm -rf "$tmp"
+    return 1
+  fi
+
+  bin="$(find "$tmp/unpacked" -type f -name '9router-go' -print -quit)"
+  if [ -z "$bin" ]; then
+    bin="$(find "$tmp/unpacked" -type f -perm -u+x -print -quit)"
+  fi
+  [ -n "$bin" ] || { rm -rf "$tmp"; return 1; }
+
+  install -m 700 "$bin" "$PREFIX/bin/9router-go"
+  rm -rf "$tmp"
+
+  "$PREFIX/bin/9router-go" version >/dev/null 2>&1 || return 1
+  say "9router-go instalado desde artifact CI"
+  return 0
+}
+
 install_router() {
   need_termux
+  mkdir -p "$PREFIX/bin" "$STATE_DIR"
+
+  if install_router_from_ci; then
+    "$PREFIX/bin/9router-go" version 2>/dev/null || true
+    return 0
+  fi
+
+  say "Artifact precompilado no disponible; usando compilación local"
   say "Instalando dependencias de compilación"
   host_install git golang make curl
 
