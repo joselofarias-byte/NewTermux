@@ -153,8 +153,8 @@ install_router() {
 
 start_router() {
   need_termux
-  command -v 9router-go >/dev/null 2>&1 || install_router
-  command -v curl >/dev/null 2>&1 || die "Falta curl. Ejecutá 'Instalar / actualizar 9router-go' una vez."
+  command -v 9router-go >/dev/null 2>&1 || die "9router-go no está instalado. Elegí 'Instalar / actualizar 9router-go' primero."
+  command -v curl >/dev/null 2>&1 || die "Falta curl. Elegí 'Instalar / actualizar 9router-go' una vez."
 
   mkdir -p "$STATE_DIR" "$DATA_DIR"
   if health; then
