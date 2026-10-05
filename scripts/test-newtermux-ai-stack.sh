@@ -58,13 +58,21 @@ grep -Fq 'OpenCode · Preparar' "$ACTIVITY" ||
   fail "OpenCode self-healing setup state is not promoted to primary menu"
 grep -Fq 'runOpenCodeWorkspace' "$ACTIVITY" ||
   fail "primary OpenCode action does not use workspace launcher"
-grep -Fq '9router-go · router local  ›' "$ACTIVITY" ||
-  fail "9router-go is not visible in primary menu"
+grep -Fq '9router-go · panel y control  ›' "$ACTIVITY" ||
+  fail "9router-go panel/control is not visible in primary menu"
 grep -Fq 'Ahorro de tokens · RTK  ›' "$ACTIVITY" ||
   fail "RTK menu is not visible in primary menu"
 grep -Fq '.opencode/bin/' "$ACTIVITY" ||
   fail "OpenCode detector does not scan ~/.opencode/bin"
 pass "primary AI menu and OpenCode discovery are wired"
+
+grep -Fq '"Abrir panel 9router-go"' "$ACTIVITY" ||
+  fail "9router dashboard is not the first router-menu action"
+grep -Fq 'panel) open_panel' "$ROUTER" ||
+  fail "router installer lacks panel action"
+grep -Fq 'termux-open-url "$url"' "$ROUTER" ||
+  fail "router panel action does not open Android browser"
+pass "9router dashboard has a one-tap menu action"
 
 grep -Fq '.model = "9router/free-best"' "$HARNESS" ||
   fail "OpenCode is not configured to use 9router/free-best"
