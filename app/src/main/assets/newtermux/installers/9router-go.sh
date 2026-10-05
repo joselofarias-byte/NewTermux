@@ -25,16 +25,22 @@ need_termux() {
 }
 
 health() {
-  # Keep Start/Status independent from Termux package state. A broken curl/libcurl
-  # must not make a healthy local 9router look dead.
-  local response
-  response="$(
-    exec 3<>"/dev/tcp/127.0.0.1/$PORT" || exit 1
-    printf 'GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n' >&3
-    cat <&3
-  )" 2>/dev/null || return 1
-
-  printf '%s' "$response" | grep -qE '^HTTP/1\.[01] 200([[:space:]]|$)'
+  # Start/Status must not depend on curl/libcurl or package-manager state.
+  # Use Bash's own TCP socket support and read only the HTTP status line.
+  local status=""
+  if ! exec 3<>"/dev/tcp/127.0.0.1/$PORT" 2>/dev/null; then
+    return 1
+  fi
+  printf 'GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n' >&3
+  IFS= read -r -t 3 status <&3 || {
+    exec 3<&- 3>&-
+    return 1
+  }
+  exec 3<&- 3>&-
+  case "$status" in
+    "HTTP/1.1 200 "*|"HTTP/1.0 200 "*) return 0 ;;
+    *) return 1 ;;
+  esac
 }
 
 load_token_saver() {
@@ -84,7 +90,7 @@ EOF
 
 resolve_router_bin() {
   local candidate
-  candidate="$(type -P 9router-go 2>/dev/null || true)"
+  candidate="$(command -v 9router-go 2>/dev/null || true)"
   if [ -n "$candidate" ] && [ -x "$candidate" ]; then
     printf '%s\n' "$candidate"
     return 0
@@ -149,7 +155,7 @@ apply_token_saver() {
 install_router() {
   need_termux
   say "Instalando dependencias de compilación"
-  pkg install -y git golang make curl
+  pkg install -y git golang make
 
   mkdir -p "$(dirname "$SRC_DIR")" "$STATE_DIR"
   if [ -d "$SRC_DIR/.git" ]; then
