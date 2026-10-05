@@ -16,7 +16,11 @@ die() {
 ensure_host() {
   command -v pkg >/dev/null 2>&1 || die "Este instalador debe ejecutarse dentro de NewTermux."
   say "Comprobando proot-distro"
-  pkg install -y proot-distro
+
+  if ! command -v proot-distro >/dev/null 2>&1; then
+    say "proot-distro no está instalado; instalándolo"
+    pkg install -y proot-distro
+  fi
 
   if ! proot-distro login debian -- /bin/true >/dev/null 2>&1; then
     say "Debian no está instalado; instalándolo"
@@ -80,15 +84,33 @@ GUEST
 }
 
 install_opencode() {
-  prepare_guest
+  ensure_host
   say "Instalando/actualizando OpenCode"
   guest_script <<'GUEST'
 set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+
+missing=()
+command -v curl >/dev/null 2>&1 || missing+=(curl)
+command -v jq >/dev/null 2>&1 || missing+=(jq)
+
+if [ "${#missing[@]}" -gt 0 ]; then
+  echo "Instalando dependencias Debian faltantes: ${missing[*]}"
+  apt-get update
+  apt-get install -y ca-certificates "${missing[@]}"
+fi
+
+mkdir -p "$HOME/.local/bin" "$HOME/.opencode/bin"
+touch "$HOME/.profile"
+PATH_LINE='export PATH="$HOME/.local/bin:$HOME/.opencode/bin:$PATH"'
+grep -Fqx "$PATH_LINE" "$HOME/.profile" || printf "\n%s\n" "$PATH_LINE" >> "$HOME/.profile"
+
 tmp="$(mktemp)"
 trap 'rm -f "$tmp"' EXIT
 curl -fsSL https://opencode.ai/v2/install -o "$tmp"
 bash "$tmp"
 export PATH="$HOME/.local/bin:$HOME/.opencode/bin:$PATH"
+
 if command -v opencode >/dev/null 2>&1; then
   opencode --version
 elif command -v opencode2 >/dev/null 2>&1; then
@@ -179,6 +201,7 @@ case "$ACTION" in
     ;;
   opencode)
     install_opencode
+    configure_opencode_router
     ;;
   opencode-router)
     configure_opencode_router

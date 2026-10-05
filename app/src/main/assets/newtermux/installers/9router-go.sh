@@ -25,8 +25,22 @@ need_termux() {
 }
 
 health() {
-  command -v curl >/dev/null 2>&1 || return 1
-  curl -fsS --max-time 3 "http://127.0.0.1:$PORT/health" >/dev/null 2>&1
+  # Start/Status must not depend on curl/libcurl or package-manager state.
+  # Use Bash's own TCP socket support and read only the HTTP status line.
+  local status=""
+  if ! exec 3<>"/dev/tcp/127.0.0.1/$PORT" 2>/dev/null; then
+    return 1
+  fi
+  printf 'GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n' >&3
+  IFS= read -r -t 3 status <&3 || {
+    exec 3<&- 3>&-
+    return 1
+  }
+  exec 3<&- 3>&-
+  case "$status" in
+    "HTTP/1.1 200 "*|"HTTP/1.0 200 "*) return 0 ;;
+    *) return 1 ;;
+  esac
 }
 
 load_token_saver() {
@@ -72,6 +86,20 @@ CAVEMAN_ENABLED=$caveman
 PONYTAIL_ENABLED=$ponytail
 EOF
   chmod 600 "$SAVER_FILE" 2>/dev/null || true
+}
+
+resolve_router_bin() {
+  local candidate
+  candidate="$(command -v 9router-go 2>/dev/null || true)"
+  if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+  if [ -x "$SRC_DIR/9router-go" ]; then
+    printf '%s\n' "$SRC_DIR/9router-go"
+    return 0
+  fi
+  return 1
 }
 
 managed_router_running() {
@@ -127,7 +155,7 @@ apply_token_saver() {
 install_router() {
   need_termux
   say "Instalando dependencias de compilación"
-  pkg install -y git golang make curl
+  pkg install -y git golang make
 
   mkdir -p "$(dirname "$SRC_DIR")" "$STATE_DIR"
   if [ -d "$SRC_DIR/.git" ]; then
@@ -153,9 +181,9 @@ install_router() {
 
 start_router() {
   need_termux
-  pkg install -y curl
-  command -v 9router-go >/dev/null 2>&1 || install_router
-
+  local router_bin
+  router_bin="$(resolve_router_bin || true)"
+  [ -n "$router_bin" ] || die "9router-go no está instalado. Elegí 'Instalar / actualizar 9router-go' primero."
   mkdir -p "$STATE_DIR" "$DATA_DIR"
   if health; then
     say "9router-go ya está activo en http://127.0.0.1:$PORT"
@@ -168,11 +196,12 @@ start_router() {
     load_token_saver
   fi
   say "Iniciando 9router-go · ahorro=$SAVER_PROFILE"
+  say "Binario: $router_bin"
   nohup env PORT="$PORT" DATA_DIR="$DATA_DIR" \
     RTK_ENABLED="$RTK_ENABLED" \
     CAVEMAN_ENABLED="$CAVEMAN_ENABLED" \
     PONYTAIL_ENABLED="$PONYTAIL_ENABLED" \
-    "$PREFIX/bin/9router-go" >"$LOG_FILE" 2>&1 &
+    "$router_bin" >"$LOG_FILE" 2>&1 &
   echo "$!" >"$PID_FILE"
 
   for _ in 1 2 3 4 5 6 7 8 9 10; do
@@ -190,10 +219,11 @@ start_router() {
 
 status_router() {
   need_termux
-  pkg install -y curl
-  if command -v 9router-go >/dev/null 2>&1; then
-    say "Binario: $(command -v 9router-go)"
-    9router-go version 2>/dev/null || true
+  local router_bin
+  router_bin="$(resolve_router_bin || true)"
+  if [ -n "$router_bin" ]; then
+    say "Binario: $router_bin"
+    "$router_bin" version 2>/dev/null || true
   else
     say "Binario: no instalado"
   fi
