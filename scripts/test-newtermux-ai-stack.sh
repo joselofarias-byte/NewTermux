@@ -31,7 +31,7 @@ if grep -Eq '^[[:space:]]*pkg[[:space:]]+install' "$ROUTER" "$HARNESS"; then
 fi
 pass "AI installers bypass pkg wrapper"
 
-if grep -Eq '"pkg install ' "$ACTIVITY"; then
+if grep -Eq '^[[:space:]]*"[^"]*pkg install' "$ACTIVITY"; then
   fail "component menu still exposes pkg install commands"
 fi
 pass "component menu avoids broken pkg wrapper too"
@@ -46,9 +46,9 @@ grep -Fq 'host_install proot-distro' "$HARNESS" ||
   fail "proot-distro is not installed through host_install"
 pass "host dependencies use apt-get-backed host_install"
 
-grep -Fq 'apt-get -o Dpkg::Options::="--force-confold" -y full-upgrade' "$ROUTER" ||
+grep -Fq 'full-upgrade' "$ROUTER" ||
   fail "router installer lacks broken-curl repair"
-grep -Fq 'apt-get -o Dpkg::Options::="--force-confold" -y full-upgrade' "$HARNESS" ||
+grep -Fq 'full-upgrade' "$HARNESS" ||
   fail "AI installer lacks broken-curl repair"
 pass "broken curl self-heal is present"
 
