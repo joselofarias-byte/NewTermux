@@ -86,6 +86,29 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
     }
 
     /**
+     * Recompute PTY rows/columns after IME or toolbar transitions.
+     *
+     * Full-screen TUIs such as OpenCode rely on SIGWINCH from TerminalSession.
+     * MagicOS can finish the visual relayout a few frames after the IME
+     * callback, leaving the PTY at the old height and a large unused black
+     * region. Rechecking at three points makes the final geometry win.
+     */
+    public void scheduleTerminalGeometryRefresh() {
+        final View terminalView = mActivity.getTerminalView();
+        if (terminalView == null) return;
+
+        final Runnable refresh = () -> {
+            if (mActivity.getTerminalView() == null) return;
+            mActivity.getTerminalView().requestLayout();
+            mActivity.getTerminalView().updateSize();
+            mActivity.getTerminalView().invalidate();
+        };
+        terminalView.post(refresh);
+        terminalView.postDelayed(refresh, 180);
+        terminalView.postDelayed(refresh, 500);
+    }
+
+    /**
      * Should be called when mActivity.onCreate() is called
      */
     public void onCreate() {
@@ -115,6 +138,7 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
     public void onResume() {
         // Show the soft keyboard if required
         setSoftKeyboardState(true, mActivity.isActivityRecreated());
+        scheduleTerminalGeometryRefresh();
 
         mTerminalCursorBlinkerStateAlreadySet = false;
 
@@ -202,9 +226,10 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
         }
 
         if (!term.isMouseTrackingActive() && !e.isFromSource(InputDevice.SOURCE_MOUSE)) {
-            if (!KeyboardUtils.areDisableSoftKeyboardFlagsSet(mActivity))
+            if (!KeyboardUtils.areDisableSoftKeyboardFlagsSet(mActivity)) {
                 KeyboardUtils.showSoftKeyboard(mActivity, mActivity.getTerminalView());
-            else
+                scheduleTerminalGeometryRefresh();
+            } else
                 Logger.logVerbose(LOG_TAG, "Not showing soft keyboard onSingleTapUp since its disabled");
         }
     }
@@ -631,9 +656,10 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
             } else {
                 Logger.logVerbose(LOG_TAG, "Showing/Hiding soft keyboard on toggle");
                 KeyboardUtils.clearDisableSoftKeyboardFlags(mActivity);
-                KeyboardUtils.toggleSoftKeyboard(mActivity);
+                KeyboardUtils.toggleSoftKeyboard(mActivity, mActivity.getTerminalView());
             }
         }
+        scheduleTerminalGeometryRefresh();
     }
 
     public void setSoftKeyboardState(boolean isStartup, boolean isReloadTermuxProperties) {
@@ -720,6 +746,7 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
         if (mShowSoftKeyboardRunnable == null) {
             mShowSoftKeyboardRunnable = () -> {
                 KeyboardUtils.showSoftKeyboard(mActivity, mActivity.getTerminalView());
+                scheduleTerminalGeometryRefresh();
             };
         }
         return mShowSoftKeyboardRunnable;
