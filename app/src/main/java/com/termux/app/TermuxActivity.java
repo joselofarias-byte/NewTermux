@@ -1512,7 +1512,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private void showTokenSaverMenu() {
         String[] labels = {
             "Estado actual",
-            "Recomendado · RTK",
+            "Predeterminado · RTK",
             "Medio · RTK + respuestas breves",
             "Máximo · RTK + breves + código mínimo",
             "Desactivado"
