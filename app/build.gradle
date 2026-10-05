@@ -20,7 +20,11 @@ android {
     compileSdkVersion project.properties.compileSdkVersion.toInteger()
     ndkVersion = System.getenv("JITPACK_NDK_VERSION") ?: project.properties.ndkVersion
     def appVersionName = System.getenv("TERMUX_APP_VERSION_NAME") ?: ""
-    def appVersionCode = (System.getenv("NEWTERMUX_VERSION_CODE") ?: "28").toInteger()
+    // Keep NewTermux's standalone builds above the legacy Google Play Termux
+    // version-code range. As long as we retain applicationId=com.termux for
+    // PREFIX compatibility, Play can recognize the package; a high independent
+    // versionCode prevents Play from offering an older Termux build as an update.
+    def appVersionCode = (System.getenv("NEWTERMUX_VERSION_CODE") ?: "202610050").toInteger()
     def apkVersionTag = System.getenv("TERMUX_APK_VERSION_TAG") ?: ""
     def splitAPKsForDebugBuilds = System.getenv("TERMUX_SPLIT_APKS_FOR_DEBUG_BUILDS") ?: "1"
     def splitAPKsForReleaseBuilds = System.getenv("TERMUX_SPLIT_APKS_FOR_RELEASE_BUILDS") ?: "0" // F-Droid does not support split APKs #1904

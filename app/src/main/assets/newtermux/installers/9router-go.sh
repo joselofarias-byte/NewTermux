@@ -20,8 +20,36 @@ die() {
   exit 1
 }
 
+repair_termux_packages_if_needed() {
+  # A partially upgraded Termux can leave libcurl linked against a newer ngtcp2
+  # than the one installed. In that state the pkg wrapper itself fails before it
+  # can install anything. Repair with apt directly, which does not depend on curl.
+  if command -v curl >/dev/null 2>&1 && ! curl --version >/dev/null 2>&1; then
+    say "Detectado runtime Termux desalineado (curl no puede iniciar)"
+    say "Sincronizando paquetes antes de continuar"
+    export DEBIAN_FRONTEND=noninteractive
+    dpkg --configure -a || true
+    apt-get -f install -y || true
+    apt-get update
+    apt-get \
+      -o Dpkg::Options::="--force-confdef" \
+      -o Dpkg::Options::="--force-confold" \
+      -y full-upgrade
+    hash -r
+    curl --version >/dev/null 2>&1 || die "curl sigue roto después de reparar y actualizar paquetes."
+  fi
+}
+
 need_termux() {
   command -v pkg >/dev/null 2>&1 || die "Este instalador debe ejecutarse en NewTermux."
+  command -v apt-get >/dev/null 2>&1 || die "apt-get no está disponible en NewTermux."
+  repair_termux_packages_if_needed
+}
+
+host_install() {
+  # Do not use the Termux pkg wrapper here. If libcurl is partially upgraded,
+  # pkg itself can fail before apt gets a chance to repair the installation.
+  DEBIAN_FRONTEND=noninteractive apt-get install -y "$@"
 }
 
 health() {
@@ -124,10 +152,58 @@ apply_token_saver() {
   fi
 }
 
+install_router_from_ci() {
+  command -v gh >/dev/null 2>&1 || return 1
+  gh auth status >/dev/null 2>&1 || return 1
+
+  local run_id artifact_id tmp zip bin
+  run_id="$(gh api     "repos/joselofarias-byte/9router-go/actions/runs?branch=main&status=success&per_page=20"     --jq '.workflow_runs[] | select(.name=="CI") | .id' 2>/dev/null | head -n 1)"
+  [ -n "$run_id" ] || return 1
+
+  artifact_id="$(gh api     "repos/joselofarias-byte/9router-go/actions/runs/$run_id/artifacts"     --jq '.artifacts[] | select(.expired==false) | select(.name|startswith("9router-go-termux-arm64")) | .id'     2>/dev/null | head -n 1)"
+  [ -n "$artifact_id" ] || return 1
+
+  say "Usando binario ARM64 validado por GitHub Actions (run $run_id)"
+  host_install unzip
+  tmp="$(mktemp -d)"
+  zip="$tmp/9router.zip"
+
+  if ! gh api       -H "Accept: application/vnd.github+json"       "repos/joselofarias-byte/9router-go/actions/artifacts/$artifact_id/zip"       > "$zip"; then
+    rm -rf "$tmp"
+    return 1
+  fi
+
+  if ! unzip -oq "$zip" -d "$tmp/unpacked"; then
+    rm -rf "$tmp"
+    return 1
+  fi
+
+  bin="$(find "$tmp/unpacked" -type f -name '9router-go' -print -quit)"
+  if [ -z "$bin" ]; then
+    bin="$(find "$tmp/unpacked" -type f -perm -u+x -print -quit)"
+  fi
+  [ -n "$bin" ] || { rm -rf "$tmp"; return 1; }
+
+  install -m 700 "$bin" "$PREFIX/bin/9router-go"
+  rm -rf "$tmp"
+
+  "$PREFIX/bin/9router-go" version >/dev/null 2>&1 || return 1
+  say "9router-go instalado desde artifact CI"
+  return 0
+}
+
 install_router() {
   need_termux
+  mkdir -p "$PREFIX/bin" "$STATE_DIR"
+
+  if install_router_from_ci; then
+    "$PREFIX/bin/9router-go" version 2>/dev/null || true
+    return 0
+  fi
+
+  say "Artifact precompilado no disponible; usando compilación local"
   say "Instalando dependencias de compilación"
-  pkg install -y git golang make curl
+  host_install git golang make curl
 
   mkdir -p "$(dirname "$SRC_DIR")" "$STATE_DIR"
   if [ -d "$SRC_DIR/.git" ]; then
@@ -153,7 +229,7 @@ install_router() {
 
 start_router() {
   need_termux
-  pkg install -y curl
+  host_install curl
   command -v 9router-go >/dev/null 2>&1 || install_router
 
   mkdir -p "$STATE_DIR" "$DATA_DIR"
@@ -190,7 +266,7 @@ start_router() {
 
 status_router() {
   need_termux
-  pkg install -y curl
+  host_install curl
   if command -v 9router-go >/dev/null 2>&1; then
     say "Binario: $(command -v 9router-go)"
     9router-go version 2>/dev/null || true
@@ -209,6 +285,19 @@ status_router() {
   fi
   say "Log: $LOG_FILE"
   show_token_saver
+}
+
+open_panel() {
+  start_router
+  local url="http://127.0.0.1:$PORT"
+  say "Abriendo panel: $url"
+  if command -v termux-open-url >/dev/null 2>&1; then
+    termux-open-url "$url"
+  elif command -v am >/dev/null 2>&1; then
+    am start -a android.intent.action.VIEW -d "$url" >/dev/null 2>&1 || true
+  else
+    say "Abrí manualmente: $url"
+  fi
 }
 
 stop_router() {
@@ -230,6 +319,7 @@ stop_router() {
 case "$ACTION" in
   install) install_router ;;
   start) start_router ;;
+  panel) open_panel ;;
   status) status_router ;;
   stop) stop_router ;;
   saver-status) show_token_saver ;;
@@ -237,5 +327,5 @@ case "$ACTION" in
   saver-medium) apply_token_saver medium ;;
   saver-max) apply_token_saver maximum ;;
   saver-off) apply_token_saver off ;;
-  *) die "Uso: 9router-go.sh install|start|status|stop|saver-status|saver-safe|saver-medium|saver-max|saver-off" ;;
+  *) die "Uso: 9router-go.sh install|start|panel|status|stop|saver-status|saver-safe|saver-medium|saver-max|saver-off" ;;
 esac
