@@ -74,6 +74,20 @@ EOF
   chmod 600 "$SAVER_FILE" 2>/dev/null || true
 }
 
+resolve_router_bin() {
+  local candidate
+  candidate="$(type -P 9router-go 2>/dev/null || true)"
+  if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+  if [ -x "$SRC_DIR/9router-go" ]; then
+    printf '%s\n' "$SRC_DIR/9router-go"
+    return 0
+  fi
+  return 1
+}
+
 managed_router_running() {
   [ -r "$PID_FILE" ] || return 1
   local pid
@@ -153,7 +167,9 @@ install_router() {
 
 start_router() {
   need_termux
-  command -v 9router-go >/dev/null 2>&1 || die "9router-go no está instalado. Elegí 'Instalar / actualizar 9router-go' primero."
+  local router_bin
+  router_bin="$(resolve_router_bin || true)"
+  [ -n "$router_bin" ] || die "9router-go no está instalado. Elegí 'Instalar / actualizar 9router-go' primero."
   command -v curl >/dev/null 2>&1 || die "Falta curl. Elegí 'Instalar / actualizar 9router-go' una vez."
 
   mkdir -p "$STATE_DIR" "$DATA_DIR"
@@ -168,11 +184,12 @@ start_router() {
     load_token_saver
   fi
   say "Iniciando 9router-go · ahorro=$SAVER_PROFILE"
+  say "Binario: $router_bin"
   nohup env PORT="$PORT" DATA_DIR="$DATA_DIR" \
     RTK_ENABLED="$RTK_ENABLED" \
     CAVEMAN_ENABLED="$CAVEMAN_ENABLED" \
     PONYTAIL_ENABLED="$PONYTAIL_ENABLED" \
-    "$PREFIX/bin/9router-go" >"$LOG_FILE" 2>&1 &
+    "$router_bin" >"$LOG_FILE" 2>&1 &
   echo "$!" >"$PID_FILE"
 
   for _ in 1 2 3 4 5 6 7 8 9 10; do
@@ -190,9 +207,11 @@ start_router() {
 
 status_router() {
   need_termux
-  if command -v 9router-go >/dev/null 2>&1; then
-    say "Binario: $(command -v 9router-go)"
-    9router-go version 2>/dev/null || true
+  local router_bin
+  router_bin="$(resolve_router_bin || true)"
+  if [ -n "$router_bin" ]; then
+    say "Binario: $router_bin"
+    "$router_bin" version 2>/dev/null || true
   else
     say "Binario: no instalado"
   fi
