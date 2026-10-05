@@ -8,8 +8,11 @@ STATE_DIR="$HOME/.config/9router-go"
 PID_FILE="$STATE_DIR/newtermux.pid"
 LOG_FILE="$STATE_DIR/newtermux-router.log"
 SAVER_FILE="$STATE_DIR/token-saver.env"
-PORT="${ROUTER_PORT:-20128}"
+PORT="${ROUTER_PORT:-20130}"
 DATA_DIR="${ROUTER_DATA_DIR:-$HOME/.9router}"
+DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+DOCTOR="$DIR/environment-doctor.sh"
+ROUTER_ENV="$STATE_DIR/router.env"
 
 say() {
   printf '\n==> %s\n' "$*"
@@ -154,6 +157,12 @@ apply_token_saver() {
 
 install_router() {
   need_termux
+
+  if [ -x "$DOCTOR" ]; then
+    say "Comprobando y reparando el entorno base"
+    bash "$DOCTOR" repair
+  fi
+
   say "Instalando dependencias de compilación"
   pkg install -y git golang make
 
@@ -185,6 +194,14 @@ start_router() {
   router_bin="$(resolve_router_bin || true)"
   [ -n "$router_bin" ] || die "9router-go no está instalado. Elegí 'Instalar / actualizar 9router-go' primero."
   mkdir -p "$STATE_DIR" "$DATA_DIR"
+  cat >"$ROUTER_ENV" <<EOF
+# Managed by NewTermux.
+ROUTER_PORT=$PORT
+ROUTER_DATA_DIR=$DATA_DIR
+ROUTER_BASE=http://127.0.0.1:$PORT
+EOF
+  chmod 600 "$ROUTER_ENV" 2>/dev/null || true
+
   if health; then
     say "9router-go ya está activo en http://127.0.0.1:$PORT"
     return 0
@@ -208,7 +225,7 @@ start_router() {
     sleep 1
     if health; then
       say "9router-go listo en http://127.0.0.1:$PORT"
-      say "Rutas virtuales gratuitas: free-best / free"
+      say "Rutas de continuidad: coding-auto / coding-best-free / free-best / free"
       return 0
     fi
   done
@@ -238,6 +255,7 @@ status_router() {
     say "PID administrado: $(cat "$PID_FILE" 2>/dev/null || true)"
   fi
   say "Log: $LOG_FILE"
+  say "Configuración de endpoint: $ROUTER_ENV"
   show_token_saver
 }
 
