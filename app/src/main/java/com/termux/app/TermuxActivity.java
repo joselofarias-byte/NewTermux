@@ -1106,6 +1106,24 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         List<String> items = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
 
+        // NewTermux is used primarily as an AI coding environment, so the
+        // primary launch path must not be buried behind setup submenus.
+        final String preferredOpenCode = findPreferredOpenCodeCommand();
+        items.add(preferredOpenCode != null ? "OpenCode · Abrir" : "OpenCode · Instalar");
+        actions.add(() -> {
+            if (preferredOpenCode != null) {
+                launchDetectedEnvironment("OpenCode", preferredOpenCode);
+            } else {
+                showOpenCodeSetupDialog();
+            }
+        });
+
+        items.add("9router-go · router local  ›");
+        actions.add(this::showRouterInstaller);
+
+        items.add("Ahorro de tokens · RTK  ›");
+        actions.add(this::showTokenSaverMenu);
+
         // Hidden toolbar favorites automatically move into More.
         if (!NewTermuxSettings.isShowPackagesButton(this)) {
             items.add(getString(R.string.newtermux_toolbar_packages));
@@ -1170,14 +1188,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         items.add("TBM · respaldo y restauración  ›");
         actions.add(this::showTbmMenu);
 
-        items.add("9router-go · router local  ›");
-        actions.add(this::showRouterInstaller);
-
         items.add("Entornos y herramientas  ›");
         actions.add(this::showDetectedEnvironments);
-
-        items.add("Ahorro de tokens · 9router-go  ›");
-        actions.add(this::showTokenSaverMenu);
 
         items.add("Instalar componentes y PRoot");
         actions.add(this::showComponentInstaller);
@@ -1285,6 +1297,75 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             .setTitle("Entornos detectados")
             .setItems(labels.toArray(new String[0]), (dialog, which) -> {
                 if (which >= 0 && which < actions.size()) actions.get(which).run();
+            })
+            .setNegativeButton(android.R.string.cancel, null)
+            .show();
+    }
+
+    private String findPreferredOpenCodeCommand() {
+        File dataDir = new File(getApplicationInfo().dataDir);
+        File prefixDir = new File(dataDir, "files/usr");
+        File homeDir = new File(dataDir, "files/home");
+        File prootDistro = firstExistingFile(
+            new File(prefixDir, "bin/proot-distro"),
+            new File(prefixDir, "bin/proot-distro.sh"));
+
+        // Prefer Debian because that is the environment prepared by NewTermux's
+        // AI harness installer and where OpenCode is configured for 9router-go.
+        if (prootDistro != null) {
+            File rootfsBase = new File(prefixDir, "var/lib/proot-distro/installed-rootfs");
+            File debian = new File(rootfsBase, "debian");
+            if (debian.isDirectory()) {
+                String insidePath = findDistroTool(debian, "opencode");
+                if (insidePath != null) {
+                    String inner = "exec " + shellQuote(insidePath);
+                    return shellQuote(prootDistro.getAbsolutePath())
+                        + " login debian -- sh -lc " + shellQuote(inner);
+                }
+            }
+
+            File[] distros = rootfsBase.listFiles(File::isDirectory);
+            if (distros != null) {
+                Arrays.sort(distros, (a, b) -> a.getName().compareToIgnoreCase(b.getName()));
+                for (File rootfs : distros) {
+                    if ("debian".equalsIgnoreCase(rootfs.getName())) continue;
+                    String insidePath = findDistroTool(rootfs, "opencode");
+                    if (insidePath == null) continue;
+                    String inner = "exec " + shellQuote(insidePath);
+                    return shellQuote(prootDistro.getAbsolutePath())
+                        + " login " + shellQuote(rootfs.getName())
+                        + " -- sh -lc " + shellQuote(inner);
+                }
+            }
+        }
+
+        File hostTool = findHostTool(prefixDir, homeDir, "opencode");
+        return hostTool == null ? null : shellQuote(hostTool.getAbsolutePath());
+    }
+
+    private void showOpenCodeSetupDialog() {
+        new AlertDialog.Builder(this)
+            .setTitle("OpenCode")
+            .setMessage(
+                "OpenCode no está instalado en un entorno detectado. "
+                + "NewTermux puede instalarlo dentro de Debian PRoot.")
+            .setPositiveButton("Instalar", (dialog, which) -> {
+                TerminalSession session = getCurrentSession();
+                if (session == null) {
+                    showToast("Abrí una sesión primero", false);
+                    return;
+                }
+                com.newtermux.features.BundledInstallerLibrary.runAiHarnessInstaller(
+                    this, session, "opencode");
+            })
+            .setNeutralButton("Preparar IA completo", (dialog, which) -> {
+                TerminalSession session = getCurrentSession();
+                if (session == null) {
+                    showToast("Abrí una sesión primero", false);
+                    return;
+                }
+                com.newtermux.features.BundledInstallerLibrary.runOneTouchAiStack(
+                    this, session);
             })
             .setNegativeButton(android.R.string.cancel, null)
             .show();
