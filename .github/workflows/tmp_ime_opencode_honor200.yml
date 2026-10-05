@@ -5,6 +5,7 @@ on:
     branches:
       - fix/ime-tui-resize-honor200-20261005
       - feat/smart-environments-menu-20261005
+      - feat/token-saver-profiles-20261005
 
 permissions:
   contents: read
