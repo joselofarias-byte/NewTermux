@@ -6,6 +6,7 @@ on:
       - fix/ime-tui-resize-honor200-20261005
       - feat/smart-environments-menu-20261005
       - feat/token-saver-profiles-20261005
+      - fix/play-store-detach-20261005
 
 permissions:
   contents: read
@@ -22,24 +23,22 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Assert direct playcompat identity
-        run: bash scripts/fase8/assert-playcompat-stock-bootstrap.sh
-
       - name: Build direct ARM64 APK
         env:
           TERMUX_ABIS: arm64-v8a
           TERMUX_PACKAGE_VARIANT: apt-android-7
           TERMUX_SPLIT_APKS_FOR_DEBUG_BUILDS: '1'
-          TERMUX_APP_VERSION_NAME: 1.6.2-playcompat
-          TERMUX_APK_VERSION_TAG: 1.6.2-playcompat-ime-opencode-20261005
+          TERMUX_APP_VERSION_NAME: 1.6.2-direct
+          NEWTERMUX_VERSION_CODE: '202610050'
+          TERMUX_APK_VERSION_TAG: 1.6.2-direct-ime-opencode-20261005
         run: |
           set -euo pipefail
-          ./gradlew assemblePlaycompatDebug --no-daemon
+          ./gradlew assembleDirectDebug --no-daemon
 
       - name: Verify direct identity and collect artifact
         run: |
           set -euo pipefail
-          DIR=app/build/outputs/apk/playcompat/debug
+          DIR=app/build/outputs/apk/direct/debug
           META="$DIR/output-metadata.json"
           APK="$(find "$DIR" -maxdepth 1 -type f -name '*arm64-v8a.apk' -print -quit)"
           test -n "$APK"
@@ -51,13 +50,15 @@ jobs:
           with open(metadata_path, encoding="utf-8") as stream:
               metadata = json.load(stream)
           assert metadata.get("applicationId") == "com.termux", metadata
-          assert metadata.get("variantName") == "playcompatDebug", metadata
+          assert metadata.get("variantName") == "directDebug", metadata
+          elements = metadata.get("elements") or []
+          assert elements and elements[0].get("versionCode") == 202610050, metadata
           with zipfile.ZipFile(apk_path) as apk:
               bootstrap = apk.read("lib/arm64-v8a/libtermux-bootstrap.so")
           with zipfile.ZipFile(io.BytesIO(bootstrap)) as archive:
               login = archive.read("bin/login").decode("utf-8")
           assert login.splitlines()[0] == "#!/data/data/com.termux/files/usr/bin/sh"
-          print("PASS com.termux direct ARM64")
+          print("PASS com.termux standalone ARM64 / versionCode 202610050")
           PY
 
           cp "$APK" "$RUNNER_TEMP/NewTermux-IME-OPENCODE-HONOR200-arm64.apk"
