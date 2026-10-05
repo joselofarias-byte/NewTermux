@@ -120,7 +120,7 @@ public final class BundledInstallerLibrary {
             Toast.makeText(context, "Abrí una sesión primero", Toast.LENGTH_SHORT).show();
             return;
         }
-        if (action == null || !action.matches("install|start|status|stop|saver-status|saver-safe|saver-medium|saver-max|saver-off")) {
+        if (action == null || !action.matches("install|start|panel|status|stop|saver-status|saver-safe|saver-medium|saver-max|saver-off")) {
             Toast.makeText(context, "Acción de 9router-go no válida", Toast.LENGTH_LONG).show();
             return;
         }
