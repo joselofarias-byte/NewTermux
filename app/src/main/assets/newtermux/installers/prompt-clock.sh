@@ -39,7 +39,11 @@ enable_clock() {
 # NewTermux: timestamp of the moment this prompt was drawn.
 # Preserve the user's existing prompt/theme and prepend only the clock.
 if [[ "$PROMPT" != *'%D{%H:%M}'* ]]; then
-  PROMPT='%F{8}[%D{%H:%M}]%f '"$PROMPT"
+  # Use the terminal's default foreground instead of ANSI color 8.
+  # Color 8 is intentionally dark gray and becomes almost invisible on
+  # NewTermux's dark themes. Bold default foreground remains readable and
+  # automatically follows light/dark terminal themes.
+  PROMPT='%B[%D{%H:%M}]%b '"$PROMPT"
 fi
 EOF_ZSH
 
