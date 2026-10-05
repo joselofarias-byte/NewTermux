@@ -20,8 +20,25 @@ die() {
   exit 1
 }
 
+repair_termux_packages_if_needed() {
+  # A partially upgraded Termux can leave libcurl linked against a newer ngtcp2
+  # than the one installed. In that state the pkg wrapper itself fails before it
+  # can install anything. Repair with apt directly, which does not depend on curl.
+  if command -v curl >/dev/null 2>&1 && ! curl --version >/dev/null 2>&1; then
+    say "Detectado runtime Termux desalineado (curl no puede iniciar)"
+    say "Sincronizando paquetes antes de continuar"
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update
+    apt-get -o Dpkg::Options::="--force-confold" -y full-upgrade
+    hash -r
+    curl --version >/dev/null 2>&1 || die "curl sigue roto después de apt full-upgrade."
+  fi
+}
+
 need_termux() {
   command -v pkg >/dev/null 2>&1 || die "Este instalador debe ejecutarse en NewTermux."
+  command -v apt-get >/dev/null 2>&1 || die "apt-get no está disponible en NewTermux."
+  repair_termux_packages_if_needed
 }
 
 health() {
