@@ -27,12 +27,17 @@ run_ok() {
 check_core() {
   local failed=0
 
-  for cmd in bash apt-get dpkg dpkg-query pkg; do
+  for cmd in bash apt-get dpkg dpkg-query; do
     if ! have "$cmd" || ! run_ok "$cmd" --version; then
       warn "$cmd no funciona correctamente"
       failed=1
     fi
   done
+
+  if ! have pkg; then
+    warn "pkg no está disponible"
+    failed=1
+  fi
 
   if ! have curl || ! run_ok curl --version; then
     warn "curl no funciona (posible mezcla libcurl/libngtcp2)"
