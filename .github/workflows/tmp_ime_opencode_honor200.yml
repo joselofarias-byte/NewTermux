@@ -25,14 +25,24 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Validate bundled AI scripts
+        run: |
+          set -euo pipefail
+          bash -n app/src/main/assets/newtermux/installers/environment-doctor.sh
+          bash -n app/src/main/assets/newtermux/installers/9router-go.sh
+          bash -n app/src/main/assets/newtermux/installers/ai-harnesses.sh
+          bash -n app/src/main/assets/newtermux/installers/one-touch-ai-stack.sh
+          ! grep -F 'proot-distro --version' app/src/main/assets/newtermux/installers/environment-doctor.sh
+          grep -F 'proot-distro list' app/src/main/assets/newtermux/installers/environment-doctor.sh
+
       - name: Build direct ARM64 APK
         env:
           TERMUX_ABIS: arm64-v8a
           TERMUX_PACKAGE_VARIANT: apt-android-7
           TERMUX_SPLIT_APKS_FOR_DEBUG_BUILDS: '1'
           TERMUX_APP_VERSION_NAME: 1.6.2-direct
-          NEWTERMUX_VERSION_CODE: '202610052'
-          TERMUX_APK_VERSION_TAG: 1.6.2-direct-runtime-selfheal-20261005
+          NEWTERMUX_VERSION_CODE: '202610053'
+          TERMUX_APK_VERSION_TAG: 1.6.2-direct-runtime-selfheal2-20261005
         run: |
           set -euo pipefail
           ./gradlew assembleDirectDebug --no-daemon
@@ -54,13 +64,13 @@ jobs:
           assert metadata.get("applicationId") == "com.termux", metadata
           assert metadata.get("variantName") == "directDebug", metadata
           elements = metadata.get("elements") or []
-          assert elements and elements[0].get("versionCode") == 202610052, metadata
+          assert elements and elements[0].get("versionCode") == 202610053, metadata
           with zipfile.ZipFile(apk_path) as apk:
               bootstrap = apk.read("lib/arm64-v8a/libtermux-bootstrap.so")
           with zipfile.ZipFile(io.BytesIO(bootstrap)) as archive:
               login = archive.read("bin/login").decode("utf-8")
           assert login.splitlines()[0] == "#!/data/data/com.termux/files/usr/bin/sh"
-          print("PASS com.termux standalone ARM64 / versionCode 202610052")
+          print("PASS com.termux standalone ARM64 / versionCode 202610053")
           PY
 
           cp "$APK" "$RUNNER_TEMP/NewTermux-IME-OPENCODE-HONOR200-arm64.apk"
