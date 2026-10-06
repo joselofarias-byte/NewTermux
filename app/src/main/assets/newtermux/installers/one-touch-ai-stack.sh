@@ -8,7 +8,7 @@ HARNESS="$DIR/ai-harnesses.sh"
 TBM="$DIR/tbm-integration.sh"
 
 step() {
-  printf '\n\n========== [%s/8] %s ==========\n' "$1" "$2"
+  printf '\n\n========== [%s/7] %s ==========\n' "$1" "$2"
 }
 
 fail() {
@@ -39,13 +39,10 @@ bash "$HARNESS" prepare
 step 5 "Instalar / actualizar Antigravity, Codex, OpenCode y GitHub CLI"
 bash "$HARNESS" all
 
-step 6 "Conectar OpenCode con 9router-go"
-bash "$HARNESS" opencode-router
-
-step 7 "TBM si ya pasó el gate de integración"
+step 6 "TBM si ya pasó el gate de integración"
 bash "$TBM" install-if-ready
 
-step 8 "Verificación final"
+step 7 "Verificación final"
 bash "$ROUTER" status
 bash "$HARNESS" status
 bash "$TBM" status
