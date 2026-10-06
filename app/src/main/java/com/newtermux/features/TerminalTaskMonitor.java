@@ -490,11 +490,14 @@ public final class TerminalTaskMonitor {
 
     private static void markCompleted(State state, boolean failed, long now) {
         if (!state.tracked) return;
+        // A shell prompt after UN_TOQUE_FAIL (or another explicit failure)
+        // must never downgrade the already-recorded failure to success.
+        boolean finalFailed = state.failed || failed;
         state.completed = true;
-        state.failed = failed;
+        state.failed = finalFailed;
         state.finishedAtMs = now;
-        if (!failed) state.percent = 100;
-        state.phase = failed ? "Finalizó con error" : "Completado";
+        if (!finalFailed) state.percent = 100;
+        state.phase = finalFailed ? "Finalizó con error" : "Completado";
     }
 
     private static boolean looksLikePrompt(String text) {
