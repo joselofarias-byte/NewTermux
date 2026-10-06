@@ -27,11 +27,12 @@ need_termux() {
   command -v pkg >/dev/null 2>&1 || die "Este instalador debe ejecutarse en NewTermux."
 }
 
-health() {
+health_port() {
   # Start/Status must not depend on curl/libcurl or package-manager state.
   # Use Bash's own TCP socket support and read only the HTTP status line.
+  local port="$1"
   local status=""
-  if ! exec 3<>"/dev/tcp/127.0.0.1/$PORT" 2>/dev/null; then
+  if ! exec 3<>"/dev/tcp/127.0.0.1/$port" 2>/dev/null; then
     return 1
   fi
   printf 'GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n' >&3
@@ -44,6 +45,31 @@ health() {
     "HTTP/1.1 200 "*|"HTTP/1.0 200 "*) return 0 ;;
     *) return 1 ;;
   esac
+}
+
+health() {
+  health_port "$PORT"
+}
+
+migrate_legacy_port_if_managed() {
+  [ "$PORT" = "20130" ] || return 0
+  health_port 20128 || return 0
+
+  if managed_router_running; then
+    local pid
+    pid="$(cat "$PID_FILE" 2>/dev/null || true)"
+    say "Migrando 9router-go administrado de 20128 a 20130"
+    if [ -n "$pid" ]; then
+      kill "$pid" 2>/dev/null || true
+      for _ in 1 2 3 4 5; do
+        kill -0 "$pid" >/dev/null 2>&1 || break
+        sleep 1
+      done
+    fi
+    rm -f "$PID_FILE"
+  else
+    say "AVISO: hay un 9router-go ajeno a NewTermux en el puerto legado 20128; no se detiene automáticamente."
+  fi
 }
 
 load_token_saver() {
@@ -194,6 +220,7 @@ start_router() {
   router_bin="$(resolve_router_bin || true)"
   [ -n "$router_bin" ] || die "9router-go no está instalado. Elegí 'Instalar / actualizar 9router-go' primero."
   mkdir -p "$STATE_DIR" "$DATA_DIR"
+  migrate_legacy_port_if_managed
   cat >"$ROUTER_ENV" <<EOF
 # Managed by NewTermux.
 ROUTER_PORT=$PORT
