@@ -98,6 +98,13 @@ public class TerminalTaskMonitorTest {
     }
 
     @Test
+    public void promptCannotDowngradeExplicitFailure() {
+        assertTrue(TerminalTaskMonitor.mergeFailureState(true, false));
+        assertTrue(TerminalTaskMonitor.mergeFailureState(false, true));
+        assertFalse(TerminalTaskMonitor.mergeFailureState(false, false));
+    }
+
+    @Test
     public void ignoresOrdinaryShellText() {
         TerminalTaskMonitor.Analysis a =
             TerminalTaskMonitor.analyzeLine("hello from the shell");
