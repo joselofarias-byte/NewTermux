@@ -225,9 +225,12 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
             }
         }
 
-        if (!term.isMouseTrackingActive() && !e.isFromSource(InputDevice.SOURCE_MOUSE)) {
-            if (!KeyboardUtils.areDisableSoftKeyboardFlagsSet(mActivity)) {
+        if (!e.isFromSource(InputDevice.SOURCE_MOUSE)) {
+            if (mActivity.getPreferences().isSoftKeyboardEnabled()
+                && !KeyboardUtils.areDisableSoftKeyboardFlagsSet(mActivity)) {
+                mActivity.getTerminalView().requestFocus();
                 KeyboardUtils.showSoftKeyboard(mActivity, mActivity.getTerminalView());
+                mActivity.getTerminalView().postDelayed(getShowSoftKeyboardRunnable(), 150L);
                 scheduleTerminalGeometryRefresh();
             } else
                 Logger.logVerbose(LOG_TAG, "Not showing soft keyboard onSingleTapUp since its disabled");
