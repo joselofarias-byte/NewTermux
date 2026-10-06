@@ -49,8 +49,11 @@ check_core() {
     failed=1
   fi
 
-  if have proot-distro && ! run_ok proot-distro --version; then
-    warn "proot-distro está instalado pero no ejecuta correctamente"
+  # proot-distro does not consistently support a global --version flag
+  # across Termux releases. "list" is a stable, read-only command and is the
+  # correct smoke test for the CLI itself.
+  if have proot-distro && ! run_ok proot-distro list; then
+    warn "proot-distro está instalado pero no puede listar entornos"
     failed=1
   fi
 
