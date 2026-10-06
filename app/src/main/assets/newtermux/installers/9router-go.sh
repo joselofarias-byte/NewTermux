@@ -190,7 +190,7 @@ install_router() {
   fi
 
   say "Instalando dependencias de compilación"
-  pkg install -y git golang make
+  pkg install -y git golang make nodejs
 
   mkdir -p "$(dirname "$SRC_DIR")" "$STATE_DIR"
   if [ -d "$SRC_DIR/.git" ]; then
@@ -202,10 +202,26 @@ install_router() {
     git clone --depth 1 --branch main "$REPO_URL" "$SRC_DIR"
   fi
 
-  say "Compilando 9router-go"
+  say "Compilando frontend de 9router-go"
+  (
+    cd "$SRC_DIR/web"
+    # Upstream Makefile uses Bun unconditionally. Bun is not part of the
+    # supported NewTermux base, while Node/npm is. Build the same Vite/Svelte
+    # assets with npm so a clean phone does not depend on an extra runtime.
+    npm install --include=dev --no-audit --no-fund --no-package-lock
+    npm run build
+  )
+  test -f "$SRC_DIR/web/dist/index.html" || die "No se generó web/dist/index.html."
+
+  say "Compilando backend de 9router-go"
   (
     cd "$SRC_DIR"
-    make build
+    version="$(tr -d '[:space:]' < VERSION 2>/dev/null || true)"
+    [ -n "$version" ] || version="dev"
+    go build \
+      -ldflags="-s -w -X 9router/proxy/internal/updater.CurrentVersion=$version" \
+      -o 9router-go \
+      ./cmd/9router-go/
   )
 
   test -x "$SRC_DIR/9router-go" || die "No se generó el binario 9router-go."
