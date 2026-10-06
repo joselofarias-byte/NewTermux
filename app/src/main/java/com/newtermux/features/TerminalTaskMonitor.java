@@ -488,11 +488,15 @@ public final class TerminalTaskMonitor {
         state.seenItems.clear();
     }
 
+    static boolean mergeFailureState(boolean alreadyFailed, boolean failed) {
+        return alreadyFailed || failed;
+    }
+
     private static void markCompleted(State state, boolean failed, long now) {
         if (!state.tracked) return;
         // A shell prompt after UN_TOQUE_FAIL (or another explicit failure)
         // must never downgrade the already-recorded failure to success.
-        boolean finalFailed = state.failed || failed;
+        boolean finalFailed = mergeFailureState(state.failed, failed);
         state.completed = true;
         state.failed = finalFailed;
         state.finishedAtMs = now;
