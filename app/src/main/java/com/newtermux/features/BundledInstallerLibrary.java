@@ -17,6 +17,10 @@ import java.io.InputStream;
 public final class BundledInstallerLibrary {
     private BundledInstallerLibrary() {}
 
+    private static final String ENV_DOCTOR_ASSET =
+        "newtermux/installers/environment-doctor.sh";
+    private static final String ENV_DOCTOR_FILENAME =
+        "environment-doctor.sh";
     private static final String AI_HARNESS_ASSET =
         "newtermux/installers/ai-harnesses.sh";
     private static final String AI_HARNESS_FILENAME =
@@ -76,6 +80,7 @@ public final class BundledInstallerLibrary {
             return;
         }
 
+        if (materialize(context, ENV_DOCTOR_ASSET, ENV_DOCTOR_FILENAME) == null) return;
         if (materialize(context, NINE_ROUTER_ASSET, NINE_ROUTER_FILENAME) == null) return;
         if (materialize(context, AI_HARNESS_ASSET, AI_HARNESS_FILENAME) == null) return;
         if (materialize(context, TBM_ASSET, TBM_FILENAME) == null) return;
@@ -108,6 +113,7 @@ public final class BundledInstallerLibrary {
             return;
         }
 
+        if (materialize(context, ENV_DOCTOR_ASSET, ENV_DOCTOR_FILENAME) == null) return;
         if (materialize(context, NINE_ROUTER_ASSET, NINE_ROUTER_FILENAME) == null) return;
         session.write("bash \"$HOME/.newtermux/installers/" + NINE_ROUTER_FILENAME + "\" " + action + "\n");
     }
@@ -122,8 +128,24 @@ public final class BundledInstallerLibrary {
             return;
         }
 
+        if (materialize(context, ENV_DOCTOR_ASSET, ENV_DOCTOR_FILENAME) == null) return;
+        if (materialize(context, NINE_ROUTER_ASSET, NINE_ROUTER_FILENAME) == null) return;
         if (materialize(context, AI_HARNESS_ASSET, AI_HARNESS_FILENAME) == null) return;
         session.write("bash \"$HOME/.newtermux/installers/" + AI_HARNESS_FILENAME + "\" " + action + "\n");
+    }
+
+    public static void runEnvironmentDoctor(Context context, TerminalSession session, String action) {
+        if (session == null) {
+            Toast.makeText(context, "Abrí una sesión primero", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (action == null || !action.matches("check|repair")) {
+            Toast.makeText(context, "Acción de diagnóstico no válida", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        if (materialize(context, ENV_DOCTOR_ASSET, ENV_DOCTOR_FILENAME) == null) return;
+        session.write("bash \"$HOME/.newtermux/installers/" + ENV_DOCTOR_FILENAME + "\" " + action + "\n");
     }
 
     public static void runPromptClockInstaller(Context context, TerminalSession session, String action) {

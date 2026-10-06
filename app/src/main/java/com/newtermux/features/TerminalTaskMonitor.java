@@ -374,6 +374,15 @@ public final class TerminalTaskMonitor {
                 parsePercent(line), false, false, false);
         }
 
+        if (line.startsWith("UN_TOQUE_FAIL")) {
+            return new Analysis("newtermux-one-touch", "Preparando NewTermux",
+                "Finalizó con error", line, -1, false, true, true);
+        }
+        if (line.equals("UN_TOQUE_OK")) {
+            return new Analysis("newtermux-one-touch", "Preparando NewTermux",
+                "Completado", "", 100, false, true, false);
+        }
+
         if (line.startsWith("npm ERR!") || line.startsWith("E: ") || line.startsWith("dpkg: error")) {
             return new Analysis("error", "Tarea en terminal", "Error", "", -1, false, true, true);
         }
@@ -479,13 +488,20 @@ public final class TerminalTaskMonitor {
         state.seenItems.clear();
     }
 
+    static boolean mergeFailureState(boolean alreadyFailed, boolean failed) {
+        return alreadyFailed || failed;
+    }
+
     private static void markCompleted(State state, boolean failed, long now) {
         if (!state.tracked) return;
+        // A shell prompt after UN_TOQUE_FAIL (or another explicit failure)
+        // must never downgrade the already-recorded failure to success.
+        boolean finalFailed = mergeFailureState(state.failed, failed);
         state.completed = true;
-        state.failed = failed;
+        state.failed = finalFailed;
         state.finishedAtMs = now;
-        if (!failed) state.percent = 100;
-        state.phase = failed ? "Finalizó con error" : "Completado";
+        if (!finalFailed) state.percent = 100;
+        state.phase = finalFailed ? "Finalizó con error" : "Completado";
     }
 
     private static boolean looksLikePrompt(String text) {

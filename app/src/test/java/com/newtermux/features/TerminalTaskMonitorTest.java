@@ -81,6 +81,30 @@ public class TerminalTaskMonitorTest {
     }
 
     @Test
+    public void recognizesOneTouchTerminalStatus() {
+        TerminalTaskMonitor.Analysis failed =
+            TerminalTaskMonitor.analyzeLine("UN_TOQUE_FAIL exit=1");
+        assertNotNull(failed);
+        assertTrue(failed.completed);
+        assertTrue(failed.failed);
+        assertEquals("Preparando NewTermux", failed.title);
+
+        TerminalTaskMonitor.Analysis ok =
+            TerminalTaskMonitor.analyzeLine("UN_TOQUE_OK");
+        assertNotNull(ok);
+        assertTrue(ok.completed);
+        assertFalse(ok.failed);
+        assertEquals(100, ok.explicitPercent);
+    }
+
+    @Test
+    public void promptCannotDowngradeExplicitFailure() {
+        assertTrue(TerminalTaskMonitor.mergeFailureState(true, false));
+        assertTrue(TerminalTaskMonitor.mergeFailureState(false, true));
+        assertFalse(TerminalTaskMonitor.mergeFailureState(false, false));
+    }
+
+    @Test
     public void ignoresOrdinaryShellText() {
         TerminalTaskMonitor.Analysis a =
             TerminalTaskMonitor.analyzeLine("hello from the shell");

@@ -8,8 +8,11 @@ STATE_DIR="$HOME/.config/9router-go"
 PID_FILE="$STATE_DIR/newtermux.pid"
 LOG_FILE="$STATE_DIR/newtermux-router.log"
 SAVER_FILE="$STATE_DIR/token-saver.env"
-PORT="${ROUTER_PORT:-20128}"
+PORT="${ROUTER_PORT:-20130}"
 DATA_DIR="${ROUTER_DATA_DIR:-$HOME/.9router}"
+DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+DOCTOR="$DIR/environment-doctor.sh"
+ROUTER_ENV="$STATE_DIR/router.env"
 
 say() {
   printf '\n==> %s\n' "$*"
@@ -24,11 +27,12 @@ need_termux() {
   command -v pkg >/dev/null 2>&1 || die "Este instalador debe ejecutarse en NewTermux."
 }
 
-health() {
+health_port() {
   # Start/Status must not depend on curl/libcurl or package-manager state.
   # Use Bash's own TCP socket support and read only the HTTP status line.
+  local port="$1"
   local status=""
-  if ! exec 3<>"/dev/tcp/127.0.0.1/$PORT" 2>/dev/null; then
+  if ! exec 3<>"/dev/tcp/127.0.0.1/$port" 2>/dev/null; then
     return 1
   fi
   printf 'GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n' >&3
@@ -41,6 +45,31 @@ health() {
     "HTTP/1.1 200 "*|"HTTP/1.0 200 "*) return 0 ;;
     *) return 1 ;;
   esac
+}
+
+health() {
+  health_port "$PORT"
+}
+
+migrate_legacy_port_if_managed() {
+  [ "$PORT" = "20130" ] || return 0
+  health_port 20128 || return 0
+
+  if managed_router_running; then
+    local pid
+    pid="$(cat "$PID_FILE" 2>/dev/null || true)"
+    say "Migrando 9router-go administrado de 20128 a 20130"
+    if [ -n "$pid" ]; then
+      kill "$pid" 2>/dev/null || true
+      for _ in 1 2 3 4 5; do
+        kill -0 "$pid" >/dev/null 2>&1 || break
+        sleep 1
+      done
+    fi
+    rm -f "$PID_FILE"
+  else
+    say "AVISO: hay un 9router-go ajeno a NewTermux en el puerto legado 20128; no se detiene automáticamente."
+  fi
 }
 
 load_token_saver() {
@@ -154,8 +183,14 @@ apply_token_saver() {
 
 install_router() {
   need_termux
+
+  if [ -x "$DOCTOR" ]; then
+    say "Comprobando y reparando el entorno base"
+    bash "$DOCTOR" repair
+  fi
+
   say "Instalando dependencias de compilación"
-  pkg install -y git golang make
+  pkg install -y git golang make nodejs
 
   mkdir -p "$(dirname "$SRC_DIR")" "$STATE_DIR"
   if [ -d "$SRC_DIR/.git" ]; then
@@ -167,10 +202,26 @@ install_router() {
     git clone --depth 1 --branch main "$REPO_URL" "$SRC_DIR"
   fi
 
-  say "Compilando 9router-go"
+  say "Compilando frontend de 9router-go"
+  (
+    cd "$SRC_DIR/web"
+    # Upstream Makefile uses Bun unconditionally. Bun is not part of the
+    # supported NewTermux base, while Node/npm is. Build the same Vite/Svelte
+    # assets with npm so a clean phone does not depend on an extra runtime.
+    npm install --include=dev --no-audit --no-fund --no-package-lock
+    npm run build
+  )
+  test -f "$SRC_DIR/web/dist/index.html" || die "No se generó web/dist/index.html."
+
+  say "Compilando backend de 9router-go"
   (
     cd "$SRC_DIR"
-    make build
+    version="$(tr -d '[:space:]' < VERSION 2>/dev/null || true)"
+    [ -n "$version" ] || version="dev"
+    go build \
+      -ldflags="-s -w -X 9router/proxy/internal/updater.CurrentVersion=$version" \
+      -o 9router-go \
+      ./cmd/9router-go/
   )
 
   test -x "$SRC_DIR/9router-go" || die "No se generó el binario 9router-go."
@@ -185,6 +236,15 @@ start_router() {
   router_bin="$(resolve_router_bin || true)"
   [ -n "$router_bin" ] || die "9router-go no está instalado. Elegí 'Instalar / actualizar 9router-go' primero."
   mkdir -p "$STATE_DIR" "$DATA_DIR"
+  migrate_legacy_port_if_managed
+  cat >"$ROUTER_ENV" <<EOF
+# Managed by NewTermux.
+ROUTER_PORT=$PORT
+ROUTER_DATA_DIR=$DATA_DIR
+ROUTER_BASE=http://127.0.0.1:$PORT
+EOF
+  chmod 600 "$ROUTER_ENV" 2>/dev/null || true
+
   if health; then
     say "9router-go ya está activo en http://127.0.0.1:$PORT"
     return 0
@@ -208,7 +268,7 @@ start_router() {
     sleep 1
     if health; then
       say "9router-go listo en http://127.0.0.1:$PORT"
-      say "Rutas virtuales gratuitas: free-best / free"
+      say "Rutas de continuidad: coding-auto / coding-best-free / free-best / free"
       return 0
     fi
   done
@@ -238,6 +298,7 @@ status_router() {
     say "PID administrado: $(cat "$PID_FILE" 2>/dev/null || true)"
   fi
   say "Log: $LOG_FILE"
+  say "Configuración de endpoint: $ROUTER_ENV"
   show_token_saver
 }
 
