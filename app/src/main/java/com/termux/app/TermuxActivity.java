@@ -1508,16 +1508,18 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     private void showHarnessInstaller() {
         String[] labels = {
+            "Diagnóstico / reparar entorno",
             "Un toque · preparar NewTermux",
             "9router-go · router local  ›",
             "Preparar Debian",
             "Antigravity CLI",
             "Codex CLI",
             "OpenCode",
-            "Instalar los tres",
+            "Instalar los tres + GitHub CLI",
             "Verificar instalados"
         };
         String[] actions = {
+            "doctor",
             "one-touch",
             null,
             "prepare",
@@ -1533,14 +1535,35 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             .setItems(labels, (dialog, index) -> {
                 if (index == 0) {
                     new AlertDialog.Builder(this)
+                        .setTitle("Diagnóstico / reparar entorno")
+                        .setMessage(
+                            "Comprueba el prefijo de NewTermux y repara automáticamente inconsistencias "
+                            + "de paquetes base como curl/libcurl/libngtcp2, Git y dpkg. Si el entorno "
+                            + "está sano no modifica nada.")
+                        .setPositiveButton("Diagnosticar y reparar", (d, w) -> {
+                            TerminalSession session = getCurrentSession();
+                            if (session == null) {
+                                showToast("Abrí una sesión primero", false);
+                                return;
+                            }
+                            com.newtermux.features.BundledInstallerLibrary.runEnvironmentDoctor(
+                                this, session, "repair");
+                        })
+                        .setNegativeButton("Cancelar", null)
+                        .show();
+                    return;
+                }
+                if (index == 1) {
+                    new AlertDialog.Builder(this)
                         .setTitle("Un toque · preparar NewTermux")
                         .setMessage(
-                            "Instala/actualiza 9router-go, lo inicia, prepara Debian PRoot, "
-                            + "instala/actualiza Antigravity, Codex y OpenCode, configura OpenCode "
-                            + "para usar 9router/free-best y comprueba si TBM ya tiene una release "
-                            + "estable habilitada para NewTermux.\n\n"
+                            "Primero diagnostica y autorrepara el entorno. Después instala/actualiza "
+                            + "9router-go, lo inicia, prepara Debian PRoot, instala/actualiza Antigravity, "
+                            + "Codex, OpenCode y GitHub CLI, y configura OpenCode para usar la ruta "
+                            + "coding-auto cuando el router la publique (coding-best-free como fallback). "
+                            + "También comprueba si TBM ya tiene una release estable habilitada para NewTermux.\n\n"
                             + "TBM sólo se instala si pasó su gate explícito; mientras tanto se omite "
-                            + "sin fallar. No inicia sesión ni importa credenciales.")
+                            + "sin fallar. No inicia sesión ni importa credenciales de proveedores.")
                         .setPositiveButton("Ejecutar", (d, w) -> {
                             TerminalSession session = getCurrentSession();
                             if (session == null) {
@@ -1554,7 +1577,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                         .show();
                     return;
                 }
-                if (index == 1) {
+                if (index == 2) {
                     showRouterInstaller();
                     return;
                 }
@@ -1608,8 +1631,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                     .setTitle(labels[index])
                     .setMessage(
                         "Nuestro fork joselofarias-byte/9router-go se administra en una copia separada de NewTermux.\n"
-                        + "Puerto local predeterminado: 20128\n"
-                        + "Rutas gratuitas: free-best / free\n\n"
+                        + "Puerto local predeterminado: 20130\n"
+                        + "Rutas de continuidad: coding-auto / coding-best-free / free-best / free\n\n"
                         + "Acción: " + actions[index])
                     .setPositiveButton("Ejecutar", (d, w) -> runNineRouterMenuAction(actions[index]))
                     .setNegativeButton("Cancelar", null)
